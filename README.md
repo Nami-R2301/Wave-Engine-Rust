@@ -1,4 +1,4 @@
-[![Build](https://github.com/Nami-R2301/Wave-Engine-Rust/actions/workflows/rust.yml/badge.svg)](https://github.com/Nami-R2301/Wave-Engine-Rust/actions/workflows/build.yml)
+[![Build](https://github.com/Nami-R2301/Wave-Engine-Rust/actions/workflows/build.yml/badge.svg)](https://github.com/Nami-R2301/Wave-Engine-Rust/actions/workflows/build.yml)
 
 # Wave-Engine-Rust
 Rust version of Wave-Engine project (C++). 
