@@ -17,7 +17,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build
-      run: sudo apt install libxcursor-dev
+      run: sudo apt install libxi-dev
+        | sudo apt install libxcursor-dev
         | sudo apt install libxinerama-dev
         | sudo apt install libxrandr-dev
         | cargo build --verbose
