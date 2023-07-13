@@ -1,7 +1,9 @@
 # Wave-Engine-Rust
 Rust version of Wave-Engine project (C++). 
 
-# Wave Engine, taken from https://github.com/Nami-R2301/Wave-Engine/blob/main/README.md
+# Wave Engine
+
+**Taken from https://github.com/Nami-R2301/Wave-Engine/blob/main/README.md**
 
 ## What is it ?
 
