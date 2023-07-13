@@ -1,3 +1,5 @@
+![Build](https://github.com/github/docs/actions/workflows/rust.yml/badge.svg)
+
 # Wave-Engine-Rust
 Rust version of Wave-Engine project (C++). 
 
