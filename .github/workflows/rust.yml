@@ -17,7 +17,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build
-      run: sudo apt install libxinerama-dev
+      run: sudo apt install libxcursor-dev
+        | sudo apt install libxinerama-dev
         | sudo apt install libxrandr-dev
         | cargo build --verbose
     - name: Run tests
