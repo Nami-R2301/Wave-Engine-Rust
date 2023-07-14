@@ -29,7 +29,7 @@ fn main()
 {
   let log_file = logger::open_log();
   let mut app: Engine = Engine::create_app();
-  let mut vector = math::Vec2 {x: 0.0f32, y: 1.0f32} + math::Vec2 {x: 0.0, y: 1.0};
+  let mut vector: math::Vec2<f32> = math::Vec2 {x: 0.0, y: 1.0} + math::Vec2 {x: 0.0, y: 1.0};
   vector += math::Vec2 {x: 2.1, y: 1.8};
   
   log_info!("{0}", vector);
