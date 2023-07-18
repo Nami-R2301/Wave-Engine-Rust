@@ -22,13 +22,22 @@
   SOFTWARE.
  */
 
-extern crate glfw;
 extern crate gl;
+extern crate glfw;
 
 use glfw::{Context, Window};
 
+pub mod utils;
 pub mod math;
-pub mod logger;
+
+pub trait App {
+  fn on_new(&self);
+  fn on_delete(&self);
+  
+  fn on_event(&self);
+  fn on_update(&self);
+  fn on_render(&self);
+}
 
 #[derive(Debug)]
 pub struct Engine {
@@ -37,6 +46,35 @@ pub struct Engine {
 }
 
 impl Engine {
+  pub fn new() -> Engine {
+    let window: Window = Engine::init();
+    return Engine { m_window: window, m_exit_status: 0 };
+  }
+  
+  pub fn delete(&mut self) -> i64 {
+    self.on_destroy();
+    return self.get_exit_status();
+  }
+  
+  pub fn run(&mut self) {
+    self.m_exit_status = 0;
+    // Loop until the user closes the window
+    while !self.m_window.should_close() {
+      // Poll for and process events
+      self.m_window.glfw.poll_events();
+      
+      unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); };
+      
+      // Swap front and back buffers
+      self.m_window.swap_buffers();
+    }
+  }
+  
+  pub fn get_exit_status(&self) -> i64
+  {
+    return self.m_exit_status;
+  }
+  
   fn init() -> Window {
     // Setup and launch engine.
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
@@ -63,36 +101,27 @@ impl Engine {
     return window;
   }
   
-  fn on_destroy(&mut self) {
+  fn on_destroy(&mut self) {}
+}
+
+impl App for Engine {
+  fn on_new(&self) {
+    todo!()
   }
   
-  pub fn run(&mut self) {
-    self.m_exit_status = 0;
-    // Loop until the user closes the window
-    while !self.m_window.should_close() {
-      // Poll for and process events
-      self.m_window.glfw.poll_events();
-      
-      unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); };
-      
-      // Swap front and back buffers
-      self.m_window.swap_buffers();
-    }
+  fn on_delete(&self) {
+    todo!()
   }
   
-  #[inline(always)]
-  pub fn get_exit_status(&self) -> i64
-  {
-    return self.m_exit_status;
+  fn on_event(&self) {
+    todo!()
   }
   
-  pub fn create_app() -> Engine {
-    let window: Window = Engine::init();
-    return Engine { m_window: window, m_exit_status: 0 };
+  fn on_update(&self) {
+    todo!()
   }
   
-  pub fn destroy_app(mut app: Engine) -> i64 {
-    app.on_destroy();
-    return app.get_exit_status();
+  fn on_render(&self) {
+    todo!()
   }
 }

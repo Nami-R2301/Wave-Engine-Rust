@@ -22,19 +22,61 @@
   SOFTWARE.
  */
 
-pub mod wave;
 use wave::*;
+
+pub mod wave;
+
+///
+/// Example entrypoint to the application **executable** for the client. Substitute this out with
+/// your own app.
+///
+/// ### Returns : Nothing
+///
+/// ## Example :
+/// ```text
+/// pub struct ExampleApp {}
+///
+/// impl App for ExampleApp {
+///   fn on_new(&self) {
+///
+///   }
+///
+///   fn on_delete(&self) {
+///     todo!()
+///   }
+///
+///   fn on_event(&self) {
+///     todo!()
+///   }
+///
+///   fn on_update(&self) {
+///     todo!()
+///   }
+///
+///   fn on_render(&self) {
+///     todo!()
+///   }
+/// }
+/// ```
 
 fn main()
 {
-  let log_file = logger::open_log();
-  let mut app: Engine = Engine::create_app();
+  let mut file_ptr = utils::logger::init().unwrap();
+  let mut stderr = std::io::stderr();
   
+  log!(file_ptr, "INFO", "[App] --> Initialising App...");
+  // Allocated on the stack -- Use new_shared() to allocate on the heap.
+  let mut app: Engine = Engine::new();
+  
+  log!(file_ptr, "INFO", "[App] --> Starting App...");
   app.run();
-  let exit_status: i64 = Engine::destroy_app(app);
   
+  log!(file_ptr, "INFO", "[App] --> Destroying App...");
+  let exit_status: i64 = app.delete();  // Ability to explicitly drop app.
   if exit_status != 0 {
-    log_error!("App exited with code {0}", exit_status);
+    log!(stderr, utils::logger::EnumLogColor::Red, "ERROR", "[App] --> App exited with code {:#x}",
+      exit_status);
   }
-  logger::close_log(&log_file);
+  
+  utils::logger::shutdown();  // Safely flush and close file.
 }

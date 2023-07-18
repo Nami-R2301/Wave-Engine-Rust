@@ -23,6 +23,7 @@
  */
 
 extern crate num;
+
 use num::Zero;
 
 #[derive(Debug, Copy, Clone)]
@@ -84,81 +85,81 @@ impl<T> PartialEq for Vec2<T> where for<'a> &'a T: PartialEq {
   }
   
   fn ne(&self, other_vec2: &Vec2<T>) -> bool {
-    return !std::ptr::eq(&self, &other_vec2);
+    return !self.eq(&other_vec2);
   }
 }
 
 ///////////////////// ARITHMETIC ////////////////////////
 
-impl<T> std::ops::Add for &Vec2<T> where for<'a> &'a T: std::ops::Add<&'a T, Output=T> {
+impl<T> std::ops::Add for Vec2<T> where T: std::ops::Add<T, Output=T> {
   type Output = Vec2<T>;
   
-  fn add(self, other_vec2: &Vec2<T>) -> Vec2<T> {
+  fn add(self, other_vec2: Vec2<T>) -> Vec2<T> {
     return Vec2 {
-      x: &self.x + &other_vec2.x,
-      y: &self.y + &other_vec2.y,
+      x: self.x + other_vec2.x,
+      y: self.y + other_vec2.y,
     };
   }
 }
 
-impl<T> std::ops::AddAssign for Vec2<T> where for<'a> &'a T: std::ops::Add<&'a T, Output=T> {
+impl<T> std::ops::AddAssign for Vec2<T> where for<'a> &'a T: std::ops::Add<T, Output=T> {
   fn add_assign(&mut self, other_vec2: Vec2<T>) {
-    self.x = &self.x + &other_vec2.x;
-    self.y = &self.y + &other_vec2.y;
+    self.x = &self.x + other_vec2.x;
+    self.y = &self.y + other_vec2.y;
   }
 }
 
-impl<T> std::ops::Sub for &Vec2<T> where for<'a> &'a T: std::ops::Sub<&'a T, Output=T> {
+impl<T> std::ops::Sub for Vec2<T> where T: std::ops::Sub<T, Output=T> {
   type Output = Vec2<T>;
   
-  fn sub(self, other_vec2: &Vec2<T>) -> Vec2<T> {
+  fn sub(self, other_vec2: Vec2<T>) -> Vec2<T> {
     return Vec2 {
-      x: &self.x - &other_vec2.x,
-      y: &self.y - &other_vec2.y,
+      x: self.x - other_vec2.x,
+      y: self.y - other_vec2.y,
     };
   }
 }
 
-impl<T> std::ops::SubAssign for Vec2<T> where for<'a> &'a T: std::ops::Sub<&'a T, Output=T> {
+impl<T> std::ops::SubAssign for Vec2<T> where for<'a> &'a T: std::ops::Sub<T, Output=T> {
   fn sub_assign(&mut self, other_vec2: Vec2<T>) {
-    self.x = &self.x - &other_vec2.x;
-    self.y = &self.y - &other_vec2.y;
+    self.x = &self.x - other_vec2.x;
+    self.y = &self.y - other_vec2.y;
   }
 }
 
-impl<T> std::ops::Mul for &Vec2<T> where for<'a> &'a T: std::ops::Mul<&'a T, Output=T> {
+impl<T> std::ops::Mul for Vec2<T> where T: std::ops::Mul<T, Output=T> {
   type Output = Vec2<T>;
   
-  fn mul(self, other_vec2: &Vec2<T>) -> Vec2<T> {
+  fn mul(self, other_vec2: Vec2<T>) -> Vec2<T> {
     return Vec2 {
-      x: &self.x * &other_vec2.x,
-      y: &self.y * &other_vec2.y,
+      x: self.x * other_vec2.x,
+      y: self.y * other_vec2.y,
     };
   }
 }
 
-impl<T> std::ops::MulAssign for Vec2<T> where for<'a> &'a T: std::ops::Mul<&'a T, Output=T> {
+impl<T> std::ops::MulAssign for Vec2<T> where for<'a> &'a T: std::ops::Mul<T, Output=T> {
   fn mul_assign(&mut self, other_vec2: Vec2<T>) {
-    self.x = &self.x * &other_vec2.x;
-    self.y = &self.y * &other_vec2.y;
+    self.x = &self.x * other_vec2.x;
+    self.y = &self.y * other_vec2.y;
   }
 }
 
-impl<T> std::ops::Div for &Vec2<T> where for<'a> &'a T: std::ops::Div<&'a T, Output=T> {
+impl<T> std::ops::Div for Vec2<T> where T: std::ops::Div<T, Output=T> {
   type Output = Vec2<T>;
   
-  fn div(self, other_vec2: &Vec2<T>) -> Vec2<T> {
+  fn div(self, other_vec2: Vec2<T>) -> Vec2<T> {
     return Vec2 {
-      x: &self.x / &other_vec2.x,
-      y: &self.y / &other_vec2.y,
+      x: self.x / other_vec2.x,
+      y: self.y / other_vec2.y,
     };
   }
 }
 
-impl<T> std::ops::DivAssign for Vec2<T> where for<'a> &'a T: std::ops::Div<&'a T, Output=T> {
+impl<T> std::ops::DivAssign for Vec2<T> where for<'a> &'a T: std::ops::Div<T, Output=T> {
   fn div_assign(&mut self, other_vec2: Vec2<T>) {
-    self.x = &self.x / &other_vec2.x;
-    self.y = &self.y / &other_vec2.y;
+    self.x = &self.x / other_vec2.x;
+    self.y = &self.y / other_vec2.y;
   }
 }
 
@@ -216,98 +217,98 @@ impl<T: std::fmt::Display> std::fmt::Display for Vec3<T> {
 
 ///////////////////// EQUALITY ////////////////////////
 
-impl<T> PartialEq for Vec3<T> where for<'a> &'a T: PartialEq {
+impl<T> PartialEq for Vec3<T> where for<'a> &'a T: PartialEq, T: PartialEq {
   fn eq(&self, other_vec3: &Vec3<T>) -> bool {
-    if (self as *const Vec3<T>) == (other_vec3 as *const Vec3<T>) {
+    if self as *const Vec3<T> == other_vec3 as *const Vec3<T> {
       return true;
     }
-    return &self.x == &other_vec3.x && &self.y == &other_vec3.y && &self.z == &other_vec3.z;
+    return self.x == other_vec3.x && self.y == other_vec3.y && self.z == other_vec3.z;
   }
   
   fn ne(&self, other_vec3: &Vec3<T>) -> bool {
-    return !std::ptr::eq(&self, &other_vec3);
+    return !self.eq(&other_vec3);
   }
 }
 
 ///////////////////// ARITHMETIC ////////////////////////
 
-impl<T> std::ops::Add for &Vec3<T> where for<'a> &'a T: std::ops::Add<&'a T, Output=T> {
+impl<T> std::ops::Add for Vec3<T> where T: std::ops::Add<T, Output=T> {
   type Output = Vec3<T>;
   
-  fn add(self, other_vec3: &Vec3<T>) -> Vec3<T> {
+  fn add(self, other_vec3: Vec3<T>) -> Vec3<T> {
     return Vec3 {
-      x: &self.x + &other_vec3.x,
-      y: &self.y + &other_vec3.y,
-      z: &self.z + &other_vec3.z,
+      x: self.x + other_vec3.x,
+      y: self.y + other_vec3.y,
+      z: self.z + other_vec3.z,
     };
   }
 }
 
-impl<T> std::ops::AddAssign for Vec3<T> where for<'a> &'a T: std::ops::Add<&'a T, Output=T> {
+impl<T> std::ops::AddAssign for Vec3<T> where for<'a> &'a T: std::ops::Add<T, Output=T> {
   fn add_assign(&mut self, other_vec3: Vec3<T>) {
-    self.x = &self.x + &other_vec3.x;
-    self.y = &self.y + &other_vec3.y;
-    self.z = &self.z + &other_vec3.z;
+    self.x = &self.x + other_vec3.x;
+    self.y = &self.y + other_vec3.y;
+    self.z = &self.z + other_vec3.z;
   }
 }
 
-impl<T> std::ops::Sub for &Vec3<T> where for<'a> &'a T: std::ops::Sub<&'a T, Output=T> {
+impl<T> std::ops::Sub for Vec3<T> where T: std::ops::Sub<T, Output=T> {
   type Output = Vec3<T>;
   
-  fn sub(self, other_vec3: &Vec3<T>) -> Vec3<T> {
+  fn sub(self, other_vec3: Vec3<T>) -> Vec3<T> {
     return Vec3 {
-      x: &self.x - &other_vec3.x,
-      y: &self.y - &other_vec3.y,
-      z: &self.z - &other_vec3.z,
+      x: self.x - other_vec3.x,
+      y: self.y - other_vec3.y,
+      z: self.z - other_vec3.z,
     };
   }
 }
 
-impl<T> std::ops::SubAssign for Vec3<T> where for<'a> &'a T: std::ops::Sub<&'a T, Output=T> {
+impl<T> std::ops::SubAssign for Vec3<T> where for<'a> &'a T: std::ops::Sub<T, Output=T> {
   fn sub_assign(&mut self, other_vec3: Vec3<T>) {
-    self.x = &self.x - &other_vec3.x;
-    self.y = &self.y - &other_vec3.y;
-    self.z = &self.z - &other_vec3.z;
+    self.x = &self.x - other_vec3.x;
+    self.y = &self.y - other_vec3.y;
+    self.z = &self.z - other_vec3.z;
   }
 }
 
-impl<T> std::ops::Mul for &Vec3<T> where for<'a> &'a T: std::ops::Mul<&'a T, Output=T> {
+impl<T> std::ops::Mul for Vec3<T> where T: std::ops::Mul<T, Output=T> {
   type Output = Vec3<T>;
   
-  fn mul(self, other_vec3: &Vec3<T>) -> Vec3<T> {
+  fn mul(self, other_vec3: Vec3<T>) -> Vec3<T> {
     return Vec3 {
-      x: &self.x * &other_vec3.x,
-      y: &self.y * &other_vec3.y,
-      z: &self.z * &other_vec3.z,
+      x: self.x * other_vec3.x,
+      y: self.y * other_vec3.y,
+      z: self.z * other_vec3.z,
     };
   }
 }
 
-impl<T> std::ops::MulAssign for Vec3<T> where for<'a> &'a T: std::ops::Mul<&'a T, Output=T> {
+impl<T> std::ops::MulAssign for Vec3<T> where for<'a> &'a T: std::ops::Mul<T, Output=T> {
   fn mul_assign(&mut self, other_vec3: Vec3<T>) {
-    self.x = &self.x * &other_vec3.x;
-    self.y = &self.y * &other_vec3.y;
-    self.z = &self.z * &other_vec3.z;
+    self.x = &self.x * other_vec3.x;
+    self.y = &self.y * other_vec3.y;
+    self.z = &self.z * other_vec3.z;
   }
 }
 
-impl<T> std::ops::Div for &Vec3<T> where for<'a> &'a T: std::ops::Div<&'a T, Output=T> {
+impl<T> std::ops::Div for Vec3<T> where T: std::ops::Div<T, Output=T> {
   type Output = Vec3<T>;
   
-  fn div(self, other_vec3: &Vec3<T>) -> Vec3<T> {
+  fn div(self, other_vec3: Vec3<T>) -> Vec3<T> {
     return Vec3 {
-      x: &self.x / &other_vec3.x,
-      y: &self.y / &other_vec3.y,
-      z: &self.z / &other_vec3.z,
+      x: self.x / other_vec3.x,
+      y: self.y / other_vec3.y,
+      z: self.z / other_vec3.z,
     };
   }
 }
 
-impl<T> std::ops::DivAssign for Vec3<T> where for<'a> &'a T: std::ops::Div<&'a T, Output=T> {
+impl<T> std::ops::DivAssign for Vec3<T> where for<'a> &'a T: std::ops::Div<T, Output=T> {
   fn div_assign(&mut self, other_vec3: Vec3<T>) {
-    self.x = &self.x / &other_vec3.x;
-    self.y = &self.y / &other_vec3.y;
-    self.z = &self.z / &other_vec3.z;
+    self.x = &self.x / other_vec3.x;
+    self.y = &self.y / other_vec3.y;
+    self.z = &self.z / other_vec3.z;
   }
 }
 
@@ -369,13 +370,13 @@ impl<T: std::fmt::Display> std::fmt::Display for Vec4<T> {
 
 ///////////////////// EQUALITY ////////////////////////
 
-impl<T> PartialEq for Vec4<T> where for<'a> &'a T: PartialEq {
+impl<T> PartialEq for Vec4<T> where for<'a> &'a T: PartialEq, T: PartialEq {
   fn eq(&self, other_vec4: &Vec4<T>) -> bool {
-    if (self as *const Vec4<T>) == (other_vec4 as *const Vec4<T>) {
+    if self as *const Vec4<T> == other_vec4 as *const Vec4<T> {
       return true;
     }
-    return &self.x == &other_vec4.x && &self.y == &other_vec4.y && &self.z == &other_vec4.z &&
-      &self.w == &other_vec4.w;
+    return self.x == other_vec4.x && self.y == other_vec4.y && self.z == other_vec4.z &&
+      self.w == other_vec4.w;
   }
   
   fn ne(&self, other_vec4: &Vec4<T>) -> bool {
@@ -385,91 +386,91 @@ impl<T> PartialEq for Vec4<T> where for<'a> &'a T: PartialEq {
 
 ///////////////////// ARITHMETIC ////////////////////////
 
-impl<T> std::ops::Add for &Vec4<T> where for<'a> &'a T: std::ops::Add<&'a T, Output=T> {
+impl<T> std::ops::Add for Vec4<T> where T: std::ops::Add<T, Output=T> {
   type Output = Vec4<T>;
   
-  fn add(self, other_vec4: &Vec4<T>) -> Vec4<T> {
+  fn add(self, other_vec4: Vec4<T>) -> Vec4<T> {
     return Vec4 {
-      x: &self.x + &other_vec4.x,
-      y: &self.y + &other_vec4.y,
-      z: &self.z + &other_vec4.z,
-      w: &self.w + &other_vec4.w,
+      x: self.x + other_vec4.x,
+      y: self.y + other_vec4.y,
+      z: self.z + other_vec4.z,
+      w: self.w + other_vec4.w,
     };
   }
 }
 
-impl<T> std::ops::AddAssign for Vec4<T> where for<'a> &'a T: std::ops::Add<&'a T, Output=T> {
+impl<T> std::ops::AddAssign for Vec4<T> where for<'a> &'a T: std::ops::Add<T, Output=T> {
   fn add_assign(&mut self, other_vec4: Vec4<T>) {
-    self.x = &self.x + &other_vec4.x;
-    self.y = &self.y + &other_vec4.y;
-    self.z = &self.z + &other_vec4.z;
-    self.w = &self.w + &other_vec4.w;
+    self.x = &self.x + other_vec4.x;
+    self.y = &self.y + other_vec4.y;
+    self.z = &self.z + other_vec4.z;
+    self.w = &self.w + other_vec4.w;
   }
 }
 
-impl<T> std::ops::Sub for &Vec4<T> where for<'a> &'a T: std::ops::Sub<&'a T, Output=T> {
+impl<T> std::ops::Sub for Vec4<T> where T: std::ops::Sub<T, Output=T> {
   type Output = Vec4<T>;
   
-  fn sub(self, other_vec4: &Vec4<T>) -> Vec4<T> {
+  fn sub(self, other_vec4: Vec4<T>) -> Vec4<T> {
     return Vec4 {
-      x: &self.x - &other_vec4.x,
-      y: &self.y - &other_vec4.y,
-      z: &self.z - &other_vec4.z,
-      w: &self.w - &other_vec4.w,
+      x: self.x - other_vec4.x,
+      y: self.y - other_vec4.y,
+      z: self.z - other_vec4.z,
+      w: self.w - other_vec4.w,
     };
   }
 }
 
-impl<T> std::ops::SubAssign for Vec4<T> where for<'a> &'a T: std::ops::Sub<&'a T, Output=T> {
+impl<T> std::ops::SubAssign for Vec4<T> where for<'a> &'a T: std::ops::Sub<T, Output=T> {
   fn sub_assign(&mut self, other_vec4: Vec4<T>) {
-    self.x = &self.x - &other_vec4.x;
-    self.y = &self.y - &other_vec4.y;
-    self.z = &self.z - &other_vec4.z;
-    self.w = &self.w - &other_vec4.w;
+    self.x = &self.x - other_vec4.x;
+    self.y = &self.y - other_vec4.y;
+    self.z = &self.z - other_vec4.z;
+    self.w = &self.w - other_vec4.w;
   }
 }
 
-impl<T> std::ops::Mul for &Vec4<T> where for<'a> &'a T: std::ops::Mul<&'a T, Output=T> {
+impl<T> std::ops::Mul for Vec4<T> where T: std::ops::Mul<T, Output=T> {
   type Output = Vec4<T>;
   
-  fn mul(self, other_vec4: &Vec4<T>) -> Vec4<T> {
+  fn mul(self, other_vec4: Vec4<T>) -> Vec4<T> {
     return Vec4 {
-      x: &self.x * &other_vec4.x,
-      y: &self.y * &other_vec4.y,
-      z: &self.z * &other_vec4.z,
-      w: &self.w * &other_vec4.w,
+      x: self.x * other_vec4.x,
+      y: self.y * other_vec4.y,
+      z: self.z * other_vec4.z,
+      w: self.w * other_vec4.w,
     };
   }
 }
 
-impl<T> std::ops::MulAssign for Vec4<T> where for<'a> &'a T: std::ops::Mul<&'a T, Output=T> {
+impl<T> std::ops::MulAssign for Vec4<T> where for<'a> &'a T: std::ops::Mul<T, Output=T> {
   fn mul_assign(&mut self, other_vec4: Vec4<T>) {
-    self.x = &self.x * &other_vec4.x;
-    self.y = &self.y * &other_vec4.y;
-    self.z = &self.z * &other_vec4.z;
-    self.w = &self.w * &other_vec4.w;
+    self.x = &self.x * other_vec4.x;
+    self.y = &self.y * other_vec4.y;
+    self.z = &self.z * other_vec4.z;
+    self.w = &self.w * other_vec4.w;
   }
 }
 
-impl<T> std::ops::Div for &Vec4<T> where for<'a> &'a T: std::ops::Div<&'a T, Output=T> {
+impl<T> std::ops::Div for Vec4<T> where T: std::ops::Div<T, Output=T> {
   type Output = Vec4<T>;
   
-  fn div(self, other_vec4: &Vec4<T>) -> Vec4<T> {
+  fn div(self, other_vec4: Vec4<T>) -> Vec4<T> {
     return Vec4 {
-      x: &self.x / &other_vec4.x,
-      y: &self.y / &other_vec4.y,
-      z: &self.z / &other_vec4.z,
-      w: &self.w / &other_vec4.w,
+      x: self.x / other_vec4.x,
+      y: self.y / other_vec4.y,
+      z: self.z / other_vec4.z,
+      w: self.w / other_vec4.w,
     };
   }
 }
 
-impl<T> std::ops::DivAssign for Vec4<T> where for<'a> &'a T: std::ops::Div<&'a T, Output=T> {
+impl<T> std::ops::DivAssign for Vec4<T> where for<'a> &'a T: std::ops::Div<T, Output=T> {
   fn div_assign(&mut self, other_vec4: Vec4<T>) {
-    self.x = &self.x / &other_vec4.x;
-    self.y = &self.y / &other_vec4.y;
-    self.z = &self.z / &other_vec4.z;
-    self.w = &self.w / &other_vec4.w;
+    self.x = &self.x / other_vec4.x;
+    self.y = &self.y / other_vec4.y;
+    self.z = &self.z / other_vec4.z;
+    self.w = &self.w / other_vec4.w;
   }
 }
 
@@ -513,31 +514,46 @@ pub struct GlMatrix {
 }
 
 impl GlMatrix {
-  pub fn new(initialize_identity: bool) -> Box<GlMatrix> {
+  pub fn new(initialize_identity: bool) -> GlMatrix {
     if initialize_identity {
-      return Box::new(GlMatrix {
+      return GlMatrix {
         value_ptr: Vec4 {
           x: Vec4 { x: 1.0, y: 0.0, z: 0.0, w: 0.0 },
           y: Vec4 { x: 0.0, y: 1.0, z: 0.0, w: 0.0 },
           z: Vec4 { x: 0.0, y: 0.0, z: 1.0, w: 0.0 },
           w: Vec4 { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
         }
-      });
+      };
     }
-    return Box::new(GlMatrix {
+    return GlMatrix {
       value_ptr: Vec4 {
         x: Vec4::new(),
         y: Vec4::new(),
         z: Vec4::new(),
         w: Vec4::new(),
       }
-    });
+    };
+  }
+  pub fn new_shared(initialize_identity: bool) -> Box<GlMatrix> {
+    return Box::new(GlMatrix::new(initialize_identity));
   }
   pub fn delete(&mut self) {
     self.value_ptr.x.delete();
     self.value_ptr.y.delete();
     self.value_ptr.z.delete();
     self.value_ptr.w.delete();
+  }
+  
+  pub fn transpose(matrix: &GlMatrix) -> GlMatrix {
+    let mut result: GlMatrix = matrix.clone();
+    
+    for i in 0..4usize {
+      for j in 0..4usize {
+        let mut row_major_value: f32 = matrix[i][j];
+        std::mem::swap(&mut result[j][i], &mut row_major_value);
+      }
+    }
+    return result;
   }
 }
 
@@ -572,3 +588,61 @@ impl std::ops::IndexMut<usize> for GlMatrix {
   }
 }
 
+///////////////////// EQUALITY ////////////////////////
+
+impl PartialEq for GlMatrix {
+  fn eq(&self, other: &Self) -> bool {
+    if &self.value_ptr == &other.value_ptr {
+      return true;
+    }
+    for row in 0..4usize {
+      for col in 0..4usize {
+        if self[row][col] != other[row][col] {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+  
+  fn ne(&self, other: &Self) -> bool {
+    return !self.eq(other);
+  }
+}
+
+///////////////////// ARITHMETIC ////////////////////////
+
+impl std::ops::Mul for GlMatrix {
+  type Output = GlMatrix;
+  
+  fn mul(self, other_matrix: Self) -> GlMatrix {
+    let mut default_matrix: GlMatrix = GlMatrix::new(false);
+    
+    for col in 0..4usize {
+      default_matrix.value_ptr.x[col] +=
+        (self.value_ptr.x.x * other_matrix.value_ptr.x[col]) +
+          (self.value_ptr.x.y * other_matrix.value_ptr.y[col]) +
+          (self.value_ptr.x.z * other_matrix.value_ptr.z[col]) +
+          (self.value_ptr.x.w * other_matrix.value_ptr.w[col]);
+      
+      default_matrix.value_ptr.y[col] +=
+        (self.value_ptr.y.x * other_matrix.value_ptr.x[col]) +
+          (self.value_ptr.y.y * other_matrix.value_ptr.y[col]) +
+          (self.value_ptr.y.z * other_matrix.value_ptr.z[col]) +
+          (self.value_ptr.y.w * other_matrix.value_ptr.w[col]);
+      
+      default_matrix.value_ptr.z[col] +=
+        (self.value_ptr.z.x * other_matrix.value_ptr.x[col]) +
+          (self.value_ptr.z.y * other_matrix.value_ptr.y[col]) +
+          (self.value_ptr.z.z * other_matrix.value_ptr.z[col]) +
+          (self.value_ptr.z.w * other_matrix.value_ptr.w[col]);
+      
+      default_matrix.value_ptr.w[col] +=
+        (self.value_ptr.w.x * other_matrix.value_ptr.x[col]) +
+          (self.value_ptr.w.y * other_matrix.value_ptr.y[col]) +
+          (self.value_ptr.w.z * other_matrix.value_ptr.z[col]) +
+          (self.value_ptr.w.w * other_matrix.value_ptr.w[col]);
+    }
+    return default_matrix;
+  }
+}
