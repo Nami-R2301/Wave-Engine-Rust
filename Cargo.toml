@@ -6,8 +6,12 @@ edition = "2021"
 [dependencies]
 num = "0.4.0"
 gl = {version = "0.14.0"}
-glfw = {version = "0.52.0"}
 chrono = "0.4.26"
+imgui-glfw-rs = "0.4.1"
+
+[features]
+trace = []
+logging = []
 
 [profile.dev]
 opt-level = 0
