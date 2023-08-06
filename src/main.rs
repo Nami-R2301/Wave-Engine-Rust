@@ -68,16 +68,14 @@ pub mod wave;
 /// }
 /// ```
 
-fn main() -> Result<(), &'static str> {
-    let my_app: ExampleApp = ExampleApp {};
-    
-    // Allocated on the stack -- Use new_shared() to allocate on the heap.
-    let mut engine: Engine<ExampleApp> = Engine::new(my_app)
-      .expect("[Engine] --> Error, app crashed! Force shutdown...");
-
-    Ok({
-        engine.on_new();  // Run `on_new()` for `my_app` prior to running.
-        engine.run();
-        engine.on_delete();  // Run `on_delete()` for `my_app` prior to dropping.
-    })
+fn main() {
+  let my_app = Box::new(ExampleApp {});
+  
+  // Allocated on the stack -- Use new_shared() to allocate on the heap.
+  let mut engine = Engine::new(my_app)
+    .expect("[Engine] --> Fatal error occurred when running app! Exiting...");
+  
+  engine.on_new();  // Run `on_new()` for `my_app` prior to running.
+  engine.run();
+  engine.on_delete();  // Run `on_delete()` for `my_app` prior to dropping.
 }

@@ -24,7 +24,7 @@
 
 extern crate num;
 
-use chrono::{DateTime};
+use chrono::DateTime;
 
 ///
 /// Convenience utility for displaying caller's function name, without the path prefix,
@@ -53,17 +53,41 @@ macro_rules! function_name {
     () => {{
         fn f() {}
         fn type_name_of<T>(_: T) -> String {
-          let _string = String::from(
+          let mut _string = String::from(
             std::any::type_name::<T>()
-            .strip_suffix("::f")
-            .expect("[Utils] --> Could not strip f suffix from function name!")
-            .to_string()
-            + "()");
+            .strip_suffix("::f").unwrap_or("").to_string() + "()");
           
           if _string.starts_with("wave_engine::") {
-            return _string.strip_prefix("wave_engine::")
-            .expect("[Utils] --> Could not strip wave_engine::wave:: prefix from function name!").to_string();
+            _string = _string.strip_prefix("wave_engine::").unwrap_or("").to_string();
+            
+            if _string.starts_with("wave::") {
+              _string = _string.strip_prefix("wave::").unwrap_or("").to_string();
+            }
           }
+          let function_start_index = _string.rfind(':').unwrap_or(0);
+          
+          // Truncate string to minimize text length when logging.
+          if _string.len() > 25 {
+            
+            // If the function declaration is too long.
+            if _string.len() - function_start_index >= 24 {
+              _string = String::from(_string.strip_prefix(&_string[0 .. function_start_index + 1]).unwrap());
+              let function_param_start_index = _string.find('(').unwrap_or(0);
+              
+               // If the function name is too long.
+              if function_param_start_index >= 23 {
+                // super_long_name_for_...()
+                //                     ^
+                //                     |
+                //                  truncate from here.
+                _string.replace_range(20..function_param_start_index, "...");
+              }
+            } else {
+                _string = String::from(_string.strip_prefix(&_string[0 .. _string.len() - 25]).unwrap());
+                _string.replace_range(0..3, "...");
+            }
+          }
+          
           return _string;
         }
         type_name_of(f)
@@ -99,10 +123,21 @@ macro_rules! file_name {
     () => {{
         use std::path::Path;
         let this_file = file!();
-        Path::new(this_file)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap()
+        let mut path = Path::new(this_file);
+        
+        if path.starts_with("src/") {
+          path = path.strip_prefix("src/").unwrap_or(path);
+        }
+        
+        let mut path_str = String::from(path.to_str().unwrap_or(""));
+        
+        // Truncate string to minimize text length when logging.
+          if path_str.len() > 25 {
+            path_str = String::from(path_str.strip_prefix(&path_str[0 .. path_str.len() - 25]).unwrap());
+            path_str.replace_range(0..3, "...");
+          }
+        
+        path_str
     }};
 }
 
@@ -136,8 +171,7 @@ macro_rules! file_name {
 #[macro_export]
 macro_rules! trace {
     () => {{
-        let format = format!("[|{0}| |{1}| |{2:<5}|]{3:<5}", file_name!(), function_name!(), line!(),
-        "");
+        let format = format!("[{0:25} | {1:25} | {2}]", file_name!(), function_name!(), line!());
         format
     }};
 }
@@ -331,7 +365,6 @@ macro_rules! create_vec {
 
 pub mod logger {
   use std::fs::File;
-  use std::io::Write;
   
   pub enum EnumLogColor {
     White,
@@ -390,12 +423,12 @@ pub mod logger {
       print!("\n");
     };
 
-    ($log_type: literal, $($format_and_arguments:tt)*) =>{{
+    ($log_type: literal, $($format_and_arguments:tt)*) => {{
       use std::io::Write;
 
       let current_time = chrono::Local::now();
 
-      let format_string: String = format!("\x1b[0m[{0}]\t[{1:19}] {2}",
+      let format_string: String = format!("\x1b[0m[{0}]\t[{1:19}] {2:<60}\t",
                                            $log_type, &current_time.to_string()[0..19], trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
@@ -408,11 +441,13 @@ pub mod logger {
 
       let current_time = chrono::Local::now();
 
-      let format_string: String = format!("\x1b[0m[{0}]\t[{1:19}] {2}",
+      let format_string: String = format!("\x1b[0m[{0}]\t[{1:19}] {2:<60}\t",
                                            $log_type, &current_time.to_string()[0..19], trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
-      writeln!($log_output, "{0}", format_string + &log_message).
+      writeln!($log_output, "{0}", format_string.clone() + &log_message).
+                          expect("\x1b[31m[Logger] --> Unable to log statement!");
+      writeln!(std::io::stdout(), "{0}", format_string + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
     }};
 
@@ -422,8 +457,9 @@ pub mod logger {
       let current_time = chrono::Local::now();
 
       let log_color: &str = utils::logger::color_to_str($log_color);
-      let format_string: String = format!("{0}[{1}]\t[{2:19}] {3}",
-                                          log_color, $log_type, &current_time.to_string()[0..19], trace!());
+      let format_string: String = format!("{0}[{1}]\t[{2:19}] {3:<60}\t",
+                                          log_color, $log_type, &current_time.to_string()[0..19],
+                                          trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
       writeln!(std::io::stdout(), "{0}", format_string + &log_message).
@@ -436,11 +472,14 @@ pub mod logger {
       let current_time = chrono::Local::now();
 
       let log_color: &str = utils::logger::color_to_str($log_color);
-      let format_string: String = format!("{0}[{1}]\t[{2:19}] {3}",
-                                          log_color, $log_type, &current_time.to_string()[0..19], trace!());
+      let format_string: String = format!("{0}[{1}]\t[{2:19}] {3:<60}\t",
+                                          log_color, $log_type, &current_time.to_string()[0..19],
+                                          trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
-      writeln!($log_output, "{0}", format_string + &log_message).
+      writeln!($log_output, "{0}", format_string.clone() + &log_message).
+                          expect("\x1b[31m[Logger] --> Unable to log statement!");
+      writeln!(std::io::stdout(), "{0}", format_string + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
     }};
   }
@@ -465,6 +504,7 @@ pub mod logger {
       .append(true)
       .create(true)
       .open("wave-engine.log");
+    
     return file.ok();
   }
   
@@ -497,18 +537,6 @@ pub mod logger {
       .truncate(true)
       .open("wave-engine.log")
       .expect("[Logger] --> Could not reset file, due to error opening file!");
-  }
-  
-  #[inline(always)]
-  pub fn shutdown() {
-    std::io::stdout()
-      .flush()
-      .expect("[Logger] --> Could not flush stdout when shutting down logger!");
-    let mut file = std::fs::OpenOptions::new()
-      .write(true)
-      .open("wave-engine.log")
-      .expect("[Logger] --> Could not open file!");
-    file.flush().expect("[Logger] --> Cannot flush log file!");
   }
 }
 

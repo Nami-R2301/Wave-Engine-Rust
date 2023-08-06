@@ -22,124 +22,151 @@
  SOFTWARE.
 */
 
-extern crate gl;
-extern crate imgui_glfw_rs;
-
-use imgui_glfw_rs::{glfw, glfw::Context};
-use imgui_glfw_rs::glfw::ffi::{glfwGetPrimaryMonitor, glfwSetWindowMonitor};
-
 use crate::{log, trace};
-use crate::wave::utils::{Time};
-
 #[cfg(feature = "trace")]
 use crate::{file_name, function_name};
-use crate::wave::utils::logger::EnumLogColor;
 
+
+use crate::wave::graphics::renderer::{EnumFeature, GlRenderer};
+use crate::wave::utils::Time;
+use crate::wave::utils::logger::EnumLogColor;
+use crate::wave::window::{GlWindow};
+
+pub mod window;
 pub mod math;
+pub mod graphics;
 pub mod utils;
 
 pub trait TraitApp {
   fn on_new(&mut self) -> ();
   fn on_delete(&mut self) -> ();
   fn on_destroy(&mut self) -> () {}
-
+  
   fn on_event(&mut self) -> bool;
   fn on_update(&mut self, time_step: f64);
   fn on_render(&self);
 }
 
-static mut S_WINDOW_IS_FULLSCREEN: bool = false;
+#[derive(PartialEq)]
+enum EnumState {
+  Starting,
+  Running,
+  ShuttingDown,
+  ShutDown
+}
 
-pub struct Engine<T> {
-  m_app: T,
+pub struct Engine {
+  m_state: EnumState,
+  m_app: Box<dyn TraitApp>,
   m_log_file_ptr: std::fs::File,
-  m_window: glfw::Window,
-  m_events: std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>,
+  m_window: GlWindow,
   m_exit_status: i64,
   m_time_step: f64,
 }
 
-impl<T: TraitApp> Engine<T> {
-  pub fn new(app_provided: T) -> Result<Engine<T>, String> {
+impl Engine {
+  pub fn new<T: TraitApp + 'static>(app_provided: Box<T>) -> Result<Engine, String> {
     let mut file_ptr = utils::logger::init().unwrap();
-    log!(file_ptr, "INFO", "[Engine] --> Launching Wave Engine...");
+    
+    log!(file_ptr, "INFO", "[Engine] -->\t Launching Wave Engine...");
     
     // Setup and launch engine.
-    let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
+    let window = GlWindow::new();
     
-    glfw.window_hint(glfw::WindowHint::Samples(None));
-    glfw.window_hint(glfw::WindowHint::RefreshRate(None));
-    glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
-    glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
-    glfw.window_hint(glfw::WindowHint::ContextVersionMajor(3));
-    glfw.window_hint(glfw::WindowHint::ContextVersionMinor(3));
+    match window {
+      Ok(_) => {
+        log!(file_ptr, "INFO", "[Engine] -->\t Created GLFW window successfully");
+      }
+      Err(_) => {
+        log!(file_ptr, EnumLogColor::Red, "ERROR", "[Window] -->\t Error creating GLFW window! Exiting...");
+        return Err("Error creating GLFW context! Exiting...".parse().unwrap());
+      }
+    }
     
-    // Create a windowed mode window and its OpenGL context
-    let (mut window, events) = glfw.create_window(1920, 1080,
-      "Wave Engine (Rust)", glfw::WindowMode::Windowed)
-      .expect("[Window] --> Failed to create GLFW window!");
+    // Setup basic renderer features.
+    let renderer = GlRenderer::new();
     
-    // Set input polling rate.
-    window.set_sticky_keys(true);
-    window.set_sticky_mouse_buttons(true);
+    match renderer {
+      Ok(_) => {
+        log!(file_ptr, EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", unsafe { GlRenderer::get_renderer_info() });
+        log!(file_ptr, EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {:?}", unsafe { GlRenderer::get_api_info() });
+        log!(file_ptr, EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", unsafe { GlRenderer::get_shading_info() });
+        log!(file_ptr, "INFO", "[Renderer] -->\t Created OpenGL context successfully");
+        GlRenderer::toggle_feature(EnumFeature::DepthTest(true));
+        GlRenderer::toggle_feature(EnumFeature::CullFacing(true, gl::BACK));
+      }
+      Err(_) => {
+        log!(file_ptr, EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error creating OpenGL context! Exiting...");
+        return Err("Error creating OpenGL context! Exiting...".parse().unwrap());
+      }
+    }
     
-    // Set glfw events.
-    window.set_key_polling(true);
-    window.set_mouse_button_polling(true);
-    window.set_framebuffer_size_polling(true);
-    
-    // Make the window's context current
-    window.make_current();
-    
-    // Set v-sync.
-    window.glfw.set_swap_interval(glfw::SwapInterval::Sync(0));
-    
-    gl::load_with(|f_name| window.get_proc_address(f_name));
-    
-    unsafe { gl::Viewport(0, 0, 1920, 1080); }
-    unsafe { gl::ClearColor(0.15, 0.15, 0.15, 1.0); }
-    
-    log!(file_ptr, "INFO", "[Engine] --> Launched Wave Engine Successfully");
-    
-    Ok(Engine {
-      m_app: app_provided,  // App layer provided to run.
-      m_log_file_ptr: file_ptr,  // Setup log file stream.
-      m_window: window,
-      m_events: events,
-      m_exit_status: 0,
-      m_time_step: 0.0,
+    Ok({
+      log!(file_ptr, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
+      Engine {
+        m_state: EnumState::Starting,
+        m_app: app_provided,
+        m_log_file_ptr: file_ptr,
+        m_window: window.unwrap(),
+        m_exit_status: 0,
+        m_time_step: 0.0,
+      }
     })
   }
   
-  pub fn shutdown(engine: &mut Engine<T>) -> () {
-    utils::logger::shutdown(); // Safely flush and close file.
+  pub fn shutdown(engine: &mut Engine) -> () {
+    if engine.m_state == EnumState::ShutDown {
+      return;
+    }
+    
+    engine.m_state = EnumState::ShuttingDown;
+    let result = GlRenderer::shutdown();
+    
+    match result {
+      Ok(_) => {
+        log!("INFO", "[Renderer] -->\t Renderer shut down successfully");
+      }
+      Err(_) => {
+        log!("ERROR", "[Renderer] -->\t Error when trying to shut down renderer! Check logs for more info...");
+      }
+    }
     
     let exit_status: i64 = engine.get_exit_status();
     if exit_status != 0 {
       log!(utils::logger::EnumLogColor::Red,
-                "ERROR", "[App] --> App exited with code {:#x}",
+                "ERROR", "[App] -->\t App exited with code {:#x}",
                 exit_status);
     }
   }
   
   pub fn on_new(&mut self) -> () {
     let mut file_ptr = &self.m_log_file_ptr;
-    log!(file_ptr, "INFO", "[App] --> Starting app...");
+    log!(file_ptr, "INFO", "[App] -->\t Starting app...");
+    
+    match GlRenderer::new() {
+      Ok(_) => {}
+      Err(_) => {
+        log!(file_ptr, "ERROR", "[Renderer] -->\t Error creating renderer context! Exiting...");
+        return;
+      }
+    }
     self.m_app.on_new();
-    log!(file_ptr, "INFO", "[App] --> Started app successfully");
+    
+    log!(file_ptr, "INFO", "[App] -->\t Started app successfully");
   }
   
   pub fn on_delete(&mut self) -> () {
     let mut file_ptr = &self.m_log_file_ptr;
-    log!(file_ptr, "INFO", "[App] --> Shutting down app...");
-    self.m_app.on_delete();  // Destroy app first.
-    log!(file_ptr, "INFO", "[App] --> Shut down app successfully");
+    log!(file_ptr, "INFO", "[App] -->\t Shutting down app...");
+    self.m_app.on_delete();
+    // Destroy app first.
+    log!(file_ptr, "INFO", "[App] -->\t Shut down app successfully");
     
     Engine::shutdown(self);  // Then, destroy engine specific data.
   }
   
   pub fn run(&mut self) {
-    self.m_exit_status = 0;
+    self.m_state = EnumState::Running;
     
     // For time step.
     let mut _frame_start: Time = Time::from(chrono::Utc::now());
@@ -149,7 +176,7 @@ impl<T: TraitApp> Engine<T> {
     let mut runtime: Time = Time::new();
     
     // Loop until the user closes the window
-    while !self.m_window.should_close() {
+    while !self.m_window.is_closing() {
       self.m_time_step = Time::get_delta(&_frame_start, &Time::from(chrono::Utc::now())).to_secs();
       _frame_start = Time::from(chrono::Utc::now());
       
@@ -160,7 +187,7 @@ impl<T: TraitApp> Engine<T> {
       // Sync to engine tick rate.
       Time::wait_for(1.0 / 60.0);
       
-      self.m_window.swap_buffers();  // Refresh window.
+      self.m_window.refresh();  // Refresh window.
       _frame_counter += 1;
       
       if Time::get_delta(&runtime, &Time::from(chrono::Utc::now())).to_secs() >= 1.0 {
@@ -170,60 +197,11 @@ impl<T: TraitApp> Engine<T> {
         runtime = Time::from(chrono::Utc::now());
       }
     }
+    self.m_state = EnumState::ShuttingDown;
   }
   
   pub fn on_event(&mut self) -> bool {
-    self.m_window.glfw.poll_events();
-    for (_, event) in glfw::flush_messages(&self.m_events) {
-      return match event {
-        glfw::WindowEvent::Key(glfw::Key::Escape, _, glfw::Action::Press, _) => {
-          self.m_window.set_should_close(true);
-          log!(EnumLogColor::Yellow, "WARN", "[Engine] --> User requested to close the window");
-          true
-        }
-        glfw::WindowEvent::Key(glfw::Key::Enter, _, glfw::Action::Press, glfw::Modifiers::Alt) => unsafe {
-          S_WINDOW_IS_FULLSCREEN.then_some({
-            glfwSetWindowMonitor(self.m_window.window_ptr(), std::ptr::null_mut(),
-              0, 0, 1920, 1016, -1);
-          }).unwrap_or_else(|| {
-            glfwSetWindowMonitor(self.m_window.window_ptr(), glfwGetPrimaryMonitor(),
-              0, 0, 1920, 1080, -1);
-          });
-          
-          log!(EnumLogColor::Yellow, "WARN", "[Engine] --> Fullscreen {0}",
-            S_WINDOW_IS_FULLSCREEN.then_some("ON").unwrap_or("OFF"));
-          
-          S_WINDOW_IS_FULLSCREEN = !S_WINDOW_IS_FULLSCREEN;
-          gl::Viewport(0, 0, 1920, 1080);
-          true
-        }
-        glfw::WindowEvent::Key(key, _scancode, action, _mods) => {
-          // log!("INFO", "Key: {:?}, ScanCode: {:?}, Action: {:?}, Modifiers: [{:?}]",
-          // key, scancode, action, mods);
-          
-          match (key, action) {
-            (glfw::Key::R, glfw::Action::Press) => {
-              // Resize should cause the window to "refresh"
-              let (window_width, window_height) = self.m_window.get_size();
-              self.m_window.set_size(window_width + 1, window_height);
-              self.m_window.set_size(window_width, window_height);
-              false
-            }
-            _ => false
-          }
-        }
-        glfw::WindowEvent::MouseButton(_btn, _action, _mods) => {
-          // log!("INFO", "Button: {:?}, Action: {:?}, Modifiers: [{:?}]", btn, action, mods);
-          false
-        }
-        glfw::WindowEvent::FramebufferSize(width, height) => {
-          log!(EnumLogColor::White, "INFO", "[Engine] --> Framebuffer size: ({:?}, {:?})", width, height);
-          false
-        }
-        _ => self.m_app.on_event()
-      };
-    }
-    return false;
+    return self.m_window.on_event();
   }
   
   pub fn on_update(&mut self, _time_step: f64) {}
@@ -246,14 +224,14 @@ pub struct ExampleApp {}
 
 impl TraitApp for ExampleApp {
   fn on_new(&mut self) -> () {}
-
+  
   fn on_delete(&mut self) -> () {}
-
+  
   fn on_event(&mut self) -> bool {
     return false;
   }
-
+  
   fn on_update(&mut self, _time_step: f64) -> () {}
-
+  
   fn on_render(&self) -> () {}
 }
