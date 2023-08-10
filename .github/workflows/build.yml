@@ -21,4 +21,5 @@ jobs:
         | sudo apt install libxcursor-dev
         | sudo apt install libxinerama-dev
         | sudo apt install libxrandr-dev
-        | cargo build --verbose
+        | cargo build +stable build --color=always --message-format=json-diagnostic-rendered-ansi --package wave-engine --all-features
+        | cargo test -- --test-threads=1 --show-output
