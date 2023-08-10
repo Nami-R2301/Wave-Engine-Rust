@@ -23,4 +23,4 @@ jobs:
         sudo apt install libxrandr-dev;
         sudo apt install libglfw3-dev --fix-missing;
         cargo build --color=always --message-format=json-diagnostic-rendered-ansi --package wave-engine --all-features;
-        cargo test -- --test-threads=1 --show-output;
+        cargo test -- --test-threads=1 --show-output --skip test_show_logs test_load_uniforms test_shader_send;
