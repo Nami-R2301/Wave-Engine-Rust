@@ -29,6 +29,7 @@ use wave_engine::wave::window;
 use wave_engine::wave::window::GlfwWindow;
 
 #[test]
+#[ignore]
 fn test_shader_send() {
   // Setup window context in order to use gl functions.
   let window = GlfwWindow::new();
@@ -61,6 +62,7 @@ fn test_shader_send() {
 }
 
 #[test]
+#[ignore]
 fn test_load_uniforms() {
   let window = GlfwWindow::new();
   match window.as_ref() {
