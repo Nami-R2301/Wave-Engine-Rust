@@ -30,7 +30,7 @@
 
 use super::super::create_vec;
 
-create_vec!(Vec2<T, 2> { x, y, });
+create_vec!(Vec2<T> { x, y, });
 
 impl<T> std::ops::Index<usize> for Vec2<T> {
     type Output = T;
@@ -60,7 +60,7 @@ impl<T> std::ops::IndexMut<usize> for Vec2<T> {
 ///////////////////////////////////         ///////////////////////////////////
  */
 
-create_vec!(Vec3<T, 3> {x, y, z, });
+create_vec!(Vec3<T> {x, y, z, });
 
 ///////////////////// INDEXING ////////////////////////
 
@@ -94,7 +94,7 @@ impl<T> std::ops::IndexMut<usize> for Vec3<T> {
 ///////////////////////////////////         ///////////////////////////////////
  */
 
-create_vec!(Vec4<T, 4> { x, y, z, w, });
+create_vec!(Vec4<T> { x, y, z, w, });
 
 ///////////////////// INDEXING ////////////////////////
 
@@ -191,10 +191,10 @@ impl Mat4 {
     pub fn from(vec4s: [[f32; 4]; 4]) -> Self {
         return Mat4 {
             value_ptr: Vec4 {
-                x: Vec4::from(vec4s[0]),
-                y: Vec4::from(vec4s[1]),
-                z: Vec4::from(vec4s[2]),
-                w: Vec4::from(vec4s[3]),
+                x: Vec4::from(&vec4s[0]),
+                y: Vec4::from(&vec4s[1]),
+                z: Vec4::from(&vec4s[2]),
+                w: Vec4::from(&vec4s[3]),
             },
         };
     }

@@ -22,5 +22,39 @@
  SOFTWARE.
 */
 
-#[cfg(test)]
-pub mod wave;
+use wave_engine::wave::math::{Vec2, Vec3};
+use wave_engine::wave::graphics::vertex::{Color, GlVertex3D};
+
+#[test]
+fn test_equality() {
+  let new_vertex = GlVertex3D::new();
+  let mut other_vertex = GlVertex3D {
+    m_id: -1,
+    m_position: Vec3::new(),
+    m_normal: Vec3::new(),
+    m_color: Color::new(),
+    m_texture_coords: Vec2::new(),
+  };
+  
+  assert_eq!(new_vertex, other_vertex);
+  other_vertex.m_id = 0;
+  assert_ne!(new_vertex, other_vertex);
+}
+
+#[test]
+fn test_display() {
+  let new_vertex = GlVertex3D::new();
+  let other_vertex = GlVertex3D {
+    m_id: -1,
+    m_position: Vec3::new(),
+    m_normal: Vec3::new(),
+    m_color: Color::new(),
+    m_texture_coords: Vec2::new(),
+  };
+  
+  assert_eq!(new_vertex.to_string(), other_vertex.to_string());
+  assert_eq!(new_vertex.to_string(), "[GlVertex3D] --> ID => -1; Position => [Vec3] --> x: 0.000, \
+   y: 0.000, z: 0.000, ; Normal => [Vec3] --> x: 0.000, y: 0.000, z: 0.000, ; Color => [Color] --> \
+   r: 0.000, g: 0.000, b: 0.000, a: 0.000, ; Texture coords => [Vec2] --> x: 0.000, y: 0.000, "
+    .to_string())
+}

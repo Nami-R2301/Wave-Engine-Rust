@@ -22,5 +22,5 @@
  SOFTWARE.
 */
 
-#[cfg(test)]
-pub mod wave;
+pub mod test_shader;
+pub mod test_vertex;

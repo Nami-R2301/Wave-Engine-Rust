@@ -26,6 +26,8 @@ extern crate num;
 
 use chrono::DateTime;
 
+pub mod asset_loader;
+
 ///
 /// Convenience utility for displaying caller's function name, without the path prefix,
 /// useful for debugging and logging. This is equivalent to `__FUNC__` or `__FUNCTION__` C macros.
@@ -87,6 +89,7 @@ macro_rules! function_name {
                 _string.replace_range(0..3, "...");
             }
           }
+          _string.replace_range(_string.len() - 2.._string.len(), "");
           
           return _string;
         }
@@ -164,7 +167,7 @@ macro_rules! file_name {
 ///   }
 /// }
 ///
-/// --> "Error in | logger::init()::47 |! Logger init failed unexpectedly!"
+/// --> "Error in [wave/utils/mod.rs    | ...::logger::init    | 47]! Logger init failed unexpectedly!"
 /// ```
 ///
 #[cfg(feature = "trace")]
@@ -219,7 +222,7 @@ macro_rules! trace {
 /// DivAssign, Display, Debug, and PartialEq will be automatically implemented.
 #[macro_export]
 macro_rules! create_vec {
-    ($struct_name: ident<$struct_type: ident, $struct_size: literal> { $($struct_item: ident,)* }) => {
+    ($struct_name: ident<$struct_type: ident> { $($struct_item: ident,)* }) => {
       #[derive(Clone)]
       pub struct $struct_name<$struct_type> {
         $(pub $struct_item: $struct_type,)*
@@ -232,19 +235,15 @@ macro_rules! create_vec {
          pub fn new_shared() -> Box<Self> {
            return Box::new($struct_name::new());
          }
-         pub fn from(array: [$struct_type; $struct_size])  -> Self {
+         pub fn from(array: &[$struct_type])  -> Self {
            let mut new = $struct_name { $($struct_item: $struct_type::zero(),)* };
-           for i in (0..$struct_size) {
+           for i in (0..array.len()) {
              new[i] = array[i];
            }
            return new;
          }
          pub fn delete(&mut self) -> () {
            $(self.$struct_item = $struct_type::zero();)*
-         }
-        
-         pub fn len(&self) -> usize {
-           return $struct_size as usize;
          }
       }
       
@@ -371,6 +370,8 @@ pub mod logger {
     Yellow,
     Red,
     Blue,
+    Green,
+    Purple,
   }
   
   ///
@@ -440,7 +441,6 @@ pub mod logger {
       use std::io::Write;
 
       let current_time = chrono::Local::now();
-
       let format_string: String = format!("\x1b[0m[{0}]\t[{1:19}] {2:<60}\t",
                                            $log_type, &current_time.to_string()[0..19], trace!());
 
@@ -515,6 +515,8 @@ pub mod logger {
       EnumLogColor::Yellow => "\x1b[33m",
       EnumLogColor::Red => "\x1b[31m",
       EnumLogColor::Blue => "\x1b[34m",
+      EnumLogColor::Green => "\x1b[32m",
+      EnumLogColor::Purple => "\x1b[0;35m",
     };
   }
   
