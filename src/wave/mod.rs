@@ -24,13 +24,11 @@
 
 use once_cell::sync::Lazy;
 
-use crate::{log, trace};
-#[cfg(feature = "trace")]
-use crate::{file_name, function_name};
-use crate::wave::graphics::renderer::{EnumFeature, GlRenderer};
-use crate::wave::graphics::shader;
-use crate::wave::graphics::shader::{GlShader};
-use crate::wave::utils::logger::EnumLogColor;
+use crate::log;
+use crate::wave::assets::renderable_assets::GlREntity;
+use crate::wave::graphics::renderer::{EnumFeature, GlRenderer, TraitSendableEntity};
+use crate::wave::graphics::shader::GlShader;
+use crate::wave::utils::asset_loader::ResLoader;
 use crate::wave::utils::Time;
 use crate::wave::window::GlfwWindow;
 
@@ -39,6 +37,7 @@ pub mod math;
 pub mod graphics;
 pub mod utils;
 pub mod assets;
+pub mod camera;
 
 static mut S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::logger::init()
   .expect("[Logger] --> Cannot open log file!"));
@@ -79,21 +78,20 @@ pub struct Engine {
 }
 
 impl Engine {
-  pub unsafe fn new<T: TraitApp + 'static>(app_provided: Box<T>) -> Result<Engine, String> {
-    log!(S_LOG_FILE_PTR, EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
+  pub fn new<T: TraitApp + 'static>(app_provided: Box<T>) -> Result<Engine, EnumErrors> {
+    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
     
     // Setup and launch engine.
     let window = GlfwWindow::new();
     
     match window {
       Ok(_) => {
-        log!(S_LOG_FILE_PTR, EnumLogColor::Green, "INFO", "[Engine] -->\t Created GLFW window \
-        successfully");
+        log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Created GLFW window successfully");
       }
       Err(err) => {
-        log!(S_LOG_FILE_PTR, EnumLogColor::Red, "ERROR",
-          "[Window] -->\t Error creating GLFW window! Exiting... Error code => {:?}", err);
-        return Err("Error creating GLFW context! Exiting...".to_string());
+        log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error creating GLFW window! Exiting... \
+         Error code => {:?}", err);
+        return Err(EnumErrors::WindowError);
       }
     }
     
@@ -102,28 +100,25 @@ impl Engine {
     
     match renderer {
       Ok(_) => {
-        log!(S_LOG_FILE_PTR, EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}",
-          unsafe { GlRenderer::get_renderer_info() });
-        log!(S_LOG_FILE_PTR, EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {:?}",
-          unsafe { GlRenderer::get_api_info() });
-        log!(S_LOG_FILE_PTR, EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}",
-          unsafe { GlRenderer::get_shading_info() });
-        log!(S_LOG_FILE_PTR, EnumLogColor::Green, "INFO", "[Renderer] -->\t \
-         Created OpenGL context successfully");
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", GlRenderer::get_renderer_info());
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {:?}", GlRenderer::get_api_info());
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", GlRenderer::get_shading_info());
+        log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Created OpenGL context successfully");
+        
         GlRenderer::toggle_feature(EnumFeature::DepthTest(true));
         GlRenderer::toggle_feature(EnumFeature::CullFacing(true, gl::BACK));
+        GlRenderer::toggle_feature(EnumFeature::Debug(true));
       }
       Err(err) => {
-        log!(S_LOG_FILE_PTR, EnumLogColor::Red, "ERROR",
-          "[Renderer] -->\t Error creating OpenGL context! Exiting... Error code => {:?}", err);
-        return Err("Error creating OpenGL context! Exiting...".to_string());
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error creating OpenGL context! \
+        Exiting... Error code => {:?}", err);
+        return Err(EnumErrors::RendererError);
       }
     }
     
-    S_STATE = EnumState::Starting;
+    unsafe { S_STATE = EnumState::Starting; }
     Ok({
-      log!(S_LOG_FILE_PTR, EnumLogColor::Green, "INFO",
-        "[Engine] -->\t Launched Wave Engine successfully");
+      log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
       Engine {
         m_app: app_provided,
         m_window: window.unwrap(),
@@ -141,38 +136,33 @@ impl Engine {
     let result = GlRenderer::shutdown();
     match result {
       Ok(_) => {
-        unsafe { log!(S_LOG_FILE_PTR, EnumLogColor::Green, "INFO",
-          "[Renderer] -->\t Renderer shut down successfully"); }
+        log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Renderer shut down successfully");
       }
       Err(err) => {
-        unsafe { log!(S_LOG_FILE_PTR, EnumLogColor::Red, "ERROR",
-          "[Renderer] -->\t Error when trying to shut down renderer! Error code => {:?}",
-            err); }
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error when trying to shut down renderer! \
+         Error code => {:?}", err);
       }
     }
   }
   
   pub fn on_new(&mut self) -> Result<(), EnumErrors> {
-    unsafe { log!(S_LOG_FILE_PTR, EnumLogColor::Purple, "INFO", "[App] -->\t Starting app..."); }
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
     
     match GlRenderer::new() {
       Ok(_) => {}
       Err(err) => {
-        unsafe { log!(S_LOG_FILE_PTR, "ERROR",
-          "[Renderer] -->\t Error creating renderer context! Exiting... Error code => {:?}", err); }
+        log!("ERROR", "[Renderer] -->\t Error creating renderer context! Exiting... Error code => \
+         {:?}", err);
         return Err(EnumErrors::RendererError);
       }
     }
     match self.m_app.on_new() {
       Ok(_) => {
-        unsafe { log!(S_LOG_FILE_PTR, EnumLogColor::Green, "INFO",
-      "[App] -->\t Started app successfully"); }
+        log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
       }
       Err(err) => {
-        unsafe {
-          log!(S_LOG_FILE_PTR, EnumLogColor::Red, "ERROR",
-          "[App] -->\t Started app unsuccessfully! Error => {:?}", err);
-        }
+        log!(EnumLogColor::Red, "ERROR", "[App] -->\t Started app unsuccessfully! Error => {:?}",
+          err);
         self.on_delete();
         Engine::shutdown();
         return Err(err);
@@ -182,19 +172,15 @@ impl Engine {
   }
   
   pub fn on_delete(&mut self) -> () {
-    unsafe { log!(S_LOG_FILE_PTR, EnumLogColor::Purple, "INFO",
-      "[App] -->\t Shutting down app..."); }
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down app...");
     self.m_app.on_delete();
     // Destroy app first.
-    unsafe { log!(S_LOG_FILE_PTR, EnumLogColor::Green, "INFO",
-      "[App] -->\t Shut down app successfully"); }
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Shut down app successfully");
     
-    
-    unsafe { log!(S_LOG_FILE_PTR, EnumLogColor::Purple, "INFO",
-      "[App] -->\t Shutting down engine..."); }
-    Engine::shutdown();  // Then, destroy engine specific data.
-    unsafe { log!(S_LOG_FILE_PTR, EnumLogColor::Green, "INFO",
-        "[Engine] -->\t Engine shut down successfully"); }
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down engine...");
+    Engine::shutdown();
+    // Then, destroy engine specific data.
+    log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Engine shut down successfully");
   }
   
   pub fn run(&mut self) {
@@ -239,10 +225,13 @@ impl Engine {
     return self.m_window.on_event();
   }
   
-  pub fn on_update(&mut self, _time_step: f64) {}
+  pub fn on_update(&mut self, time_step: f64) {
+    self.m_app.on_update(time_step);
+  }
   
   pub fn on_render(&self) {
     unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); }
+    self.m_app.on_render();
   }
   
   pub fn get_log_file() -> &'static std::fs::File {
@@ -253,12 +242,14 @@ impl Engine {
 
 pub struct ExampleApp {
   m_shaders: Vec<GlShader>,
+  m_assets: Vec<GlREntity>,
 }
 
 impl ExampleApp {
   pub fn new() -> Self {
     return ExampleApp {
       m_shaders: Vec::with_capacity(5),
+      m_assets: Vec::with_capacity(10),
     }
   }
 }
@@ -269,46 +260,42 @@ impl TraitApp for ExampleApp {
       self.m_shaders = Vec::new();
     }
     
-    let new_shader = GlShader::new("res/shaders/default_3D.vert",
-      "res/shaders/default_3D.frag");
-    match new_shader {
-      Ok(gl_shader) => {
-        self.m_shaders.push(gl_shader);
-      }
+    let result = GlShader::new("res/shaders/test_vert.glsl",
+      "res/shaders/test_frag.glsl");
+    match result {
+      Ok(gl_shader) => { self.m_shaders.push(gl_shader); }
       Err(_) => {
         return Err(EnumErrors::ShaderError);
       }
     }
     
     // Sourcing and compilation.
-    let result = unsafe { self.m_shaders[0].send() };
+    let result = self.m_shaders[0].send();
     match result {
-      Ok(_) => {
-        unsafe { log!(S_LOG_FILE_PTR, EnumLogColor::Green, "INFO",
-          "[Shader] -->\t Shader sent to GPU successfully"); }
+      Ok(_) => { log!(EnumLogColor::Green, "INFO", "[Shader] -->\t Shader sent to GPU successfully"); }
+      Err(_) => { return Err(EnumErrors::ShaderError); }
+    }
+    
+    let _ = self.m_shaders[0].bind();
+    
+    let result = ResLoader::new("res/assets/cube.obj");
+    match result {
+      Ok(gl_vertices) => {
+        log!(EnumLogColor::Green, "INFO", "[ResLoader] -->\t Asset {0} loaded successfully", "cube.obj");
+        self.m_assets.push(GlREntity::from(gl_vertices));
+        
+        let result = self.m_assets.last_mut().unwrap().send();
+        match result {
+          Ok(_) => { log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Asset sent to GPU successfully"); }
+          Err(_) => { return Err(EnumErrors::RendererError); }
+        }
       }
-      Err(shader::EnumErrors::GlError(_)) => {
-        return Err(EnumErrors::ShaderError);
-      }
-      Err(_) => {
-        return Err(EnumErrors::RendererError);
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[ResLoader] -->\t Asset {0} loaded unsuccessfully! \
+          Error => {1:?}", "cube.obj", err);
       }
     }
     
-    // Set uniforms.
-    let result = unsafe { self.m_shaders[0].load_uniform("u_has_texture", 1i32) };
-    match result {
-      Ok(_) => {
-        unsafe { log!(S_LOG_FILE_PTR, EnumLogColor::Green, "INFO",
-          "[Shader] -->\t Uniform {0} set successfully", "u_has_texture"); }
-      }
-      Err(shader::EnumErrors::GlError(_)) => {
-        return Err(EnumErrors::ShaderError);
-      }
-      Err(_) => {
-        return Err(EnumErrors::RendererError);
-      }
-    }
     return Ok(());
   }
   
@@ -320,5 +307,14 @@ impl TraitApp for ExampleApp {
   
   fn on_update(&mut self, _time_step: f64) -> () {}
   
-  fn on_render(&self) -> () {}
+  fn on_render(&self) -> () {
+    let result = GlRenderer::draw();
+    match result {
+      Ok(_) => {}
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot draw all assets! Error => {0:?}",
+          err);
+      }
+    }
+  }
 }

@@ -72,7 +72,7 @@ fn main() -> Result<(), EnumErrors> {
   let my_app = Box::new(ExampleApp::new());
   
   // Allocated on the stack -- Use new_shared() to allocate on the heap.
-  let mut engine = unsafe { Engine::new(my_app) }
+  let mut engine = Engine::new(my_app)
     .expect("[Engine] --> Fatal error occurred when running app! Exiting...");
   
   // Run `on_new()` for `my_app` prior to running.

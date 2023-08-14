@@ -213,7 +213,6 @@ macro_rules! trace {
 ///       pub fn new_shared() -> Box<Color<T>> {...}
 ///       pub fn from(array: [T; 4]) -> Color<T> {...}
 ///       pub fn delete(&mut self) {...}
-///       pub fn len(&self) -> usize { return 4; }
 ///
 ///     ...
 /// ```
@@ -374,6 +373,15 @@ pub mod logger {
     Purple,
   }
   
+  #[cfg(not(feature = "logging"))]
+  #[macro_export]
+  macro_rules! log {
+    () => {};
+    
+    ($log_type: literal, $($format_and_arguments:tt)*) =>{{}};
+    ($log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{}};
+  }
+  
   ///
   /// Macros for displaying string formatted messages (**message_format**) in a given file stream
   /// (**log_output**).
@@ -388,9 +396,7 @@ pub mod logger {
   /// All possible macro matches :
   /// ```text
   /// log!(log_type, format + arguments)
-  /// log!(log_output, log_type, format + arguments)
   /// log!(log_color, log_type, format + arguments)
-  /// log!(log_output, log_color, log_type, format + arguments)
   /// ```
   /// \
   /// \
@@ -426,6 +432,8 @@ pub mod logger {
 
     ($log_type: literal, $($format_and_arguments:tt)*) => {{
       use std::io::Write;
+      use crate::wave::Engine;
+      use crate::{trace, file_name, function_name};
 
       let current_time = chrono::Local::now();
 
@@ -433,19 +441,8 @@ pub mod logger {
                                            $log_type, &current_time.to_string()[0..19], trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
-      writeln!(std::io::stdout(), "{0}", format_string + &log_message).
-                          expect("\x1b[31m[Logger] --> Unable to log statement!");
-    }};
-
-    ($log_output: ident, $log_type: literal, $($format_and_arguments:tt)*) =>{{
-      use std::io::Write;
-
-      let current_time = chrono::Local::now();
-      let format_string: String = format!("\x1b[0m[{0}]\t[{1:19}] {2:<60}\t",
-                                           $log_type, &current_time.to_string()[0..19], trace!());
-
-      let log_message: String = format!($($format_and_arguments)*);
-      writeln!($log_output, "{0}", format_string.clone() + &log_message).
+      let mut log_file_ptr = Engine::get_log_file();
+      writeln!(log_file_ptr, "{0}", format_string.clone() + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
       writeln!(std::io::stdout(), "{0}", format_string + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
@@ -453,6 +450,10 @@ pub mod logger {
 
     ($log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{
       use std::io::Write;
+      use crate::wave::Engine;
+      use crate::wave::utils;
+      use crate::wave::utils::logger::EnumLogColor;
+      use crate::{trace, file_name, function_name};
 
       let current_time = chrono::Local::now();
 
@@ -462,40 +463,12 @@ pub mod logger {
                                           trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
-      writeln!(std::io::stdout(), "{0}", format_string + &log_message).
-                          expect("\x1b[31m[Logger] --> Unable to log statement!");
-    }};
-
-    ($log_output: ident, $log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{
-      use std::io::Write;
-
-      let current_time = chrono::Local::now();
-
-      let log_color: &str = utils::logger::color_to_str($log_color);
-      let format_string: String = format!("{0}[{1}]\t[{2:19}] {3:<60}\t",
-                                          log_color, $log_type, &current_time.to_string()[0..19],
-                                          trace!());
-
-      let log_message: String = format!($($format_and_arguments)*);
-      writeln!($log_output, "{0}", format_string.clone() + &log_message).
+      let mut log_file_ptr = Engine::get_log_file();
+      writeln!(log_file_ptr, "{0}", format_string.clone() + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
       writeln!(std::io::stdout(), "{0}", format_string + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
     }};
-  }
-  
-  #[cfg(not(feature = "logging"))]
-  #[macro_export]
-  macro_rules! log {
-    () => {};
-    
-   ($log_type: literal, $($format_and_arguments:tt)*) =>{{}};
-
-    ($log_output: ident, $log_type: literal, $($format_and_arguments:tt)*) =>{{}};
-
-    ($log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{}};
-
-    ($log_output: ident, $log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{}};
   }
   
   #[inline(always)]

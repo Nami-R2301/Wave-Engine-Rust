@@ -22,5 +22,8 @@
  SOFTWARE.
 */
 
+use wave_engine::wave::utils::logger;
+
 pub mod test_logger;
 pub mod test_time;
+pub mod test_asset_loader;

@@ -22,6 +22,8 @@
  SOFTWARE.
 */
 
+use wave_engine::wave::Engine;  // Mimic crate::wave::Engine from src -- DO NOT REMOVE THIS.
+
 pub mod math;
 pub mod utils;
 pub mod graphics;

@@ -24,12 +24,11 @@
 
 use wave_engine::wave::graphics::renderer::GlRenderer;
 use wave_engine::wave::graphics::shader;
-use wave_engine::wave::graphics::shader::{GlShader};
+use wave_engine::wave::graphics::shader::GlShader;
 use wave_engine::wave::window;
 use wave_engine::wave::window::GlfwWindow;
 
 #[test]
-#[ignore]
 fn test_shader_send() {
   // Setup window context in order to use gl functions.
   let window = GlfwWindow::new();
@@ -57,12 +56,11 @@ fn test_shader_send() {
   assert_ne!(new_shader.m_fragment_str, "");
   
   // Sourcing and compilation.
-  let result = unsafe { new_shader.send() };
+  let result = new_shader.send();
   assert!(result.is_ok());
 }
 
 #[test]
-#[ignore]
 fn test_load_uniforms() {
   let window = GlfwWindow::new();
   match window.as_ref() {
@@ -86,15 +84,15 @@ fn test_load_uniforms() {
   assert_ne!(new_shader.as_ref().unwrap().m_fragment_str, "");
   
   // Sourcing and compilation.
-  let result = unsafe { new_shader.as_mut().unwrap().send() };
+  let result = new_shader.as_mut().unwrap().send();
   assert!(result.is_ok());
   
-  match new_shader.as_ref().unwrap().bind(){
+  match new_shader.as_ref().unwrap().bind() {
     Ok(_) => {}
-    Err(_) => { return assert!(false)}
+    Err(_) => { return assert!(false); }
   }
   // Load uniforms.
-  let uniform = new_shader.as_mut().unwrap().load_uniform("u_has_texture",
+  let uniform = new_shader.as_mut().unwrap().upload_uniform("u_has_texture",
     1i32);
   
   match uniform {

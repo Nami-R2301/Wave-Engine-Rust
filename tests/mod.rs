@@ -22,5 +22,8 @@
  SOFTWARE.
 */
 
+// Mimic crate:: macros from src -- DO NOT REMOVE THIS.
+use wave_engine::{log, trace, file_name, function_name};
+
 #[cfg(test)]
 pub mod wave;

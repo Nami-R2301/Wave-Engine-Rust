@@ -59,7 +59,7 @@ const int MAX_SPOT_LIGHTS = 5;
 // Texture.
 layout (binding = 0) uniform sampler2D u_sampler;
 uniform bool u_has_texture = false;
-uniform bool u_affected_by_light = true;
+uniform bool u_affected_by_light = false;
 
 // Different light structures.
 uniform Material material;

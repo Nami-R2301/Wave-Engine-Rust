@@ -26,19 +26,13 @@ extern crate imgui_glfw_rs;
 
 use imgui_glfw_rs::{glfw, glfw::Context};
 use imgui_glfw_rs::glfw::ffi::{glfwGetPrimaryMonitor, glfwSetWindowMonitor};
-
-use crate::{log, trace};
-#[cfg(feature = "trace")]
-use crate::{file_name, function_name};
-use crate::wave::{Engine, utils};
-use crate::wave::utils::logger::EnumLogColor;
+use crate::log;
 
 static mut S_CONTEXT: glfw::Glfw = glfw::Glfw {};
 static mut S_WINDOW_IS_FULLSCREEN: bool = false;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumErrors {
-  Ok,
   NoContext,
   InvalidCreation,
   InvalidApi,
@@ -46,8 +40,8 @@ pub enum EnumErrors {
 }
 
 fn glfw_error_callback<T>(error: glfw::Error, message: String, _user_data: &T) {
-  log!(EnumLogColor::Red, "ERROR", "[Window] -->\t GLFW error raised! Error => {0}\n{1:100}Info => {2}",
-    error, "", message);
+  log!(EnumLogColor::Red, "ERROR", "[Window] -->\t GLFW error raised! Error => {0}\n{1:100}Info => \
+   {2}", error, "", message);
 }
 
 pub struct GlfwWindow {
@@ -58,16 +52,15 @@ pub struct GlfwWindow {
 impl GlfwWindow {
   pub fn new() -> Result<Self, EnumErrors> {
     let result = glfw::init(glfw::FAIL_ON_ERRORS);
-    let mut log_file_ptr = Engine::get_log_file();
     
     match result {
       Err(glfw::InitError::AlreadyInitialized) => {
-        log!(log_file_ptr, EnumLogColor::Yellow, "WARN",
+        log!(EnumLogColor::Yellow, "WARN",
           "[Window] -->\t GLFW window already initialized! Skipping \
          creation of a new one...");
       }
       Err(glfw::InitError::Internal) => {
-        log!(log_file_ptr, EnumLogColor::Red, "ERROR",
+        log!(EnumLogColor::Red, "ERROR",
           "[Window] -->\t Failed to create GLFW window due to internal \
          error! Exiting...");
         return Err(EnumErrors::InvalidCreation);
@@ -118,8 +111,7 @@ impl GlfwWindow {
       return match event {
         glfw::WindowEvent::Key(glfw::Key::Escape, _, glfw::Action::Press, _) => {
           self.m_window.set_should_close(true);
-          let mut log_file_ptr = Engine::get_log_file();
-          log!(log_file_ptr, EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
+          log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
           true
         }
         glfw::WindowEvent::Key(glfw::Key::Enter, _, glfw::Action::Press, glfw::Modifiers::Alt) => unsafe {
@@ -131,9 +123,7 @@ impl GlfwWindow {
               0, 0, 1920, 1080, -1);
           });
           
-          let mut log_file_ptr = Engine::get_log_file();
-          log!(log_file_ptr, "INFO", "[Window] -->\t Fullscreen {0}",
-            S_WINDOW_IS_FULLSCREEN.then_some("ON").unwrap_or("OFF"));
+          log!("INFO", "[Window] -->\t Fullscreen {0}", S_WINDOW_IS_FULLSCREEN.then_some("ON").unwrap_or("OFF"));
           
           S_WINDOW_IS_FULLSCREEN = !S_WINDOW_IS_FULLSCREEN;
           gl::Viewport(0, 0, 1920, 1080);
@@ -159,8 +149,7 @@ impl GlfwWindow {
           false
         }
         glfw::WindowEvent::FramebufferSize(width, height) => {
-          let mut log_file_ptr = Engine::get_log_file();
-          log!(log_file_ptr, "INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
+          log!("INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
           false
         }
         _ => false
@@ -196,7 +185,6 @@ impl GlfwWindow {
 
 impl Drop for GlfwWindow {
   fn drop(&mut self) {
-    let mut log_file_ptr = Engine::get_log_file();
-    log!(log_file_ptr, EnumLogColor::Yellow, "WARN", "[Window] -->\t Destroying window!");
+    log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t Destroying window!");
   }
 }

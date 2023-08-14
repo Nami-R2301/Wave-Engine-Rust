@@ -35,7 +35,7 @@ layout (location = 1) out Vertex_data_s vout_vertex_data;
 void main()
 {
     gl_Position = Camera_u.u_projection * Camera_u.u_view * (u_model_matrix *
-    vec4(in_vertex_position.xyz + (gl_InstanceID != -1 ? gl_InstanceID * 5 : 0.0), 1.0));
+    vec4(in_vertex_position.xyz, 1.0));
     vout_vertex_data.vout_tex_coords = in_tex_coords;
     vout_vertex_data.vout_frag_color = in_color;
     mat3 normal_matrix = mat3(inverse(transpose(Camera_u.u_view * u_model_matrix)));

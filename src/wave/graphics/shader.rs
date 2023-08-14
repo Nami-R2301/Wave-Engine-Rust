@@ -24,68 +24,8 @@
 
 use num::NumCast;
 
-use crate::{file_name, function_name, log, trace};
+use crate::{check_gl_call, log};
 use crate::wave::graphics::renderer::{GLboolean, GLchar, GLenum, GLint, GLuint};
-use crate::wave::utils;
-use crate::wave::utils::logger::EnumLogColor;
-use crate::wave::Engine;
-
-#[macro_export]
-macro_rules! check_gl_call {
-    () => {};
-    ($name:literal, $gl_function:expr) => {
-      unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
-      unsafe {
-        $gl_function;
-        let error = gl::GetError();
-        if error != gl::NO_ERROR {
-          let mut log_file = Engine::get_log_file();
-          log!(log_file, EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-          Code => 0x{1:x}", $name, error);
-          return Err(EnumErrors::GlError(error));
-        }
-      }
-    };
-    ($name:literal, let mut $var:ident: $var_type:ty = $gl_function:expr) => {
-            unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
-            let mut $var:$var_type = unsafe { $gl_function };
-            unsafe {
-              let error = gl::GetError();
-              if error != gl::NO_ERROR {
-                let mut log_file = Engine::get_log_file();
-                log!(log_file, EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-                Code => 0x{1:x}", $name, error);
-                return Err(EnumErrors::GlError(error));
-              }
-            }
-          };
-    ($name:literal, let $var:ident: $var_type:ty = $gl_function:expr) => {
-          unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
-          let $var:$var_type = unsafe { $gl_function };
-          unsafe {
-            let error = gl::GetError();
-            if error != gl::NO_ERROR {
-              let mut log_file = Engine::get_log_file();
-              log!(log_file, EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-              Code => 0x{1:x}", $name, error);
-              return Err(EnumErrors::GlError(error));
-            }
-          }
-        };
-    ($name:literal, $var:ident = $gl_function:expr) => {
-        unsafe { while gl::GetError() != gl::NO_ERROR {} };
-        unsafe { $var = $gl_function; }
-        unsafe {
-          let error = gl::GetError();
-          if error != gl::NO_ERROR {
-            let mut log_file = Engine::get_log_file();
-            log!(log_file, EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-            Code => 0x{1:x}", $name, error);
-            return Err(EnumErrors::GlError(error));
-          }
-        }
-      };
-}
 
 #[derive(Debug, PartialEq)]
 pub enum EnumErrors {
@@ -171,8 +111,8 @@ impl GlShader {
     todo!();
   }
   
-  pub unsafe fn send(&mut self) -> Result<(), EnumErrors> {
-    self.m_id = gl::CreateProgram();
+  pub fn send(&mut self) -> Result<(), EnumErrors> {
+    unsafe { self.m_id = gl::CreateProgram(); }
     
     check_gl_call!("Shader", let vertex_shader: GLuint = gl::CreateShader(gl::VERTEX_SHADER));
     check_gl_call!("Shader", let fragment_shader: GLuint = gl::CreateShader(gl::FRAGMENT_SHADER));
@@ -197,13 +137,14 @@ impl GlShader {
         return Err(EnumErrors::ShaderSourcing);
       }
     }
-    
-    // Compile our shaders.
-    match (GlShader::compile(vertex_shader, gl::VERTEX_SHADER),
-      GlShader::compile(fragment_shader, gl::FRAGMENT_SHADER)) {
-      (Ok(_), Ok(_)) => {}
-      _ => {
-        return Err(EnumErrors::ShaderCompilation);
+    unsafe {
+      // Compile our shaders.
+      match (GlShader::compile(vertex_shader, gl::VERTEX_SHADER),
+        GlShader::compile(fragment_shader, gl::FRAGMENT_SHADER)) {
+        (Ok(_), Ok(_)) => {}
+        _ => {
+          return Err(EnumErrors::ShaderCompilation);
+        }
       }
     }
     
@@ -222,11 +163,10 @@ impl GlShader {
         gl::GetProgramiv(self.m_id, gl::INFO_LOG_LENGTH, &mut buffer_length);
         let mut buffer: Vec<GLchar> = Vec::with_capacity(buffer_length as usize);
         
-        gl::GetProgramInfoLog(self.m_id, buffer_length, &mut buffer_length, buffer.as_mut_ptr());
-        let mut log_file_ptr = Engine::get_log_file();
-        log!(log_file_ptr, EnumLogColor::Red, "ERROR", "[Shader] -->\t Error linking program {0}! Error => {1}",
-          self.m_id, std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap_or("[Shader] -->\t \
-          Error converting program info log to &str!"));
+        gl::GetProgramInfoLog(self.m_id, buffer_length, &mut buffer_length,
+          buffer.as_mut_ptr());
+        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error linking program {0}! Error => {1}",
+          self.m_id, std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap());
         return Err(EnumErrors::ProgramCreation);
       }
     }
@@ -248,7 +188,8 @@ impl GlShader {
   fn source(shader_id: GLuint, shader_str: &String) -> Result<(), EnumErrors> {
     let c_str: std::ffi::CString = std::ffi::CString::new(shader_str.as_str())
       .expect("[Shader] -->\t Could not convert shader string in GlShader::source() from &str \
-       to CStr!");
+       to CString!");
+    
     check_gl_call!("Shader", gl::ShaderSource(shader_id, 1, &(c_str.as_ptr()), std::ptr::null()));
     return Ok(());
   }
@@ -284,7 +225,7 @@ impl GlShader {
       
       gl::GetShaderInfoLog(shader_id, buffer_length, &mut buffer_length, buffer.as_mut_ptr());
       
-      log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Could not compile {0}!\n \
+      log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error, could not compile {0} shader!\n \
         Info => {1}", shader_type_str, std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap());
       return Err(EnumErrors::InvalidShaderSyntax);
     }
@@ -292,17 +233,21 @@ impl GlShader {
     return Ok(());
   }
   
-  pub fn load_uniform<T: Sized + TraitTypeInfo + NumCast>(&mut self, name: &'static str, uniform: T) -> Result<(), EnumErrors> {
+  pub fn upload_uniform<T: TraitTypeInfo + NumCast>(&mut self, name: &'static str, uniform: T) -> Result<(), EnumErrors> {
     match self.bind() {
       Ok(_) => {}
-      Err(err) => { return Err(err) }
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Could not use shader {0}!", self.m_id);
+        return Err(err);
+      }
     }
     if !self.m_uniform_cache.contains_key(name) {
       let c_str: std::ffi::CString = std::ffi::CString::new(name)
-        .expect("[Shader] -->\t Error converting str to CString when trying to load in uniform!");
-      check_gl_call!("Shader",
-        let new_uniform: GLint = gl::GetUniformLocation(self.m_id, c_str.as_ptr()));
+        .expect("[Shader] -->\t Error converting str to CString when trying to upload uniform!");
+      
+      check_gl_call!("Shader", let new_uniform: GLint = gl::GetUniformLocation(self.m_id, c_str.as_ptr()));
       if new_uniform == -1 {
+        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Could not upload uniform {0}!", name);
         return Err(EnumErrors::UniformNotFound);
       }
       self.m_uniform_cache.insert(name, new_uniform);
@@ -311,19 +256,19 @@ impl GlShader {
     match uniform.type_of() {
       "u32" => {
         check_gl_call!("Shader", gl::Uniform1ui(*self.m_uniform_cache.get(name).unwrap(),
-          uniform.to_u32().unwrap_or(0)));
+          uniform.to_u32().unwrap_or(u32::MAX)));
       }
       "i32" => {
         check_gl_call!("Shader", gl::Uniform1i(*self.m_uniform_cache.get(name).unwrap(),
-          uniform.to_i32().unwrap_or(-1)));
+          uniform.to_i32().unwrap_or(i32::MIN)));
       }
       "f32" => {
-          check_gl_call!("Shader", gl::Uniform1f(*self.m_uniform_cache.get(name).unwrap(),
-          uniform.to_f32().unwrap_or(-1.0)));
+        check_gl_call!("Shader", gl::Uniform1f(*self.m_uniform_cache.get(name).unwrap(),
+          uniform.to_f32().unwrap_or(f32::MIN)));
       }
       "f64" => {
-          check_gl_call!("Shader", gl::Uniform1d(*self.m_uniform_cache.get(name).unwrap(),
-          uniform.to_f64().unwrap_or(-1.0)));
+        check_gl_call!("Shader", gl::Uniform1d(*self.m_uniform_cache.get(name).unwrap(),
+          uniform.to_f64().unwrap_or(f64::MIN)));
       }
       _ => {}
     }
