@@ -175,24 +175,24 @@ impl ResLoader {
                      texture_coords: &Vec<f32>) -> Object {
     let mut gl_object: Object = Object::new();
     
-    for triplet in indices {
+    for index in indices {
       gl_object.m_ids.push(1);
       
-      gl_object.m_positions.push(vertices[(triplet[0] * 3) as usize]);
-      gl_object.m_positions.push(vertices[((triplet[0] * 3) + 1) as usize]);
-      gl_object.m_positions.push(vertices[((triplet[0] * 3) + 2) as usize]);
+      gl_object.m_vertices.push(vertices[(index[0] * 3) as usize]);
+      gl_object.m_vertices.push(vertices[((index[0] * 3) + 1) as usize]);
+      gl_object.m_vertices.push(vertices[((index[0] * 3) + 2) as usize]);
       
-      gl_object.m_normals.push(normals[(triplet[2] * 3) as usize]);
-      gl_object.m_normals.push(normals[((triplet[2] * 3) + 1) as usize]);
-      gl_object.m_normals.push(normals[((triplet[2] * 3) + 2) as usize]);
+      gl_object.m_normals.push(normals[(index[2] * 3) as usize]);
+      gl_object.m_normals.push(normals[((index[2] * 3) + 1) as usize]);
+      gl_object.m_normals.push(normals[((index[2] * 3) + 2) as usize]);
       
       // A color (RGBA) for each position (Vec3).
       gl_object.m_colors.append(&mut Vec::from([0.0, 1.0, 0.0, 1.0,
         0.0, 1.0, 0.0, 1.0,
         0.0, 1.0, 0.0, 1.0]));
       
-      gl_object.m_texture_coords.push(texture_coords[(triplet[1] * 2) as usize]);
-      gl_object.m_texture_coords.push(texture_coords[((triplet[1] * 2) + 1) as usize]);
+      gl_object.m_texture_coords.push(texture_coords[(index[1] * 2) as usize]);
+      gl_object.m_texture_coords.push(texture_coords[((index[1] * 2) + 1) as usize]);
     }
     return gl_object;
   }

@@ -29,6 +29,7 @@
  */
 
 use super::super::create_vec;
+use std::mem::size_of;
 
 create_vec!(Vec2<T> { x, y, });
 

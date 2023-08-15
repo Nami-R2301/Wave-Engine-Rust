@@ -219,9 +219,9 @@ impl GlRenderer {
     
     // Positions (Vec3s).
     check_gl_call!("Renderer", gl::BufferSubData(gl::ARRAY_BUFFER, offset as GLsizeiptr,
-      (size_of::<f32>() * sendable_entity.m_data.m_positions.len()) as GLsizeiptr ,
-      sendable_entity.m_data.m_positions.as_ptr() as *const GLvoid));
-    offset += size_of::<f32>() * sendable_entity.m_data.m_positions.len();
+      (size_of::<f32>() * sendable_entity.m_data.m_vertices.len()) as GLsizeiptr ,
+      sendable_entity.m_data.m_vertices.as_ptr() as *const GLvoid));
+    offset += size_of::<f32>() * sendable_entity.m_data.m_vertices.len();
     
     // Normals (Vec3s).
     check_gl_call!("Renderer", gl::BufferSubData(gl::ARRAY_BUFFER, offset as GLsizeiptr,
@@ -249,7 +249,7 @@ impl GlRenderer {
     
     check_gl_call!("Renderer", gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE, 0, offset as *const GLvoid));
     check_gl_call!("Renderer", gl::EnableVertexAttribArray(1));
-    offset += size_of::<f32>() * sendable_entity.m_data.m_positions.len();
+    offset += size_of::<f32>() * sendable_entity.m_data.m_vertices.len();
     
     check_gl_call!("Renderer", gl::VertexAttribPointer(2, 3, gl::FLOAT, gl::FALSE, 0, offset as *const GLvoid));
     check_gl_call!("Renderer", gl::EnableVertexAttribArray(2));

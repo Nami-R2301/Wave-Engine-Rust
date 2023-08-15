@@ -237,12 +237,18 @@ macro_rules! create_vec {
          pub fn from(array: &[$struct_type])  -> Self {
            let mut new = $struct_name { $($struct_item: $struct_type::zero(),)* };
            for i in (0..array.len()) {
+             if i >= $struct_name::<$struct_type>::len() {
+               break;
+             }
              new[i] = array[i];
            }
            return new;
          }
          pub fn delete(&mut self) -> () {
            $(self.$struct_item = $struct_type::zero();)*
+         }
+         pub fn len() -> usize {
+           return size_of::<$struct_name<$struct_type>>() / size_of::<$struct_type>();
          }
       }
       

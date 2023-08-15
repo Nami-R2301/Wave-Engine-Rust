@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-use wave_engine::wave::math::Vec3;
+use crate::wave::math::Vec3;
 use crate::wave::graphics::renderer::TraitSendableEntity;
 use crate::wave::math::Mat4;
 

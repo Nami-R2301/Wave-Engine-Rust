@@ -75,7 +75,7 @@ impl GlREntity {
   
   pub fn size(&self) -> usize {
     return size_of::<u32>() * self.m_data.m_ids.len() +
-      size_of::<f32>() * self.m_data.m_positions.len() +
+      size_of::<f32>() * self.m_data.m_vertices.len() +
       size_of::<f32>() * self.m_data.m_normals.len() +
       size_of::<f32>() * self.m_data.m_colors.len() +
       size_of::<f32>() * self.m_data.m_texture_coords.len();
@@ -146,7 +146,7 @@ impl TraitSendableEntity for GlREntity {
 #[derive(Debug, Clone)]
 pub struct Object {
   pub m_ids: Vec<u32>,
-  pub m_positions: Vec<f32>,
+  pub m_vertices: Vec<f32>,
   pub m_normals: Vec<f32>,
   pub m_colors: Vec<f32>,
   pub m_texture_coords: Vec<f32>,
@@ -156,7 +156,7 @@ impl Object {
   pub fn new() -> Self {
     return Object {
       m_ids: Vec::new(),
-      m_positions: Vec::new(),
+      m_vertices: Vec::new(),
       m_normals: Vec::new(),
       m_colors: Vec::new(),
       m_texture_coords: Vec::new(),
@@ -164,11 +164,13 @@ impl Object {
   }
   
   pub fn is_empty(&self) -> bool {
-    return self.m_positions.is_empty();
+    return self.m_vertices.is_empty();
   }
   
   pub fn register(&mut self, new_id: u32) {
-    self.m_ids = self.m_ids.iter().map(|_| new_id).collect();
+    for index in 0..self.m_ids.len() {
+      self.m_ids[index] = new_id;
+    }
   }
 }
 
@@ -178,7 +180,7 @@ impl Object {
 impl Display for Object {
   fn fmt(&self, format: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(format, "[GlVertex3D] --> IDs => {0:#?}, Positions => {1:#?}; Normals => {2:#?};\
-     Colors => {3:#?}; Texture coords => {4:#?}", self.m_ids, self.m_positions, self.m_normals,
+     Colors => {3:#?}; Texture coords => {4:#?}", self.m_ids, self.m_vertices, self.m_normals,
       self.m_colors, self.m_texture_coords)
   }
 }
