@@ -42,56 +42,72 @@ static mut S_ENTITIES_ID_CACHE: Lazy<HashSet<u32>> = Lazy::new(|| HashSet::new()
 
 #[derive(Debug, Clone)]
 pub struct GlREntity {
-  pub m_renderer_id: u32,
-  pub m_data: Object,
+  // Mouse picking ID per vertex.
+  pub m_entity_id: Vec<u32>,
+  pub m_vertices: Vec<f32>,
+  pub m_normals: Vec<f32>,
+  pub m_colors: Vec<f32>,
+  pub m_texture_coords: Vec<f32>,
+  // UUID given by the renderer to differentiate entities in batch rendering.
+  m_renderer_id: u64,
   m_sent: bool,
 }
 
 impl GlREntity {
   pub fn new() -> Self {
     return GlREntity {
-      m_renderer_id: u32::MAX,
-      m_data: Object::new(),
+      m_entity_id: Vec::new(),
+      m_vertices: Vec::new(),
+      m_normals: Vec::new(),
+      m_colors: Vec::new(),
+      m_texture_coords: Vec::new(),
+      m_renderer_id: u64::MAX,
       m_sent: false,
     };
   }
   
-  pub fn from(gl_data: Object) -> Self {
-    let mut new_id: u32 = rand::random::<u32>();
-    
-    // Keep assigning different ids until we have one available.
+  pub fn size(&self) -> usize {
+    return (size_of::<u32>() * self.m_entity_id.len()) +
+      (size_of::<f32>() * self.m_vertices.len()) +
+      (size_of::<f32>() * self.m_normals.len()) +
+      (size_of::<f32>() * self.m_colors.len()) +
+      (size_of::<f32>() * self.m_texture_coords.len());
+  }
+  
+  pub fn count(&self) -> usize {
+    return self.m_entity_id.len() + self.m_vertices.len() + self.m_normals.len() + self.m_colors.len() +
+      self.m_texture_coords.len();
+  }
+  
+  pub fn is_empty(&self) -> bool {
+    return self.m_vertices.is_empty();
+  }
+  
+  pub fn register(&mut self) {
+    let mut new_id = rand::random::<u32>();
     unsafe {
       while S_ENTITIES_ID_CACHE.contains(&new_id) {
         new_id = rand::random::<u32>();
       }
     }
     
-    return GlREntity {
-      m_renderer_id: new_id,
-      m_data: gl_data,
-      m_sent: false,
-    };
-  }
-  
-  pub fn size(&self) -> usize {
-    return size_of::<u32>() * self.m_data.m_ids.len() +
-      size_of::<f32>() * self.m_data.m_vertices.len() +
-      size_of::<f32>() * self.m_data.m_normals.len() +
-      size_of::<f32>() * self.m_data.m_colors.len() +
-      size_of::<f32>() * self.m_data.m_texture_coords.len();
-  }
-  
-  pub fn is_empty(&self) -> bool {
-    return self.m_data.is_empty();
+    for _index in 0..self.m_vertices.len() {
+      self.m_entity_id.push(new_id);
+    }
   }
 }
 
+///////////////////////////////////   DISPLAY  ///////////////////////////////////
+
 impl Display for GlREntity {
   fn fmt(&self, format: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(format, "[REntity] --> ID => {0}; Sent => {1}; Vertices => {2};",
-      self.m_renderer_id, self.m_sent, self.m_data)
+    write!(format, "[REntity] --> \nSent => {0}\nIDs => {1:#?}\nPositions => {2:#?}\n\
+     Normals => {3:#?}\nColors => {4:#?}\nTexture coords => {5:#?}", self.m_sent, self.m_entity_id,
+      self.m_vertices, self.m_normals, self.m_colors, self.m_texture_coords)
   }
 }
+
+///////////////////////////////////   EQUALITY  ///////////////////////////////////
 
 impl PartialEq for GlREntity {
   fn eq(&self, other: &Self) -> bool {
@@ -134,61 +150,5 @@ impl TraitSendableEntity for GlREntity {
   
   fn is_sent(&self) -> bool {
     return self.m_sent;
-  }
-}
-
-/*
-///////////////////////////////////   OpenGL Object (2D OR 3D)  ///////////////////////////////////
-///////////////////////////////////                             ///////////////////////////////////
-///////////////////////////////////                             ///////////////////////////////////
- */
-
-#[derive(Debug, Clone)]
-pub struct Object {
-  pub m_ids: Vec<u32>,
-  pub m_vertices: Vec<f32>,
-  pub m_normals: Vec<f32>,
-  pub m_colors: Vec<f32>,
-  pub m_texture_coords: Vec<f32>,
-}
-
-impl Object {
-  pub fn new() -> Self {
-    return Object {
-      m_ids: Vec::new(),
-      m_vertices: Vec::new(),
-      m_normals: Vec::new(),
-      m_colors: Vec::new(),
-      m_texture_coords: Vec::new(),
-    };
-  }
-  
-  pub fn is_empty(&self) -> bool {
-    return self.m_vertices.is_empty();
-  }
-  
-  pub fn register(&mut self, new_id: u32) {
-    for index in 0..self.m_ids.len() {
-      self.m_ids[index] = new_id;
-    }
-  }
-}
-
-
-///////////////////////////////////   DISPLAY  ///////////////////////////////////
-
-impl Display for Object {
-  fn fmt(&self, format: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(format, "[GlVertex3D] --> IDs => {0:#?}, Positions => {1:#?}; Normals => {2:#?};\
-     Colors => {3:#?}; Texture coords => {4:#?}", self.m_ids, self.m_vertices, self.m_normals,
-      self.m_colors, self.m_texture_coords)
-  }
-}
-
-///////////////////////////////////   EQUALITY  ///////////////////////////////////
-
-impl PartialEq for Object {
-  fn eq(&self, other: &Self) -> bool {
-    return self.m_ids == other.m_ids;
   }
 }

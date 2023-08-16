@@ -242,14 +242,14 @@ impl Engine {
 
 pub struct ExampleApp {
   m_shaders: Vec<GlShader>,
-  m_assets: Vec<GlREntity>,
+  m_renderable_assets: Vec<GlREntity>,
 }
 
 impl ExampleApp {
   pub fn new() -> Self {
     return ExampleApp {
       m_shaders: Vec::with_capacity(5),
-      m_assets: Vec::with_capacity(10),
+      m_renderable_assets: Vec::with_capacity(10),
     }
   }
 }
@@ -278,13 +278,13 @@ impl TraitApp for ExampleApp {
     
     let _ = self.m_shaders[0].bind();
     
-    let result = ResLoader::new("res/assets/cube.obj");
+    let result = ResLoader::new("cube.obj");
     match result {
       Ok(gl_vertices) => {
         log!(EnumLogColor::Green, "INFO", "[ResLoader] -->\t Asset {0} loaded successfully", "cube.obj");
-        self.m_assets.push(GlREntity::from(gl_vertices));
+        self.m_renderable_assets.push(GlREntity::from(gl_vertices));
         
-        let result = self.m_assets.last_mut().unwrap().send();
+        let result = self.m_renderable_assets.last_mut().unwrap().send();
         match result {
           Ok(_) => { log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Asset sent to GPU successfully"); }
           Err(_) => { return Err(EnumErrors::RendererError); }

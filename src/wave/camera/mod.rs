@@ -75,6 +75,10 @@ impl PerspectiveCamera {
     }
   }
   
+  pub fn get_matrix(&self) -> &Mat4 {
+    return &self.m_view_projection_matrix;
+  }
+  
   fn set_view_projection(&mut self) {
   
   }
