@@ -215,12 +215,12 @@ fn test_matrix_index() {
   assert_eq!(matrix[1][2], 0.0);
   
   matrix.delete();
-  assert_eq!(matrix, Mat4::new(false));
+  assert_eq!(matrix, Mat4::new(0.0));
 }
 
 #[test]
 fn test_matrix_print() {
-  let mut matrix: Mat4 = Mat4::new(true);
+  let mut matrix: Mat4 = Mat4::new(1.0);
   assert_eq!(matrix.to_string(), "[Mat4] -->  1.000, 0.000, 0.000, 0.000\n\
                                                0.000, 1.000, 0.000, 0.000\n\
                                                0.000, 0.000, 1.000, 0.000\n\
@@ -236,12 +236,12 @@ fn test_matrix_print() {
 
 #[test]
 fn test_matrix_transpose() {
-  let mut matrix: Mat4 = Mat4::new(true);
+  let mut matrix: Mat4 = Mat4::new(1.0);
   matrix[0][3] = 10.0;
   matrix[1][3] = 5.0;
   matrix[2][3] = 2.5;
   
-  let transposed_matrix: Mat4 = Mat4::transpose(&matrix);
+  let transposed_matrix: Mat4 = matrix.transpose();
   
   assert_eq!(transposed_matrix.to_string(), "[Mat4] -->  1.000, 0.000, 0.000, 0.000\n\
                                                0.000, 1.000, 0.000, 0.000\n\
@@ -255,12 +255,12 @@ fn test_matrix_transpose() {
 
 #[test]
 fn test_matrix_mul() {
-  let mut matrix: Mat4 = Mat4::new(true);
+  let mut matrix: Mat4 = Mat4::new(1.0);
   matrix[0][3] = 10.0;
   matrix[1][3] = 5.0;
   matrix[2][3] = 2.5;
   
-  let transposed_matrix: Mat4 = Mat4::transpose(&matrix);
+  let transposed_matrix: Mat4 = matrix.transpose();
   assert_eq!(transposed_matrix.to_string(), "[Mat4] -->  1.000, 0.000, 0.000, 0.000\n\
                                                              0.000, 1.000, 0.000, 0.000\n\
                                                              0.000, 0.000, 1.000, 0.000\n\

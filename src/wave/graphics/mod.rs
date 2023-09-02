@@ -27,3 +27,4 @@ pub mod texture;
 pub mod framebuffer;
 pub mod renderer;
 pub mod imgui;
+pub mod buffer;

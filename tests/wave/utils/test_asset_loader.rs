@@ -22,18 +22,18 @@
  SOFTWARE.
 */
 
-use wave_engine::wave::assets::renderable_assets::GlRenderableEntity;
+use wave_engine::wave::assets::renderable_assets::GlREntity;
 use wave_engine::wave::utils::asset_loader::ResLoader;
 
 #[test]
 fn test_obj_loader() {
-  let cube = ResLoader::new("res/assets/cube.obj");
+  let cube = ResLoader::new("cube.obj");
   
   match cube {
     Ok(gl_vertices) => {
-      let gl_renderable_entity: GlRenderableEntity = GlRenderableEntity::from(gl_vertices);
-      assert_ne!(gl_renderable_entity.m_renderer_id, u32::MAX);
-      assert_eq!(gl_renderable_entity.m_data.m_positions.len(), 36 * 3);  // Count * Vec3 (x,y,z).
+      let gl_renderable_entity: GlREntity = GlREntity::from(gl_vertices);
+      assert_ne!(gl_renderable_entity.m_entity_id[0], u32::MAX);
+      assert_eq!(gl_renderable_entity.m_vertices.len(), 36 * 3);  // Count * Vec3 (x,y,z).
     }
     Err(_) => {
       assert!(false);

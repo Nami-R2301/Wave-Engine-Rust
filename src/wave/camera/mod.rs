@@ -22,9 +22,8 @@
  SOFTWARE.
 */
 
-use crate::wave::math::Vec3;
-use crate::wave::graphics::renderer::TraitSendableEntity;
 use crate::wave::math::Mat4;
+use crate::wave::math::Vec3;
 
 pub enum EnumErrors {
   InvalidDimensions,
@@ -37,14 +36,13 @@ pub enum EnumErrors {
 ///////////////////////////////////                        ///////////////////////////////////
  */
 
-pub struct OrthographicCamera {
-  m_width: u32,
-  m_height: u32,
-  m_z_rear: u32,
-  m_z_far: u32,
-  m_focal_point: Vec3<f32>,
-  m_view_projection_matrix: Mat4,
-}
+// pub struct OrthographicCamera {
+//   m_width: u32,
+//   m_height: u32,
+//   m_z_rear: u32,
+//   m_z_far: u32,
+//   m_matrix: Mat4,
+// }
 
 /*
 ///////////////////////////////////   Perspective Camera  ///////////////////////////////////
@@ -54,50 +52,50 @@ pub struct OrthographicCamera {
 
 pub struct PerspectiveCamera {
   m_fov: f32,
-  m_width: u32,
-  m_height: u32,
-  m_z_rear: u32,
-  m_z_far: u32,
-  m_focal_point: Vec3<f32>,
-  m_view_projection_matrix: Mat4,
+  m_z_near: f32,
+  m_z_far: f32,
+  m_matrix: Mat4,
 }
 
 impl PerspectiveCamera {
   pub fn new() -> Self {
     return PerspectiveCamera {
       m_fov: 0.0,
-      m_width: 0,
-      m_height: 0,
-      m_z_rear: 0,
-      m_z_far: 0,
-      m_focal_point: Vec3::new(),
-      m_view_projection_matrix: Mat4::new(true),
+      m_z_near: 0.0,
+      m_z_far: 0.0,
+      // View + projection matrix.
+      m_matrix: Mat4::new(1.0),
+    }
+  }
+  
+  pub fn from(fov: f32, z_near: f32, z_far: f32) -> Self {
+    return PerspectiveCamera {
+      m_fov: fov,
+      m_z_near: z_near,
+      m_z_far: z_far,
+      m_matrix: Mat4::new(1.0)
     }
   }
   
   pub fn get_matrix(&self) -> &Mat4 {
-    return &self.m_view_projection_matrix;
+    return &self.m_matrix;
   }
   
-  fn set_view_projection(&mut self) {
-  
-  }
-}
-
-impl TraitSendableEntity for PerspectiveCamera {
-  fn send(&mut self) -> Result<(), crate::wave::graphics::renderer::EnumErrors> {
-    todo!()
-  }
-  
-  fn resend(&mut self) -> Result<(), crate::wave::graphics::renderer::EnumErrors> {
-    todo!()
-  }
-  
-  fn free(&mut self) -> Result<(), crate::wave::graphics::renderer::EnumErrors> {
-    todo!()
-  }
-  
-  fn is_sent(&self) -> bool {
-    todo!()
+  pub fn set_view_projection(&mut self) {
+    let up: Vec3<f32> = Vec3::from(&[0.0, 1.0, 0.0]);
+    let direction: Vec3<f32> = Vec3::from(&[0.0, 0.0, 1.0]);
+    let right: Vec3<f32> = up.cross(direction.clone());
+    
+    let projection_matrix: Mat4 = Mat4::apply_perspective(self.m_fov, self.m_z_near, self.m_z_far);
+    let view_matrix: Mat4 = Mat4::from(
+      [
+        [right.x,     right.y,     right.z,            self.m_matrix[0][3]],
+        [up.x,        up.y,        up.z,               self.m_matrix[1][3]],
+        [direction.x, direction.y, direction.z,        self.m_matrix[2][3]],
+        
+        [self.m_matrix[3][0], self.m_matrix[3][1], self.m_matrix[3][2], self.m_matrix[3][3]],
+      ]);
+    
+    self.m_matrix = (projection_matrix * view_matrix).transpose();
   }
 }

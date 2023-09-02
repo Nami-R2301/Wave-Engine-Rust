@@ -27,10 +27,12 @@ use std::fmt::{Debug, Display};
 use std::mem::size_of;
 
 use once_cell::sync::Lazy;
+use crate::wave::graphics::shader::GlShader;
 
 use crate::log;
-use crate::wave::graphics::renderer::{EnumErrors, TraitSendableEntity};
+use crate::wave::graphics::renderer::{EnumErrors, TraitRenderableEntity};
 use crate::wave::graphics::renderer::GlRenderer;
+use crate::wave::math::{Mat4, Vec3};
 
 /*
 ///////////////////////////////////   OpenGL Renderable entity  ///////////////////////////////////
@@ -50,18 +52,23 @@ pub struct GlREntity {
   pub m_texture_coords: Vec<f32>,
   // UUID given by the renderer to differentiate entities in batch rendering.
   m_renderer_id: u64,
+  m_model_matrix: Mat4,
+  // Transformations applied to the entity, to be eventually applied to the model matrix.
+  m_transform: [Vec3<f32>; 3],
   m_sent: bool,
 }
 
 impl GlREntity {
   pub fn new() -> Self {
     return GlREntity {
+      m_renderer_id: u64::MAX,
       m_entity_id: Vec::new(),
       m_vertices: Vec::new(),
       m_normals: Vec::new(),
       m_colors: Vec::new(),
       m_texture_coords: Vec::new(),
-      m_renderer_id: u64::MAX,
+      m_model_matrix: Mat4::new(1.0),
+      m_transform: [Vec3::new(), Vec3::new(), Vec3::from(&[1.0, 1.0, 1.0])],
       m_sent: false,
     };
   }
@@ -75,8 +82,7 @@ impl GlREntity {
   }
   
   pub fn count(&self) -> usize {
-    return self.m_entity_id.len() + self.m_vertices.len() + self.m_normals.len() + self.m_colors.len() +
-      self.m_texture_coords.len();
+    return self.m_entity_id.len();
   }
   
   pub fn is_empty(&self) -> bool {
@@ -91,9 +97,37 @@ impl GlREntity {
       }
     }
     
-    for _index in 0..self.m_vertices.len() {
-      self.m_entity_id.push(new_id);
+    if self.m_vertices.len() % 3 == 0 {
+      for _index in 0..self.m_vertices.len() / 3 {
+        self.m_entity_id.push(new_id);
+      }
+    } else {
+      for _index in 0..self.m_vertices.len() / 2 {
+        self.m_entity_id.push(new_id);
+      }
     }
+  }
+  
+  pub fn translate(&mut self, amount: Vec3<f32>) {
+    self.m_transform[0] = amount;
+  }
+  
+  pub fn rotate(&mut self, amount: Vec3<f32>) {
+    // Inverse x and y to correspond to the right orientation.
+    self.m_transform[1].x = amount.x;
+    self.m_transform[1].y = amount.y;
+    
+    self.m_transform[1].z = amount.z;
+  }
+  
+  pub fn scale(&mut self, amount: Vec3<f32>) {
+    self.m_transform[2] = amount;
+  }
+  
+  pub fn get_matrix(&mut self) -> &Mat4 {
+    self.m_model_matrix = Mat4::apply_model(&self.m_transform[0],
+      &self.m_transform[1], &self.m_transform[2]);
+    return &self.m_model_matrix;
   }
 }
 
@@ -119,9 +153,9 @@ impl PartialEq for GlREntity {
   }
 }
 
-impl TraitSendableEntity for GlREntity {
-  fn send(&mut self) -> Result<(), EnumErrors> {
-    return match GlRenderer::send(self) {
+impl TraitRenderableEntity for GlREntity {
+  fn send(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
+    return match GlRenderer::send(self, shader_associated) {
       Ok(_) => {
         self.m_sent = true;
         Ok(())
@@ -134,11 +168,11 @@ impl TraitSendableEntity for GlREntity {
     };
   }
   
-  fn resend(&mut self) -> Result<(), EnumErrors> {
+  fn resend(&mut self, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
     todo!()
   }
   
-  fn free(&mut self) -> Result<(), EnumErrors> {
+  fn free(&mut self, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
     return match GlRenderer::free(&self.m_renderer_id) {
       Ok(_) => {
         self.m_sent = false;

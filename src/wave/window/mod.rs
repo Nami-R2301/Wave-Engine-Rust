@@ -25,11 +25,12 @@
 extern crate imgui_glfw_rs;
 
 use imgui_glfw_rs::{glfw, glfw::Context};
-use imgui_glfw_rs::glfw::ffi::{glfwGetPrimaryMonitor, glfwSetWindowMonitor};
-use crate::log;
+use crate::wave::math::Vec2;
 
-static mut S_CONTEXT: glfw::Glfw = glfw::Glfw {};
-static mut S_WINDOW_IS_FULLSCREEN: bool = false;
+use crate::log;
+use crate::wave::graphics::buffer::GLsizei;
+
+static mut S_CONTEXT: Option<glfw::Glfw> = None;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumErrors {
@@ -45,8 +46,11 @@ fn glfw_error_callback<T>(error: glfw::Error, message: String, _user_data: &T) {
 }
 
 pub struct GlfwWindow {
-  m_window: glfw::Window,
-  m_window_events: std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>,
+  m_api_window: glfw::Window,
+  m_api_window_events: std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>,
+  m_fullscreen: bool,
+  m_vsync: bool,
+  m_window_bounds: Vec2<i32>,
 }
 
 impl GlfwWindow {
@@ -65,17 +69,18 @@ impl GlfwWindow {
          error! Exiting...");
         return Err(EnumErrors::InvalidCreation);
       }
-      Ok(_) => { unsafe { S_CONTEXT = result.unwrap(); } }
+      Ok(_) => { unsafe { S_CONTEXT = Some(result.unwrap()); } }
     }
     unsafe {
+      // Set GLFW error callback.
       let error_callback = glfw::ErrorCallback { f: glfw_error_callback, data: () };
       
-      S_CONTEXT.window_hint(glfw::WindowHint::Samples(None));
-      S_CONTEXT.window_hint(glfw::WindowHint::RefreshRate(None));
-      S_CONTEXT.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
+      S_CONTEXT.unwrap().window_hint(glfw::WindowHint::Samples(Some(8)));
+      S_CONTEXT.unwrap().window_hint(glfw::WindowHint::RefreshRate(None));
+      S_CONTEXT.unwrap().window_hint(glfw::WindowHint::OpenGlDebugContext(true));
       
       // Create a windowed mode window and its OpenGL context
-      let (mut window, events) = S_CONTEXT.create_window(1920, 1080,
+      let (mut window, events) = S_CONTEXT.unwrap().create_window(1920, 1080,
         "Wave Engine (Rust)", glfw::WindowMode::Windowed)
         .expect("[Window] -->\t Unable to create GLFW window");
       
@@ -92,42 +97,60 @@ impl GlfwWindow {
       window.make_current();
       
       // Set v-sync.
-      window.glfw.set_swap_interval(glfw::SwapInterval::Sync(0));
+      window.glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
       
-      glfw::Glfw::set_error_callback(&mut S_CONTEXT, Some(error_callback));
+      glfw::Glfw::set_error_callback(&mut S_CONTEXT.unwrap(), Some(error_callback));
+      let bounds = Vec2::from(&[window.get_size().0, window.get_size().1]);
       
       Ok(GlfwWindow {
-        m_window: window,
-        m_window_events: events,
+        m_api_window: window,
+        m_api_window_events: events,
+        m_fullscreen: false,
+        m_vsync: true,
+        m_window_bounds: bounds
       })
     }
   }
   
-  pub fn delete(&mut self) {}
-  
   pub fn on_event(&mut self) -> bool {
-    self.m_window.glfw.poll_events();
-    for (_, event) in glfw::flush_messages(&self.m_window_events) {
+    self.m_api_window.glfw.poll_events();
+    for (_, event) in glfw::flush_messages(&self.m_api_window_events) {
       return match event {
         glfw::WindowEvent::Key(glfw::Key::Escape, _, glfw::Action::Press, _) => {
-          self.m_window.set_should_close(true);
+          self.m_api_window.set_should_close(true);
           log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
           true
         }
         glfw::WindowEvent::Key(glfw::Key::Enter, _, glfw::Action::Press, glfw::Modifiers::Alt) => unsafe {
-          S_WINDOW_IS_FULLSCREEN.then_some({
-            glfwSetWindowMonitor(self.m_window.window_ptr(), std::ptr::null_mut(),
-              0, 0, 1920, 1016, -1);
-          }).unwrap_or_else(|| {
-            glfwSetWindowMonitor(self.m_window.window_ptr(), glfwGetPrimaryMonitor(),
-              0, 0, 1920, 1080, -1);
+          S_CONTEXT.unwrap().with_primary_monitor_mut(|_, monitor| {
+            let mode: glfw::VidMode = monitor.unwrap().get_video_mode().unwrap();
+            if !self.m_fullscreen {
+              self.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
+                0, 0, mode.width, mode.height, Some(mode.refresh_rate));
+              log!("INFO", "[Window] -->\t Fullscreen ON");
+              gl::Viewport(0, 0, mode.width as GLsizei, mode.height as GLsizei);
+              self.m_fullscreen = true;
+            } else {
+              self.m_api_window.set_monitor(glfw::WindowMode::Windowed,
+                0, 0, self.m_window_bounds.x as u32, self.m_window_bounds.y as u32,
+                Some(mode.refresh_rate));
+              log!("INFO", "[Window] -->\t Fullscreen OFF");
+              gl::Viewport(0, 0, self.m_window_bounds.x as GLsizei,
+                self.m_window_bounds.y as GLsizei);
+              self.m_fullscreen = false;
+            }
           });
-          
-          log!("INFO", "[Window] -->\t Fullscreen {0}", S_WINDOW_IS_FULLSCREEN.then_some("ON").unwrap_or("OFF"));
-          
-          S_WINDOW_IS_FULLSCREEN = !S_WINDOW_IS_FULLSCREEN;
-          gl::Viewport(0, 0, 1920, 1080);
           true
+        }
+        glfw::WindowEvent::Key(glfw::Key::V, _, glfw::Action::Press, glfw::Modifiers::Alt) => unsafe {
+          if self.m_vsync {
+            S_CONTEXT.unwrap().set_swap_interval(glfw::SwapInterval::None);
+            self.m_vsync = false;
+          } else {
+            S_CONTEXT.unwrap().set_swap_interval(glfw::SwapInterval::Sync(1));
+            self.m_vsync = true;
+          }
+          return false;
         }
         glfw::WindowEvent::Key(key, _scancode, action, _mods) => {
           // log!("INFO", "Key: {:?}, ScanCode: {:?}, Action: {:?}, Modifiers: [{:?}]",
@@ -136,9 +159,9 @@ impl GlfwWindow {
           match (key, action) {
             (glfw::Key::R, glfw::Action::Press) => {
               // Resize should force the window to "refresh"
-              let (window_width, window_height) = self.m_window.get_size();
-              self.m_window.set_size(window_width + 1, window_height);
-              self.m_window.set_size(window_width, window_height);
+              let (window_width, window_height) = self.m_api_window.get_size();
+              self.m_api_window.set_size(window_width + 1, window_height);
+              self.m_api_window.set_size(window_width, window_height);
               false
             }
             _ => false
@@ -155,36 +178,41 @@ impl GlfwWindow {
         _ => false
       };
     };
+    
     return false;
   }
   
   pub fn refresh(&mut self) {
-    self.m_window.swap_buffers();
+    self.m_api_window.swap_buffers();
   }
   
   pub fn is_closing(&self) -> bool {
-    return self.m_window.should_close();
+    return self.m_api_window.should_close();
   }
   
-  pub fn force_close(self) {
-    drop(self);
+  pub fn close(&mut self) {
+    self.m_api_window.set_should_close(true);
   }
   
   pub fn get_api_ptr(&self) -> &glfw::Glfw {
-    return &self.m_window.glfw;
+    return &self.m_api_window.glfw;
   }
   
   pub fn set_title(&mut self, title: &str) {
-    self.m_window.set_title(title);
+    return self.m_api_window.set_title(title);
   }
   
-  pub unsafe fn get_active_window() -> glfw::Glfw {
-    return S_CONTEXT;
+  pub fn get_size(&self) -> &Vec2<i32> {
+    return &self.m_window_bounds;
+  }
+  
+  pub fn get_active_context() -> Option<glfw::Glfw> {
+    unsafe { return S_CONTEXT; }
   }
 }
 
 impl Drop for GlfwWindow {
   fn drop(&mut self) {
-    log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t Destroying window!");
+    log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t Closing window!");
   }
 }

@@ -23,7 +23,6 @@
 */
 
 use std::io::BufRead;
-
 use crate::wave::assets::renderable_assets::GlREntity;
 
 use crate::log;
@@ -134,10 +133,10 @@ impl ResLoader {
         let mut vertices: Vec<f32> = Vec::new();
         let mut normals: Vec<f32> = Vec::new();
         let mut texture_coords: Vec<f32> = Vec::new();
-        let mut indices: Vec<Vec<u32>> = Vec::new();
+        let mut indices: Vec<usize> = Vec::new();
         
         for line in buffer {
-          if line.is_err() {
+          if line.is_err() || line.as_ref().unwrap().is_empty() {
             log!(EnumLogColor::Yellow, "WARN", "[ResLoader] -->\t Cannot read line {0}! \
               Skipping it...", line.unwrap());
             continue;
@@ -151,15 +150,6 @@ impl ResLoader {
             .split(' ')
             .collect::<Vec<&str>>();
           
-          // If data is somehow corrupted.
-          if (line_split.len() < 2 || line_split.len() > 4) &&
-            (&line.as_ref().unwrap()[0..1] == "v" || &line.as_ref().unwrap()[0..1] == "f") {
-            log!(EnumLogColor::Red, "ERROR", "[ResLoader] -->\t Error reading obj file at line {0}, \
-              the data does not correspond to a 2D or 3D shape! Fix error and try again...",
-              line.unwrap() );
-            return Err(EnumErrors::InvalidShapeData);
-          }
-          
           match &line.as_ref().unwrap()[0..2] {
             "v " => { vertices.append(&mut ResLoader::read_obj_vertex(line_split)); }
             "f " => { indices.append(&mut ResLoader::read_obj_indices(line_split)); }
@@ -168,7 +158,7 @@ impl ResLoader {
             _ => {}
           }
         }
-        Ok(ResLoader::reorganize_data(vertices, indices, normals, texture_coords))
+        Ok(ResLoader::reorganize_data(&vertices, &indices, &normals, &texture_coords))
       }
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[ResLoader] -->\t Cannot open file! Error => {0}", err);
@@ -197,17 +187,14 @@ impl ResLoader {
         let result = position.parse();
         if result.is_err() {
           log!(EnumLogColor::Yellow, "WARN", "[ResLoader] -->\t Cannot parse vertex position {0} to \
-           f32, on line {1}! Assigning default value of {2} instead...", position,
-            unsafe {*line_split.as_ptr() }, f32::MIN);
-          return f32::MIN;
+           f32! Assigning default value instead...", position);
         }
-        return result.unwrap();
+        return result.unwrap_or(f32::MIN);
       }).collect::<Vec<f32>>();
   }
   
   /// Internal function to read an *obj* line containing up to three vertex, normal, and texture indices
-  /// (i.e. "f v/vt/vn v/vt/vn v/vt/vn") and parse it into a dynamic array of `u32` 'triplets'
-  /// `Vec<[v: u32, vt: u32, vn: u32]>`
+  /// (i.e. "f v/vt/vn v/vt/vn v/vt/vn") for each index.
   ///
   /// \
   /// Note that due to the tightly packed architecture of the resulting [GlREntity], this should work for
@@ -222,29 +209,28 @@ impl ResLoader {
   ///   (i.e. \["1.00","0.00","-1.00"]) that will be **consumed upon use**.
   ///
   /// # Returns:
-  ///   - `Vec<Vec<u32>, Global>` : If valid, a dynamically sized array containing parsed coordinates
+  ///   - `Vec<usize, Global>` : If valid, a dynamically sized array containing parsed coordinates
   /// into unsigned shorts. If there's an error when parsing data, the coordinate in question will default to
   /// the minimum value possible for `u32`.
   ///
   /// # Examples
   ///
   /// "f 5/1/1 2/1/1 6/7/3" => \[\[4,0,0], \[1,0,0], \[5,6,2]]
-  fn read_obj_indices(line_split: Vec<&str>) -> Vec<Vec<u32>> {
-    return line_split.into_iter()
-      .map(|index| {
-        let triplet: Vec<&str> = index.split('/').collect();
-        triplet.into_iter().map(|index_in_triplet| {
-          let result = index_in_triplet.parse::<u32>();
-          if result.is_err() {
-            log!(EnumLogColor::Yellow, "WARN", "[ResLoader] -->\t Cannot parse index {0} to \
-                u16! Assigning default value of {1} instead...", index, u32::MIN);
-            return u32::MIN;
-          }
-          return result.unwrap() - 1;
-        })
-          .collect()
-      })
-      .collect::<Vec<Vec<u32>>>();
+  fn read_obj_indices(line_split: Vec<&str>) -> Vec<usize> {
+    let mut result: Vec<usize> = Vec::new();
+    
+    for triplet in line_split.into_iter() {
+      let indices: Vec<&str> = triplet.split('/').collect();
+      for index in indices {
+        let index_result = index.parse::<usize>();
+        if index_result.is_err() {
+          log!(EnumLogColor::Yellow, "WARN", "[ResLoader] -->\t Cannot parse index {0} to \
+              usize! Assigning default value instead...", index);
+        }
+        result.push(index_result.unwrap_or(usize::MAX) - 1);
+      }
+    }
+    return result;
   }
   
   ///
@@ -266,10 +252,9 @@ impl ResLoader {
         let result = position.parse();
         if result.is_err() {
           log!(EnumLogColor::Yellow, "WARN", "[ResLoader] -->\t Cannot parse normal position {0} to \
-           f32! Assigning default value of {1} instead...", position, f32::MIN);
-          return f32::MIN;
+           f32! Assigning default value instead...", position);
         }
-        return result.unwrap();
+        return result.unwrap_or(f32::MIN);
       })
       .collect::<Vec<f32>>();
   }
@@ -293,10 +278,9 @@ impl ResLoader {
         let result = position.parse();
         if result.is_err() {
           log!(EnumLogColor::Yellow, "WARN", "[ResLoader] -->\t Cannot parse texture coordinate {0} \
-            to f32! Assigning default value of {1} instead...", position, f32::MIN);
-          return f32::MIN;
+            to f32! Assigning default value instead...", position);
         }
-        return result.unwrap();
+        return result.unwrap_or(f32::MIN);
       })
       .collect::<Vec<f32>>();
   }
@@ -310,7 +294,7 @@ impl ResLoader {
   ///
   /// * `vertices`: A [Vec<\[f32\]>] containing all vertex positions (x,y,z) of a primitive.
   ///   **Consumed on use**.
-  /// * `indices`: A [Vec<Vec<\[u32\]>>] of index 'triplets', each containing obj-style indices -> (v/vt/vn).
+  /// * `indices`: A [Vec<\[u32\]>] of index 'triplets', each containing obj-style indices -> (v/vt/vn).
   ///   **Consumed on use**.
   /// * `normals`: A [Vec<\[f32\]>] containing all normal positions (x,y,z) of a primitive.
   ///   **Consumed on use**.
@@ -325,26 +309,37 @@ impl ResLoader {
   /// ```text
   ///
   /// ```
-  fn reorganize_data(vertices: Vec<f32>, indices: Vec<Vec<u32>>, normals: Vec<f32>,
-                     texture_coords: Vec<f32>) -> GlREntity {
+  fn reorganize_data(vertices: &Vec<f32>, indices: &Vec<usize>, normals: &Vec<f32>,
+                     texture_coords: &Vec<f32>) -> GlREntity {
     let mut object: GlREntity = GlREntity::new();
     
-    for index in indices {
-      object.m_vertices.push(vertices[(index[0] * 3) as usize]);
-      object.m_vertices.push(vertices[((index[0] * 3) + 1) as usize]);
-      object.m_vertices.push(vertices[((index[0] * 3) + 2) as usize]);
+    for index in (0..indices.len()).step_by(3) {
+      object.m_vertices.push(vertices[indices[index] * 3]);
+      object.m_vertices.push(vertices[(indices[index] * 3) + 1]);
       
-      object.m_normals.push(normals[(index[2] * 3) as usize]);
-      object.m_normals.push(normals[((index[2] * 3) + 1) as usize]);
-      object.m_normals.push(normals[((index[2] * 3) + 2) as usize]);
+      if vertices.len() % 3 == 0 {
+        object.m_vertices.push(vertices[(indices[index] * 3) + 2]);
+      }
+      
+      if indices[index + 1] != usize::MAX - 1 {
+        if texture_coords[indices[index + 1] * 2] != f32::MIN {
+          object.m_texture_coords.push(texture_coords[indices[index + 1] * 2]);
+          object.m_texture_coords.push(texture_coords[(indices[index + 1] * 2) + 1]);
+        }
+      }
+      
+      if indices[index + 2] != usize::MAX - 1 {
+        if normals[indices[index + 2] * 3] != f32::MIN {
+          object.m_normals.push(normals[indices[index + 2] * 3]);
+          object.m_normals.push(normals[(indices[index + 2] * 3) + 1]);
+          object.m_normals.push(normals[(indices[index + 2] * 3) + 2]);
+        }
+      }
       
       // A color (RGBA) for each position (Vec3).
       object.m_colors.append(&mut Vec::from([0.0, 1.0, 0.0, 1.0,
         0.0, 1.0, 0.0, 1.0,
         0.0, 1.0, 0.0, 1.0]));
-      
-      object.m_texture_coords.push(texture_coords[(index[1] * 2) as usize]);
-      object.m_texture_coords.push(texture_coords[((index[1] * 2) + 1) as usize]);
     }
     object.register();  // Assign a random entity ID common for all vertices.
     return object;

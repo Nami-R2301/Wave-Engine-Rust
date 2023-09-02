@@ -22,18 +22,19 @@
  SOFTWARE.
 */
 
-extern crate gl;
-
 use std::fmt::Debug;
 use std::mem::size_of;
 
-pub use gl::types::{GLboolean, GLchar, GLenum, GLint, GLsizei, GLuint, GLvoid};
-use gl::types::{GLDEBUGPROC, GLsizeiptr};
+use gl::types::GLDEBUGPROC;
 
 use crate::{check_gl_call, log};
 use crate::wave::assets::renderable_assets::GlREntity;
+use crate::wave::Engine;
 use crate::wave::graphics::renderer::EnumApi::OpenGL;
+use crate::wave::graphics::shader::GlShader;
 use crate::wave::window::GlfwWindow;
+
+use super::buffer::*;
 
 static mut S_STATE: EnumState = EnumState::Ok;
 static S_ERROR_CALLBACK: GLDEBUGPROC = Some(gl_error_callback);
@@ -44,8 +45,12 @@ static mut S_STATS: Stats = Stats {
   m_ibo_bound_count: 0,
   m_texture_bound_count: 0,
 };
-static mut S_VAO: GLuint = 0;
-static mut S_VBO_ARRAY: GLuint = 0;
+
+static mut S_BATCH: BatchPrimitives = BatchPrimitives {
+  m_shaders: vec![],
+  m_vao_buffers: vec![],
+  m_vbo_buffers: vec![],
+};
 
 #[macro_export]
 macro_rules! check_gl_call {
@@ -63,41 +68,41 @@ macro_rules! check_gl_call {
       }
     };
     ($name:literal, let mut $var:ident: $var_type:ty = $gl_function:expr) => {
-            unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
-            let mut $var:$var_type = unsafe { $gl_function };
-            unsafe {
-              let error = gl::GetError();
-              if error != gl::NO_ERROR {
-                log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-                Code => 0x{1:x}", $name, error);
-                return Err(EnumErrors::GlError(error));
-              }
-            }
-          };
-    ($name:literal, let $var:ident: $var_type:ty = $gl_function:expr) => {
-          unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
-          let $var:$var_type = unsafe { $gl_function };
-          unsafe {
-            let error = gl::GetError();
-            if error != gl::NO_ERROR {
-              log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-              Code => 0x{1:x}", $name, error);
-              return Err(EnumErrors::GlError(error));
-            }
-          }
-        };
-    ($name:literal, $var:ident = $gl_function:expr) => {
-        unsafe { while gl::GetError() != gl::NO_ERROR {} };
-        unsafe { $var = $gl_function; }
-        unsafe {
-          let error = gl::GetError();
-          if error != gl::NO_ERROR {
-            log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-            Code => 0x{1:x}", $name, error);
-            return Err(EnumErrors::GlError(error));
-          }
+      unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
+      let mut $var:$var_type = unsafe { $gl_function };
+      unsafe {
+        let error = gl::GetError();
+        if error != gl::NO_ERROR {
+          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
+               Code => 0x{1:x}", $name, error);
+          return Err(EnumErrors::GlError(error));
         }
-      };
+      }
+    };
+    ($name:literal, let $var:ident: $var_type:ty = $gl_function:expr) => {
+      unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
+      let $var:$var_type = unsafe { $gl_function };
+      unsafe {
+        let error = gl::GetError();
+        if error != gl::NO_ERROR {
+          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
+             Code => 0x{1:x}", $name, error);
+          return Err(EnumErrors::GlError(error));
+        }
+      }
+    };
+    ($name:literal, $var:ident = $gl_function:expr) => {
+      unsafe { while gl::GetError() != gl::NO_ERROR {} };
+      unsafe { $var = $gl_function; }
+      unsafe {
+        let error = gl::GetError();
+        if error != gl::NO_ERROR {
+          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
+           Code => 0x{1:x}", $name, error);
+          return Err(EnumErrors::GlError(error));
+        }
+      }
+    };
 }
 
 #[derive(Debug)]
@@ -113,7 +118,7 @@ pub enum EnumFeature {
   DepthTest(bool),
   CullFacing(bool, GLenum),
   Wireframe(bool),
-  MSAA(bool, u8),
+  MSAA(bool),
   SRGB(bool),
   Blending(bool, GLenum, GLenum),
 }
@@ -125,6 +130,9 @@ pub enum EnumErrors {
   InvalidEntity,
   EntityNotFound,
   GlError(GLenum),
+  ShaderError,
+  WrongOffset,
+  WrongSize,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -134,10 +142,10 @@ pub enum EnumState {
   CriticalError,
 }
 
-pub trait TraitSendableEntity {
-  fn send(&mut self) -> Result<(), EnumErrors>;
-  fn resend(&mut self) -> Result<(), EnumErrors>;
-  fn free(&mut self) -> Result<(), EnumErrors>;
+pub trait TraitRenderableEntity {
+  fn send(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
+  fn resend(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
+  fn free(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
   fn is_sent(&self) -> bool;
 }
 
@@ -169,20 +177,28 @@ impl Stats {
   }
 }
 
+struct BatchPrimitives {
+  m_shaders: Vec<GlShader>,
+  m_vao_buffers: Vec<GlVao>,
+  m_vbo_buffers: Vec<GlVbo>,
+}
+
 pub struct GlRenderer {}
 
 impl GlRenderer {
   pub fn new() -> Result<(), EnumErrors> {
-    let result = unsafe { init_api() };
-    return match result {
-      Ok(_) => { Ok(()) }
-      Err(err) => { Err(err) }
-    }
+    return init_api();
   }
   
   pub fn shutdown() -> Result<(), EnumErrors> {
     if unsafe { S_STATE == EnumState::Error } {
       return Err(EnumErrors::NotImplemented);
+    }
+    unsafe {
+      for index in 0usize..S_BATCH.m_vao_buffers.len() {
+        S_BATCH.m_vbo_buffers[index].delete()?;
+        S_BATCH.m_vao_buffers[index].delete()?;
+      }
     }
     return Ok(());
   }
@@ -191,61 +207,51 @@ impl GlRenderer {
   
   pub fn end() {}
   
+  pub fn batch() {}
+  
   pub fn flush() {}
   
-  pub fn send(sendable_entity: &GlREntity) -> Result<(), EnumErrors> {
+  pub fn send(sendable_entity: &GlREntity, shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
     if sendable_entity.is_empty() {
       log!(EnumLogColor::Yellow, "WARN", "[Renderer] --> Entity {0} sent has no \
       vertices! Not sending it...", sendable_entity)
     }
     
-    check_gl_call!("Renderer", gl::CreateBuffers(1, &mut S_VBO_ARRAY));
-    check_gl_call!("Renderer", gl::CreateVertexArrays(1, &mut S_VAO));
-    check_gl_call!("Renderer", gl::BindVertexArray(S_VAO));
-    
-    let alloc_size: usize = sendable_entity.size();
     let mut offset: usize = 0;
     
-    log!(EnumLogColor::Blue, "DEBUG", "[Renderer] -->\t Entity size vs real size => {0} VS {1}",
-      size_of::<GlREntity>(), sendable_entity.size());
-    
     // Allocate main dynamic vbo to hold all the data provided.
-    check_gl_call!("Renderer", gl::BindBuffer(gl::ARRAY_BUFFER, S_VBO_ARRAY));
-    check_gl_call!("Renderer", gl::BufferData(gl::ARRAY_BUFFER, alloc_size as GLsizeiptr,
-      std::ptr::null(), gl::DYNAMIC_DRAW));
+    let mut vbo: GlVbo = GlVbo::new(sendable_entity.size(), sendable_entity.count())?;
+    let mut vao: GlVao = GlVao::new()?;
     
     // IDs (Vec3).
-    check_gl_call!("Renderer", gl::BufferSubData(gl::ARRAY_BUFFER, offset as GLsizeiptr,
-      (size_of::<u32>() * sendable_entity.m_entity_id.len()) as GLsizeiptr,
-      sendable_entity.m_entity_id.as_ptr() as *const GLvoid));
+    vbo.set_data(sendable_entity.m_entity_id.as_ptr() as *const GLvoid,
+      size_of::<u32>() * sendable_entity.m_entity_id.len(), offset)?;
     offset += size_of::<u32>() * sendable_entity.m_entity_id.len();
     
     // Positions (Vec3s).
-    check_gl_call!("Renderer", gl::BufferSubData(gl::ARRAY_BUFFER, offset as GLsizeiptr,
-      (size_of::<f32>() * sendable_entity.m_vertices.len()) as GLsizeiptr ,
-      sendable_entity.m_vertices.as_ptr() as *const GLvoid));
+    vbo.set_data(sendable_entity.m_vertices.as_ptr() as *const GLvoid,
+      size_of::<f32>() * sendable_entity.m_vertices.len(), offset)?;
     offset += size_of::<f32>() * sendable_entity.m_vertices.len();
     
     // Normals (Vec3s).
-    check_gl_call!("Renderer", gl::BufferSubData(gl::ARRAY_BUFFER, offset as GLsizeiptr,
-      (size_of::<f32>() * sendable_entity.m_normals.len()) as GLsizeiptr,
-      sendable_entity.m_normals.as_ptr() as *const GLvoid));
+    vbo.set_data(sendable_entity.m_normals.as_ptr() as *const GLvoid,
+      size_of::<f32>() * sendable_entity.m_normals.len(), offset)?;
     offset += size_of::<f32>() * sendable_entity.m_normals.len();
     
     // Colors (Colors).
-    check_gl_call!("Renderer", gl::BufferSubData(gl::ARRAY_BUFFER, offset as GLsizeiptr,
-      (size_of::<f32>() * sendable_entity.m_colors.len()) as GLsizeiptr,
-      sendable_entity.m_colors.as_ptr() as *const GLvoid));
+    vbo.set_data(sendable_entity.m_colors.as_ptr() as *const GLvoid,
+      size_of::<f32>() * sendable_entity.m_colors.len(), offset)?;
     offset += size_of::<f32>() * sendable_entity.m_colors.len();
     
     // Texture coordinates (Vec2s).
-    check_gl_call!("Renderer", gl::BufferSubData(gl::ARRAY_BUFFER, offset as GLsizeiptr,
-      (size_of::<f32>() * sendable_entity.m_texture_coords.len()) as GLsizeiptr,
-      sendable_entity.m_texture_coords.as_ptr() as *const GLvoid));
+    vbo.set_data(sendable_entity.m_texture_coords.as_ptr() as *const GLvoid,
+      size_of::<f32>() * sendable_entity.m_texture_coords.len(), offset)?;
     
-    offset = 0;  // Reset offset for vertex attributes.
+    offset = 0;
+    // Reset offset for vertex attributes.
     
     // Enable vertex attributes.
+    vao.bind()?;
     check_gl_call!("Renderer", gl::VertexAttribIPointer(0, 1, gl::UNSIGNED_INT, 0, offset as *const GLvoid));
     check_gl_call!("Renderer", gl::EnableVertexAttribArray(0));
     offset += size_of::<u32>() * sendable_entity.m_entity_id.len();
@@ -265,12 +271,27 @@ impl GlRenderer {
     check_gl_call!("Renderer", gl::VertexAttribPointer(4, 2, gl::FLOAT, gl::FALSE, 0, offset as *const GLvoid));
     check_gl_call!("Renderer", gl::EnableVertexAttribArray(4));
     
+    unsafe {
+      S_BATCH.m_shaders.push(shader_associated.clone());
+      S_BATCH.m_vao_buffers.push(vao);
+      S_BATCH.m_vbo_buffers.push(vbo);
+    }
+    
     return Ok(());
   }
   
   pub fn draw() -> Result<(), EnumErrors> {
-    // check_gl_call!("Renderer", gl::BindBuffer(S_VBO_ARRAYS[0]));
-    check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0, 36));
+      for index in 0usize..unsafe { S_BATCH.m_shaders.len() } {
+        unsafe {
+        let result = S_BATCH.m_shaders[index].bind();
+        if result.is_err() {
+          return Err(EnumErrors::ShaderError);
+        }
+        S_BATCH.m_vao_buffers[index].bind()?;
+      }
+      check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0,
+          S_BATCH.m_vbo_buffers[index].m_count as GLsizei));
+    }
     return Ok(());
   }
   
@@ -322,72 +343,88 @@ impl GlRenderer {
     unsafe { return &S_STATS; }
   }
   
-  pub fn toggle_feature(feature: EnumFeature) {
+  pub fn toggle_feature(feature: EnumFeature) -> Result<(), EnumErrors> {
     match feature {
-      EnumFeature::Debug(flag) => unsafe {
+      EnumFeature::Debug(flag) => {
         if flag {
-          gl::Enable(gl::DEBUG_OUTPUT);
-          gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
-          gl::DebugMessageCallback(S_ERROR_CALLBACK, std::ptr::null());
-          gl::DebugMessageControl(gl::DONT_CARE, gl::DEBUG_TYPE_OTHER,
-            gl::DONT_CARE, 0, std::ptr::null(), gl::FALSE);
+          check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT));
+          check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
+          check_gl_call!("Renderer", gl::DebugMessageCallback(S_ERROR_CALLBACK, std::ptr::null()));
+          check_gl_call!("Renderer", gl::DebugMessageControl(gl::DONT_CARE, gl::DEBUG_TYPE_OTHER,
+            gl::DONT_CARE, 0, std::ptr::null(), gl::FALSE));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode enabled")
         } else {
-          gl::Disable(gl::DEBUG_OUTPUT);
-          gl::Disable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
+          check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT));
+          check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode disabled")
         }
       }
-      EnumFeature::DepthTest(flag) => unsafe {
+      EnumFeature::DepthTest(flag) => {
         if flag {
-          gl::Enable(gl::DEPTH_TEST);
+          check_gl_call!("Renderer", gl::Enable(gl::DEPTH_TEST));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Depth test enabled")
         } else {
-          gl::Disable(gl::DEPTH_TEST);
+          check_gl_call!("Renderer", gl::Disable(gl::DEPTH_TEST));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Depth test disabled")
         }
       }
-      EnumFeature::MSAA(flag, _) => unsafe {
+      EnumFeature::MSAA(flag) => {
         if flag {
-          gl::Enable(gl::MULTISAMPLE);
+          check_gl_call!("Renderer", gl::Enable(gl::MULTISAMPLE));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t MSAA enabled")
         } else {
-          gl::Disable(gl::MULTISAMPLE);
+          check_gl_call!("Renderer", gl::Disable(gl::MULTISAMPLE));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t MSAA disabled")
         }
       }
-      EnumFeature::Blending(flag, s_factor, d_factor) => unsafe {
+      EnumFeature::Blending(flag, s_factor, d_factor) => {
         if flag {
-          gl::Enable(gl::BLEND);
-          gl::BlendFunc(s_factor, d_factor);
+          check_gl_call!("Renderer", gl::Enable(gl::BLEND));
+          check_gl_call!("Renderer", gl::BlendFunc(s_factor, d_factor));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Blending enabled")
         } else {
-          gl::Disable(gl::BLEND);
+          check_gl_call!("Renderer", gl::Disable(gl::BLEND));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Blending disabled")
         }
       }
-      EnumFeature::Wireframe(flag) => unsafe {
+      EnumFeature::Wireframe(flag) => {
         if flag {
-          gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
+          check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Wireframe mode enabled")
         } else {
-          gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+          check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Wireframe mode disabled")
         }
       }
-      EnumFeature::SRGB(flag) => unsafe {
+      EnumFeature::SRGB(flag) => {
         if flag {
-          gl::Enable(gl::FRAMEBUFFER_SRGB);
+          check_gl_call!("Renderer", gl::Enable(gl::FRAMEBUFFER_SRGB));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t SRGB framebuffer enabled")
         } else {
-          gl::Disable(gl::FRAMEBUFFER_SRGB);
+          check_gl_call!("Renderer", gl::Disable(gl::FRAMEBUFFER_SRGB));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t SRGB framebuffer disabled")
         }
       }
-      EnumFeature::CullFacing(flag, face) => unsafe {
+      EnumFeature::CullFacing(flag, face) => {
         if flag {
-          gl::Enable(gl::CULL_FACE);
-          gl::CullFace(face);
+          check_gl_call!("Renderer", gl::Enable(gl::CULL_FACE));
+          check_gl_call!("Renderer", gl::CullFace(face));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Cull facing enabled")
         } else {
-          gl::Disable(gl::CULL_FACE);
+          check_gl_call!("Renderer", gl::Disable(gl::CULL_FACE));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Cull facing disabled")
         }
       }
     }
+    return Ok(());
   }
 }
 
-unsafe fn init_api() -> Result<(), EnumErrors> {
-  gl::load_with(|f_name| GlfwWindow::get_active_window().get_proc_address_raw(f_name));
+fn init_api() -> Result<(), EnumErrors> {
+  gl::load_with(|f_name| GlfwWindow::get_active_context().unwrap().get_proc_address_raw(f_name));
   
-  check_gl_call!("Renderer", gl::Viewport(0, 0, 1920, 1080));
+  let current_window = Engine::get_active_window();
+  check_gl_call!("Renderer", gl::Viewport(0, 0, (*current_window).get_size().x, (*current_window).get_size().y));
   check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
   
   check_gl_call!("Renderer", gl::FrontFace(gl::CW));

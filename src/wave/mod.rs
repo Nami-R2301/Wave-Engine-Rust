@@ -26,8 +26,10 @@ use once_cell::sync::Lazy;
 
 use crate::log;
 use crate::wave::assets::renderable_assets::GlREntity;
-use crate::wave::graphics::renderer::{EnumFeature, GlRenderer, TraitSendableEntity};
+use crate::wave::camera::PerspectiveCamera;
+use crate::wave::graphics::{renderer, renderer::TraitRenderableEntity};
 use crate::wave::graphics::shader::GlShader;
+use crate::wave::math::Vec3;
 use crate::wave::utils::asset_loader::ResLoader;
 use crate::wave::utils::Time;
 use crate::wave::window::GlfwWindow;
@@ -39,11 +41,11 @@ pub mod utils;
 pub mod assets;
 pub mod camera;
 
-static mut S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::logger::init()
-  .expect("[Logger] --> Cannot open log file!"));
-static mut S_STATE: EnumState = EnumState::NotStarted;
+static mut S_ENGINE: *mut Engine = std::ptr::null_mut();
+static mut S_ACTIVE_WINDOW: *mut GlfwWindow = std::ptr::null_mut();
+static S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::logger::init().unwrap());
 
-#[derive(PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum EnumState {
   NotStarted,
   Starting,
@@ -54,8 +56,6 @@ enum EnumState {
 
 #[derive(Debug)]
 pub enum EnumErrors {
-  Ok,
-  ShaderError,
   AppError,
   RendererError,
   WindowError,
@@ -75,19 +75,51 @@ pub struct Engine {
   m_app: Box<dyn TraitApp>,
   m_window: GlfwWindow,
   m_time_step: f64,
+  m_tick_rate: f64,
+  m_state: EnumState,
 }
 
 impl Engine {
+  /// Setup new engine struct containing an app with the [TraitApp] behavior in order to call
+  /// `on_new()`, `on_delete()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
+  /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
+  ///
+  /// # Arguments
+  ///
+  /// * `app_provided`: A boxed generic app struct `T` which respects the trait [TraitApp].
+  ///
+  /// # Returns:
+  ///   - `Result<GlREntity, EnumErrors>` : Will return a valid Engine if successful, otherwise an [EnumErrors]
+  ///     on any error encountered. These include, but are not limited to :
+  ///     + [EnumErrors::AppError] : If the app crashes for whatever reason the client may choose.
+  ///     + [EnumErrors::RendererError] : If the renderer crashes due to an invalid process loading,
+  ///       missing extensions, unsupported version and/or invalid GPU command.
+  ///     + [EnumErrors::WindowError] : If the window context crashes due to invalid context creation,
+  ///       deletion and/or command (GLX/X11 for Linux, WIN32 for Windows).
+  ///
+  /// # Examples
+  ///
+  /// ```text
+  /// use wave::{Engine, EnumErrors};
+  ///
+  /// let my_app: Box<ExampleApp> = Box::new(ExampleApp::new());
+  /// // Allocated on the stack -- Use new_shared() to allocate on the heap.
+  /// let mut engine = Engine::new(my_app)?;
+  ///
+  /// // Run `on_new()` for `my_app` prior to running.
+  /// engine.on_new()?;
+  /// engine.run();
+  /// engine.on_delete();
+  /// return Ok(());
+  /// ```
   pub fn new<T: TraitApp + 'static>(app_provided: Box<T>) -> Result<Engine, EnumErrors> {
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
     
     // Setup and launch engine.
-    let window = GlfwWindow::new();
+    let mut window = GlfwWindow::new();
     
     match window {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Created GLFW window successfully");
-      }
+      Ok(_) => unsafe { S_ACTIVE_WINDOW = window.as_mut().unwrap(); }
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error creating GLFW window! Exiting... \
          Error code => {:?}", err);
@@ -96,18 +128,19 @@ impl Engine {
     }
     
     // Setup basic renderer features.
-    let renderer = GlRenderer::new();
+    let renderer = renderer::GlRenderer::new();
     
     match renderer {
       Ok(_) => {
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", GlRenderer::get_renderer_info());
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {:?}", GlRenderer::get_api_info());
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", GlRenderer::get_shading_info());
-        log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Created OpenGL context successfully");
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::GlRenderer::get_renderer_info());
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {:?}", renderer::GlRenderer::get_api_info());
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::GlRenderer::get_shading_info());
         
-        GlRenderer::toggle_feature(EnumFeature::DepthTest(true));
-        GlRenderer::toggle_feature(EnumFeature::CullFacing(true, gl::BACK));
-        GlRenderer::toggle_feature(EnumFeature::Debug(true));
+        let _ = renderer::GlRenderer::toggle_feature(renderer::EnumFeature::DepthTest(true));
+        let _ = renderer::GlRenderer::toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));
+        let _ = renderer::GlRenderer::toggle_feature(renderer::EnumFeature::Debug(true));
+        let _ = renderer::GlRenderer::toggle_feature(renderer::EnumFeature::Wireframe(true));
+        let _ = renderer::GlRenderer::toggle_feature(renderer::EnumFeature::MSAA(true));
       }
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error creating OpenGL context! \
@@ -116,39 +149,84 @@ impl Engine {
       }
     }
     
-    unsafe { S_STATE = EnumState::Starting; }
     Ok({
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
       Engine {
         m_app: app_provided,
         m_window: window.unwrap(),
         m_time_step: 0.0,
+        m_tick_rate: 0.0,
+        m_state: EnumState::NotStarted,
       }
     })
   }
   
-  pub fn shutdown() -> () {
-    if unsafe { S_STATE == EnumState::ShutDown } {
-      return;
+  /// Teardown engine. This effectively first shuts down the renderer and then flags the window to
+  /// be closed on drop.
+  ///
+  ///
+  /// # Returns:
+  ///   - `Result<GlREntity, EnumErrors>` : Will return a valid Engine if successful, otherwise an [EnumErrors]
+  ///     on any error encountered. These include, but are not limited to :
+  ///     + [EnumErrors::AppError] : If the app crashes for whatever reason the client may choose.
+  ///     + [EnumErrors::RendererError] : If the renderer crashes due to an invalid process loading,
+  ///       missing extensions, unsupported version and/or invalid GPU command.
+  ///     + [EnumErrors::WindowError] : If the window context crashes due to invalid context creation,
+  ///       deletion and/or command (GLX/X11 for Linux, WIN32 for Windows).
+  ///
+  /// # Examples
+  ///
+  /// ```text
+  /// use wave::{Engine, EnumErrors};
+  ///
+  /// let my_app: Box<ExampleApp> = Box::new(ExampleApp::new());
+  /// // Allocated on the stack -- Use new_shared() to allocate on the heap.
+  /// let mut engine = Engine::new(my_app)?;
+  ///
+  /// // Run `on_new()` for `my_app` prior to running.
+  /// engine.on_new()?;
+  /// engine.run();
+  /// engine.on_delete();
+  /// return Ok(());
+  /// ```
+  pub fn shutdown(&mut self) -> Result<(), renderer::EnumErrors> {
+    if self.m_state == EnumState::ShutDown {
+      log!(EnumLogColor::Yellow, "WARN", "[Engine] -->\t Engine already shut down! Not shutting down twice...");
+      return Ok(());
     }
     
-    unsafe { S_STATE = EnumState::ShuttingDown; }
-    let result = GlRenderer::shutdown();
+    self.m_state = EnumState::ShuttingDown;
+    let result = renderer::GlRenderer::shutdown();
     match result {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Renderer shut down successfully");
-      }
+      Ok(_) => {}
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error when trying to shut down renderer! \
          Error code => {:?}", err);
+        return Err(err);
       }
     }
+    self.m_window.close();
+    self.m_state = EnumState::ShutDown;
+    return Ok(());
+  }
+  
+  pub fn get() -> *mut Engine {
+    unsafe { return S_ENGINE; }
+  }
+  
+  pub fn get_active_window() -> *mut GlfwWindow {
+    unsafe { return S_ACTIVE_WINDOW; }
   }
   
   pub fn on_new(&mut self) -> Result<(), EnumErrors> {
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
+    self.m_state = EnumState::Starting;
+    unsafe {
+      S_ENGINE = self;
+      S_ACTIVE_WINDOW = &mut self.m_window;
+    }
     
-    match GlRenderer::new() {
+    match renderer::GlRenderer::new() {
       Ok(_) => {}
       Err(err) => {
         log!("ERROR", "[Renderer] -->\t Error creating renderer context! Exiting... Error code => \
@@ -162,63 +240,78 @@ impl Engine {
       }
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[App] -->\t Started app unsuccessfully! Error => {:?}",
-          err);
-        self.on_delete();
-        Engine::shutdown();
+  err);
+        match self.on_delete() {
+          Ok(_) => {}
+          Err(err) => {
+            log!("ERROR", "[Renderer] -->\t Error deleting renderer context! Exiting... Error code => \
+              {:?}", err);
+            return Err(EnumErrors::RendererError);
+          }
+        }
         return Err(err);
       }
     }
     return Ok(());
   }
   
-  pub fn on_delete(&mut self) -> () {
+  pub fn on_delete(&mut self) -> Result<(), EnumErrors> {
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down app...");
     self.m_app.on_delete();
     // Destroy app first.
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Shut down app successfully");
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down engine...");
-    Engine::shutdown();
+    match self.shutdown() {
+      Ok(_) => {}
+      Err(err) => {
+        log!("ERROR", "[Renderer] -->\t Error deleting renderer context! Exiting... Error code => \
+              {:?}", err);
+        return Err(EnumErrors::RendererError);
+      }
+    }
     // Then, destroy engine specific data.
     log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Engine shut down successfully");
+    return Ok(());
   }
   
   pub fn run(&mut self) {
-    if unsafe { S_STATE != EnumState::Starting } {
+    if self.m_state != EnumState::Starting {
+      log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Engine has not started up correctly! Exiting...");
       return;
     }
-    unsafe { S_STATE = EnumState::Running; }
+    self.m_state = EnumState::Running;
     
     // For time step.
-    let mut _frame_start: Time = Time::from(chrono::Utc::now());
+    let mut frame_start: Time = Time::from(chrono::Utc::now());
     
     // For up time and fps.
-    let mut _frame_counter: u32 = 0;
+    let mut frame_counter: u16 = 0;
     let mut runtime: Time = Time::new();
     
     // Loop until the user closes the window
     while !self.m_window.is_closing() {
-      self.m_time_step = Time::get_delta(&_frame_start, &Time::from(chrono::Utc::now())).to_secs();
-      _frame_start = Time::from(chrono::Utc::now());
+      self.m_time_step = Time::get_delta(&frame_start,
+        &Time::from(chrono::Utc::now())).to_secs();
+      frame_start = Time::from(chrono::Utc::now());
       
       self.on_event();
       self.on_update(self.m_time_step);
       self.on_render();
       
       // Sync to engine tick rate.
-      Time::wait_for(1.0 / 60.0);
+      Time::wait_for(self.m_tick_rate);
       
       self.m_window.refresh();  // Refresh window.
-      _frame_counter += 1;
+      frame_counter += 1;
       
       if Time::get_delta(&runtime, &Time::from(chrono::Utc::now())).to_secs() >= 1.0 {
-        let title_format: String = format!("Wave Engine (Rust) | OpenGL | {0} FPS", &_frame_counter);
+        let title_format: String = format!("Wave Engine (Rust) | OpenGL | {0} FPS", &frame_counter);
         self.m_window.set_title(&title_format);
-        _frame_counter = 0;
+        frame_counter = 0;
         runtime = Time::from(chrono::Utc::now());
       }
     }
-    unsafe { S_STATE = EnumState::ShuttingDown; }
   }
   
   pub fn on_event(&mut self) -> bool {
@@ -235,7 +328,7 @@ impl Engine {
   }
   
   pub fn get_log_file() -> &'static std::fs::File {
-    unsafe { return &S_LOG_FILE_PTR; }
+    return &S_LOG_FILE_PTR;
   }
 }
 
@@ -248,45 +341,57 @@ pub struct ExampleApp {
 impl ExampleApp {
   pub fn new() -> Self {
     return ExampleApp {
-      m_shaders: Vec::with_capacity(5),
-      m_renderable_assets: Vec::with_capacity(10),
-    }
+      m_shaders: Vec::new(),
+      m_renderable_assets: Vec::new(),
+    };
   }
 }
 
 impl TraitApp for ExampleApp {
   fn on_new(&mut self) -> Result<(), EnumErrors> {
-    if self.m_shaders.is_empty() {
-      self.m_shaders = Vec::new();
-    }
-    
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading GLSL shaders...");
     let result = GlShader::new("res/shaders/test_vert.glsl",
       "res/shaders/test_frag.glsl");
     match result {
       Ok(gl_shader) => { self.m_shaders.push(gl_shader); }
       Err(_) => {
-        return Err(EnumErrors::ShaderError);
+        return Err(EnumErrors::AppError);
       }
     }
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded GLSL shaders successfully");
     
     // Sourcing and compilation.
     let result = self.m_shaders[0].send();
     match result {
-      Ok(_) => { log!(EnumLogColor::Green, "INFO", "[Shader] -->\t Shader sent to GPU successfully"); }
-      Err(_) => { return Err(EnumErrors::ShaderError); }
+      Ok(_) => { log!("INFO", "[Shader] -->\t Shader sent to GPU successfully"); }
+      Err(_) => { return Err(EnumErrors::AppError); }
     }
     
-    let _ = self.m_shaders[0].bind();
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Uploading camera view and projection to the GPU...");
+    let mut camera: PerspectiveCamera = PerspectiveCamera::from(65.0, 0.1, 1000.0);
+    camera.set_view_projection();
+    match self.m_shaders[0].upload_uniform("u_view_projection", camera.get_matrix()) {
+      Ok(_) => {}
+      Err(_) => { return Err(EnumErrors::RendererError); }
+    }
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Camera view and projection uploaded to GPU successfully");
     
-    let result = ResLoader::new("cube.obj");
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
+    let result = ResLoader::new("awp.obj");
     match result {
       Ok(gl_vertices) => {
-        log!(EnumLogColor::Green, "INFO", "[ResLoader] -->\t Asset {0} loaded successfully", "cube.obj");
+        log!("INFO", "[ResLoader] -->\t Asset {0} loaded successfully", "awp.obj");
         self.m_renderable_assets.push(GlREntity::from(gl_vertices));
+        self.m_renderable_assets[0].translate(Vec3::from(&[10.0, -10.0, 30.0]));
+        self.m_renderable_assets[0].rotate(Vec3::from(&[-90.0, 90.0, 0.0]));
+        match self.m_shaders[0].upload_uniform("u_model_matrix", self.m_renderable_assets[0].get_matrix()) {
+          Ok(_) => { log!("INFO", "[Shader] -->\t Uniform 'u_model_matrix' uploaded to GPU successfully"); }
+          Err(_) => {}
+        }
         
-        let result = self.m_renderable_assets.last_mut().unwrap().send();
+        let result = self.m_renderable_assets[0].send(&mut self.m_shaders[0]);
         match result {
-          Ok(_) => { log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Asset sent to GPU successfully"); }
+          Ok(_) => { log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully"); }
           Err(_) => { return Err(EnumErrors::RendererError); }
         }
       }
@@ -308,7 +413,7 @@ impl TraitApp for ExampleApp {
   fn on_update(&mut self, _time_step: f64) -> () {}
   
   fn on_render(&self) -> () {
-    let result = GlRenderer::draw();
+    let result = renderer::GlRenderer::draw();
     match result {
       Ok(_) => {}
       Err(err) => {

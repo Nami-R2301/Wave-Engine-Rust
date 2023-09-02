@@ -93,7 +93,7 @@ fn test_load_uniforms() {
   }
   // Load uniforms.
   let uniform = new_shader.as_mut().unwrap().upload_uniform("u_has_texture",
-    1i32);
+    &1i32);
   
   match uniform {
     Ok(_) => {}

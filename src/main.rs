@@ -69,19 +69,14 @@ pub mod wave;
 /// ```
 
 fn main() -> Result<(), EnumErrors> {
-  let my_app = Box::new(ExampleApp::new());
+  let my_app: Box<ExampleApp> = Box::new(ExampleApp::new());
   
   // Allocated on the stack -- Use new_shared() to allocate on the heap.
-  let mut engine = Engine::new(my_app)
-    .expect("[Engine] --> Fatal error occurred when running app! Exiting...");
+  let mut engine: Engine = Engine::new(my_app)?;
   
   // Run `on_new()` for `my_app` prior to running.
-  match engine.on_new() {
-    Ok(_) => {
-      engine.run();
-      engine.on_delete();  // Run `on_delete()` for `my_app` prior to dropping.
-    }
-    Err(err) => { return Err(err); }
-  }
+  engine.on_new()?;
+  engine.run();
+  engine.on_delete()?;  // Run `on_delete()` for `my_app` prior to dropping.
   return Ok(());
 }

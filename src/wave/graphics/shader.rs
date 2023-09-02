@@ -22,10 +22,9 @@
  SOFTWARE.
 */
 
-use num::NumCast;
-
 use crate::{check_gl_call, log};
-use crate::wave::graphics::renderer::{GLboolean, GLchar, GLenum, GLint, GLuint};
+use crate::wave::graphics::buffer::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLuint};
+use crate::wave::math::Mat4;
 
 #[derive(Debug, PartialEq)]
 pub enum EnumErrors {
@@ -42,52 +41,12 @@ pub enum EnumErrors {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GlShader {
-  m_id: GLuint,
+  pub m_program_id: GLuint,
   pub m_vertex_str: String,
   // For debug purposes.
   pub m_fragment_str: String,
   // For debug purposes.
   m_uniform_cache: std::collections::HashMap<&'static str, GLint>,
-}
-
-pub trait TraitTypeInfo {
-  fn type_of(&self) -> &'static str;
-}
-
-impl TraitTypeInfo for u32 {
-  fn type_of(&self) -> &'static str {
-    return "u32";
-  }
-}
-
-impl TraitTypeInfo for u64 {
-  fn type_of(&self) -> &'static str {
-    return "u64";
-  }
-}
-
-impl TraitTypeInfo for i32 {
-  fn type_of(&self) -> &'static str {
-    return "i32";
-  }
-}
-
-impl TraitTypeInfo for i64 {
-  fn type_of(&self) -> &'static str {
-    return "i64";
-  }
-}
-
-impl TraitTypeInfo for f32 {
-  fn type_of(&self) -> &'static str {
-    return "f32";
-  }
-}
-
-impl TraitTypeInfo for f64 {
-  fn type_of(&self) -> &'static str {
-    return "f64";
-  }
 }
 
 impl GlShader {
@@ -100,7 +59,7 @@ impl GlShader {
     }
     
     return Ok(GlShader {
-      m_id: 0,
+      m_program_id: 0,
       m_vertex_str: vertex_file_str.unwrap_or("Empty".to_string()),
       m_fragment_str: fragment_file_str.unwrap_or("Empty".to_string()),
       m_uniform_cache: std::collections::HashMap::new(),
@@ -112,7 +71,7 @@ impl GlShader {
   }
   
   pub fn send(&mut self) -> Result<(), EnumErrors> {
-    unsafe { self.m_id = gl::CreateProgram(); }
+    check_gl_call!("Shader", self.m_program_id = gl::CreateProgram());
     
     check_gl_call!("Shader", let vertex_shader: GLuint = gl::CreateShader(gl::VERTEX_SHADER));
     check_gl_call!("Shader", let fragment_shader: GLuint = gl::CreateShader(gl::FRAGMENT_SHADER));
@@ -149,39 +108,39 @@ impl GlShader {
     }
     
     // Attach shaders to program.
-    check_gl_call!("Shader", gl::AttachShader(self.m_id, vertex_shader));
-    check_gl_call!("Shader", gl::AttachShader(self.m_id, fragment_shader));
+    check_gl_call!("Shader", gl::AttachShader(self.m_program_id, vertex_shader));
+    check_gl_call!("Shader", gl::AttachShader(self.m_program_id, fragment_shader));
     
     // Link program.
-    check_gl_call!("Shader", gl::LinkProgram(self.m_id));
+    check_gl_call!("Shader", gl::LinkProgram(self.m_program_id));
     
     let mut program_link_status: GLint = 0;
-    unsafe {
-      gl::GetProgramiv(self.m_id, gl::LINK_STATUS, &mut program_link_status);
+    unsafe { gl::GetProgramiv(self.m_program_id, gl::LINK_STATUS, &mut program_link_status); }
       if program_link_status as GLboolean == gl::FALSE {
         let mut buffer_length: GLint = 0;
-        gl::GetProgramiv(self.m_id, gl::INFO_LOG_LENGTH, &mut buffer_length);
+        unsafe { gl::GetProgramiv(self.m_program_id, gl::INFO_LOG_LENGTH, &mut buffer_length); }
         let mut buffer: Vec<GLchar> = Vec::with_capacity(buffer_length as usize);
         
-        gl::GetProgramInfoLog(self.m_id, buffer_length, &mut buffer_length,
-          buffer.as_mut_ptr());
+        unsafe {
+          gl::GetProgramInfoLog(self.m_program_id, buffer_length, &mut buffer_length,
+            buffer.as_mut_ptr());
+        }
         log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error linking program {0}! Error => {1}",
-          self.m_id, std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap());
+          self.m_program_id, unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap() });
         return Err(EnumErrors::ProgramCreation);
       }
-    }
     
     // Delete shaders CPU-side, since we uploaded it to the GPU VRAM.
     check_gl_call!("Shader", gl::DeleteShader(vertex_shader));
     check_gl_call!("Shader", gl::DeleteShader(fragment_shader));
     
     // Validate program.
-    check_gl_call!("Shader", gl::ValidateProgram(self.m_id));
+    check_gl_call!("Shader", gl::ValidateProgram(self.m_program_id));
     return Ok(());
   }
   
   pub fn bind(&self) -> Result<(), EnumErrors> {
-    check_gl_call!("Shader", gl::UseProgram(self.m_id));
+    check_gl_call!("Shader", gl::UseProgram(self.m_program_id));
     return Ok(());
   }
   
@@ -233,11 +192,11 @@ impl GlShader {
     return Ok(());
   }
   
-  pub fn upload_uniform<T: TraitTypeInfo + NumCast>(&mut self, name: &'static str, uniform: T) -> Result<(), EnumErrors> {
+  pub fn upload_uniform(&mut self, name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumErrors> {
     match self.bind() {
       Ok(_) => {}
       Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Could not use shader {0}!", self.m_id);
+        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Could not use shader {0}!", self.m_program_id);
         return Err(err);
       }
     }
@@ -245,32 +204,33 @@ impl GlShader {
       let c_str: std::ffi::CString = std::ffi::CString::new(name)
         .expect("[Shader] -->\t Error converting str to CString when trying to upload uniform!");
       
-      check_gl_call!("Shader", let new_uniform: GLint = gl::GetUniformLocation(self.m_id, c_str.as_ptr()));
+      check_gl_call!("Shader", let new_uniform: GLint = gl::GetUniformLocation(self.m_program_id, c_str.as_ptr()));
       if new_uniform == -1 {
-        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Could not upload uniform {0}!", name);
+        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Could not upload uniform '{0}'!", name);
         return Err(EnumErrors::UniformNotFound);
       }
       self.m_uniform_cache.insert(name, new_uniform);
     }
     
-    match uniform.type_of() {
-      "u32" => {
-        check_gl_call!("Shader", gl::Uniform1ui(*self.m_uniform_cache.get(name).unwrap(),
-          uniform.to_u32().unwrap_or(u32::MAX)));
-      }
-      "i32" => {
-        check_gl_call!("Shader", gl::Uniform1i(*self.m_uniform_cache.get(name).unwrap(),
-          uniform.to_i32().unwrap_or(i32::MIN)));
-      }
-      "f32" => {
-        check_gl_call!("Shader", gl::Uniform1f(*self.m_uniform_cache.get(name).unwrap(),
-          uniform.to_f32().unwrap_or(f32::MIN)));
-      }
-      "f64" => {
-        check_gl_call!("Shader", gl::Uniform1d(*self.m_uniform_cache.get(name).unwrap(),
-          uniform.to_f64().unwrap_or(f64::MIN)));
-      }
-      _ => {}
+    if uniform.is::<u32>() {
+      let value_ptr = uniform.downcast_ref::<u32>().unwrap();
+        check_gl_call!("Shader", gl::Uniform1ui(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
+    } else if uniform.is::<i32>() {
+      let value_ptr = uniform.downcast_ref::<i32>().unwrap();
+        check_gl_call!("Shader", gl::Uniform1i(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
+    } else if uniform.is::<f32>() {
+      let value_ptr = uniform.downcast_ref::<f32>().unwrap();
+        check_gl_call!("Shader", gl::Uniform1f(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
+    } else if uniform.is::<f64>() {
+      let value_ptr = uniform.downcast_ref::<f64>().unwrap();
+      check_gl_call!("Shader", gl::Uniform1d(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
+    } else if uniform.is::<Mat4>() {
+      let value_ptr = uniform.downcast_ref::<Mat4>().unwrap();
+        check_gl_call!("Shader", gl::UniformMatrix4fv(*self.m_uniform_cache.get(name).unwrap(),
+          1, gl::FALSE, (value_ptr.as_array().as_ptr()) as *const GLfloat));
+    } else {
+      log!(EnumLogColor::Yellow, "ERROR", "[Shader] -->\t Uniform '{0}' has an unsupported type for glsl! \
+       Not uploading it...", name);
     }
     
     return Ok(());
@@ -281,7 +241,7 @@ impl GlShader {
 impl Drop for GlShader {
   fn drop(&mut self) {
     unsafe { gl::UseProgram(0); }
-    log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Deleting shader program => {0}", self.m_id);
-    unsafe { gl::DeleteProgram(self.m_id); }
+    log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Deleting shader program => {0}", self.m_program_id);
+    unsafe { gl::DeleteProgram(self.m_program_id); }
   }
 }
