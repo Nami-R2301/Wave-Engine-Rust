@@ -116,19 +116,19 @@ impl GlShader {
     
     let mut program_link_status: GLint = 0;
     unsafe { gl::GetProgramiv(self.m_program_id, gl::LINK_STATUS, &mut program_link_status); }
-      if program_link_status as GLboolean == gl::FALSE {
-        let mut buffer_length: GLint = 0;
-        unsafe { gl::GetProgramiv(self.m_program_id, gl::INFO_LOG_LENGTH, &mut buffer_length); }
-        let mut buffer: Vec<GLchar> = Vec::with_capacity(buffer_length as usize);
-        
-        unsafe {
-          gl::GetProgramInfoLog(self.m_program_id, buffer_length, &mut buffer_length,
-            buffer.as_mut_ptr());
-        }
-        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error linking program {0}! Error => {1}",
-          self.m_program_id, unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap() });
-        return Err(EnumErrors::ProgramCreation);
+    if program_link_status as GLboolean == gl::FALSE {
+      let mut buffer_length: GLint = 0;
+      unsafe { gl::GetProgramiv(self.m_program_id, gl::INFO_LOG_LENGTH, &mut buffer_length); }
+      let mut buffer: Vec<GLchar> = Vec::with_capacity(buffer_length as usize);
+      
+      unsafe {
+        gl::GetProgramInfoLog(self.m_program_id, buffer_length, &mut buffer_length,
+          buffer.as_mut_ptr());
       }
+      log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error linking program {0}! Error => {1}",
+          self.m_program_id, unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap() });
+      return Err(EnumErrors::ProgramCreation);
+    }
     
     // Delete shaders CPU-side, since we uploaded it to the GPU VRAM.
     check_gl_call!("Shader", gl::DeleteShader(vertex_shader));
@@ -214,19 +214,19 @@ impl GlShader {
     
     if uniform.is::<u32>() {
       let value_ptr = uniform.downcast_ref::<u32>().unwrap();
-        check_gl_call!("Shader", gl::Uniform1ui(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
+      check_gl_call!("Shader", gl::Uniform1ui(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
     } else if uniform.is::<i32>() {
       let value_ptr = uniform.downcast_ref::<i32>().unwrap();
-        check_gl_call!("Shader", gl::Uniform1i(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
+      check_gl_call!("Shader", gl::Uniform1i(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
     } else if uniform.is::<f32>() {
       let value_ptr = uniform.downcast_ref::<f32>().unwrap();
-        check_gl_call!("Shader", gl::Uniform1f(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
+      check_gl_call!("Shader", gl::Uniform1f(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
     } else if uniform.is::<f64>() {
       let value_ptr = uniform.downcast_ref::<f64>().unwrap();
       check_gl_call!("Shader", gl::Uniform1d(*self.m_uniform_cache.get(name).unwrap(), *value_ptr));
     } else if uniform.is::<Mat4>() {
       let value_ptr = uniform.downcast_ref::<Mat4>().unwrap();
-        check_gl_call!("Shader", gl::UniformMatrix4fv(*self.m_uniform_cache.get(name).unwrap(),
+      check_gl_call!("Shader", gl::UniformMatrix4fv(*self.m_uniform_cache.get(name).unwrap(),
           1, gl::FALSE, (value_ptr.as_array().as_ptr()) as *const GLfloat));
     } else {
       log!(EnumLogColor::Yellow, "ERROR", "[Shader] -->\t Uniform '{0}' has an unsupported type for glsl! \
@@ -240,8 +240,9 @@ impl GlShader {
 // Free from the GPU when we are done with the shader program.
 impl Drop for GlShader {
   fn drop(&mut self) {
-    unsafe { gl::UseProgram(0); }
-    log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Deleting shader program => {0}", self.m_program_id);
-    unsafe { gl::DeleteProgram(self.m_program_id); }
+    unsafe {
+      gl::UseProgram(0);
+      gl::DeleteProgram(self.m_program_id);
+    }
   }
 }

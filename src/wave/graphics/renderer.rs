@@ -27,9 +27,10 @@ use std::mem::size_of;
 
 use gl::types::GLDEBUGPROC;
 
-use crate::{check_gl_call, log};
+use crate::{check_gl_call, log, profile};
 use crate::wave::assets::renderable_assets::GlREntity;
 use crate::wave::Engine;
+use crate::wave::graphics::buffer::{EnumAttributeType, GlVertexAttribute};
 use crate::wave::graphics::renderer::EnumApi::OpenGL;
 use crate::wave::graphics::shader::GlShader;
 use crate::wave::window::GlfwWindow;
@@ -133,6 +134,7 @@ pub enum EnumErrors {
   ShaderError,
   WrongOffset,
   WrongSize,
+  NoAttributes,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -178,7 +180,7 @@ impl Stats {
 }
 
 struct BatchPrimitives {
-  m_shaders: Vec<GlShader>,
+  m_shaders: Vec<u32>,
   m_vao_buffers: Vec<GlVao>,
   m_vbo_buffers: Vec<GlVbo>,
 }
@@ -193,12 +195,6 @@ impl GlRenderer {
   pub fn shutdown() -> Result<(), EnumErrors> {
     if unsafe { S_STATE == EnumState::Error } {
       return Err(EnumErrors::NotImplemented);
-    }
-    unsafe {
-      for index in 0usize..S_BATCH.m_vao_buffers.len() {
-        S_BATCH.m_vbo_buffers[index].delete()?;
-        S_BATCH.m_vao_buffers[index].delete()?;
-      }
     }
     return Ok(());
   }
@@ -248,31 +244,34 @@ impl GlRenderer {
       size_of::<f32>() * sendable_entity.m_texture_coords.len(), offset)?;
     
     offset = 0;
-    // Reset offset for vertex attributes.
     
-    // Enable vertex attributes.
-    vao.bind()?;
-    check_gl_call!("Renderer", gl::VertexAttribIPointer(0, 1, gl::UNSIGNED_INT, 0, offset as *const GLvoid));
-    check_gl_call!("Renderer", gl::EnableVertexAttribArray(0));
+    // Establish vao attributes.
+    let mut attributes: Vec<GlVertexAttribute> = Vec::with_capacity(5);
+    
+    attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1),
+      false, offset));
     offset += size_of::<u32>() * sendable_entity.m_entity_id.len();
     
-    check_gl_call!("Renderer", gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE, 0, offset as *const GLvoid));
-    check_gl_call!("Renderer", gl::EnableVertexAttribArray(1));
+    attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
+      false, offset));
     offset += size_of::<f32>() * sendable_entity.m_vertices.len();
     
-    check_gl_call!("Renderer", gl::VertexAttribPointer(2, 3, gl::FLOAT, gl::FALSE, 0, offset as *const GLvoid));
-    check_gl_call!("Renderer", gl::EnableVertexAttribArray(2));
+    attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
+      false, offset));
     offset += size_of::<f32>() * sendable_entity.m_normals.len();
     
-    check_gl_call!("Renderer", gl::VertexAttribPointer(3, 4, gl::FLOAT, gl::FALSE, 0, offset as *const GLvoid));
-    check_gl_call!("Renderer", gl::EnableVertexAttribArray(3));
+    attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec4,
+      false, offset));
     offset += size_of::<f32>() * sendable_entity.m_colors.len();
     
-    check_gl_call!("Renderer", gl::VertexAttribPointer(4, 2, gl::FLOAT, gl::FALSE, 0, offset as *const GLvoid));
-    check_gl_call!("Renderer", gl::EnableVertexAttribArray(4));
+    attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec2,
+      false, offset));
+    
+    // Enable vertex attributes.
+    vao.enable_attributes(attributes)?;
     
     unsafe {
-      S_BATCH.m_shaders.push(shader_associated.clone());
+      S_BATCH.m_shaders.push(shader_associated.m_program_id);
       S_BATCH.m_vao_buffers.push(vao);
       S_BATCH.m_vbo_buffers.push(vbo);
     }
@@ -281,17 +280,13 @@ impl GlRenderer {
   }
   
   pub fn draw() -> Result<(), EnumErrors> {
-      for index in 0usize..unsafe { S_BATCH.m_shaders.len() } {
-        unsafe {
-        let result = S_BATCH.m_shaders[index].bind();
-        if result.is_err() {
-          return Err(EnumErrors::ShaderError);
-        }
-        S_BATCH.m_vao_buffers[index].bind()?;
-      }
+    profile!({
+    for index in 0usize..unsafe { S_BATCH.m_shaders.len() } {
+      check_gl_call!("Renderer", gl::UseProgram(S_BATCH.m_shaders[index]));
+      unsafe { S_BATCH.m_vao_buffers[index].bind()?; }
       check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0,
           S_BATCH.m_vbo_buffers[index].m_count as GLsizei));
-    }
+    }});
     return Ok(());
   }
   
@@ -347,12 +342,15 @@ impl GlRenderer {
     match feature {
       EnumFeature::Debug(flag) => {
         if flag {
-          check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT));
-          check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
-          check_gl_call!("Renderer", gl::DebugMessageCallback(S_ERROR_CALLBACK, std::ptr::null()));
-          check_gl_call!("Renderer", gl::DebugMessageControl(gl::DONT_CARE, gl::DEBUG_TYPE_OTHER,
+          #[cfg(feature = "debug")]
+          {
+            check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT));
+            check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
+            check_gl_call!("Renderer", gl::DebugMessageCallback(S_ERROR_CALLBACK, std::ptr::null()));
+            check_gl_call!("Renderer", gl::DebugMessageControl(gl::DONT_CARE, gl::DEBUG_TYPE_OTHER,
             gl::DONT_CARE, 0, std::ptr::null(), gl::FALSE));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode enabled")
+            log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode enabled")
+          }
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT));
           check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
@@ -424,7 +422,11 @@ fn init_api() -> Result<(), EnumErrors> {
   gl::load_with(|f_name| GlfwWindow::get_active_context().unwrap().get_proc_address_raw(f_name));
   
   let current_window = Engine::get_active_window();
-  check_gl_call!("Renderer", gl::Viewport(0, 0, (*current_window).get_size().x, (*current_window).get_size().y));
+  if current_window == std::ptr::null_mut() {
+    check_gl_call!("Renderer", gl::Viewport(0, 0, 640, 480));
+  } else {
+    check_gl_call!("Renderer", gl::Viewport(0, 0, (*current_window).get_size().x, (*current_window).get_size().y));
+  }
   check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
   
   check_gl_call!("Renderer", gl::FrontFace(gl::CW));

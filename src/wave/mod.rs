@@ -57,6 +57,7 @@ enum EnumState {
 #[derive(Debug)]
 pub enum EnumErrors {
   AppError,
+  ShaderError,
   RendererError,
   WindowError,
 }
@@ -355,7 +356,7 @@ impl TraitApp for ExampleApp {
     match result {
       Ok(gl_shader) => { self.m_shaders.push(gl_shader); }
       Err(_) => {
-        return Err(EnumErrors::AppError);
+        return Err(EnumErrors::ShaderError);
       }
     }
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded GLSL shaders successfully");
@@ -364,7 +365,7 @@ impl TraitApp for ExampleApp {
     let result = self.m_shaders[0].send();
     match result {
       Ok(_) => { log!("INFO", "[Shader] -->\t Shader sent to GPU successfully"); }
-      Err(_) => { return Err(EnumErrors::AppError); }
+      Err(_) => { return Err(EnumErrors::ShaderError); }
     }
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Uploading camera view and projection to the GPU...");

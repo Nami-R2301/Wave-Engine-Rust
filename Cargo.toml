@@ -8,12 +8,12 @@ num = "0.4.0"
 rand = "0.8.5"
 gl = {version = "0.14.0"}
 chrono = "0.4.26"
-imgui-glfw-rs = "0.4.1"
+glfw = "0.52.0"
 once_cell = "1.18.0"
 
 [features]
-trace = []
-logging = []
+debug = []
+profiler = []
 
 [profile.dev]
 opt-level = 0

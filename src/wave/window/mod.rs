@@ -22,13 +22,12 @@
  SOFTWARE.
 */
 
-extern crate imgui_glfw_rs;
+extern crate glfw;
 
-use imgui_glfw_rs::{glfw, glfw::Context};
-use crate::wave::math::Vec2;
-
+use glfw::Context;
 use crate::log;
 use crate::wave::graphics::buffer::GLsizei;
+use crate::wave::math::Vec2;
 
 static mut S_CONTEXT: Option<glfw::Glfw> = None;
 
@@ -74,15 +73,18 @@ impl GlfwWindow {
     unsafe {
       // Set GLFW error callback.
       let error_callback = glfw::ErrorCallback { f: glfw_error_callback, data: () };
+      let context_ref = S_CONTEXT.as_mut().unwrap();
       
-      S_CONTEXT.unwrap().window_hint(glfw::WindowHint::Samples(Some(8)));
-      S_CONTEXT.unwrap().window_hint(glfw::WindowHint::RefreshRate(None));
-      S_CONTEXT.unwrap().window_hint(glfw::WindowHint::OpenGlDebugContext(true));
+      context_ref.window_hint(glfw::WindowHint::Samples(Some(8)));
+      context_ref.window_hint(glfw::WindowHint::RefreshRate(None));
+      
+      #[cfg(feature = "debug")]
+      context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
       
       // Create a windowed mode window and its OpenGL context
-      let (mut window, events) = S_CONTEXT.unwrap().create_window(1920, 1080,
-        "Wave Engine (Rust)", glfw::WindowMode::Windowed)
-        .expect("[Window] -->\t Unable to create GLFW window");
+      let (mut window, events) = context_ref.create_window(1920, 1080,
+          "Wave Engine (Rust)", glfw::WindowMode::Windowed)
+          .expect("[Window] -->\t Unable to create GLFW window");
       
       // Set input polling rate.
       window.set_sticky_keys(true);
@@ -99,7 +101,7 @@ impl GlfwWindow {
       // Set v-sync.
       window.glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
       
-      glfw::Glfw::set_error_callback(&mut S_CONTEXT.unwrap(), Some(error_callback));
+      glfw::Glfw::set_error_callback(context_ref, Some(error_callback));
       let bounds = Vec2::from(&[window.get_size().0, window.get_size().1]);
       
       Ok(GlfwWindow {
@@ -107,7 +109,7 @@ impl GlfwWindow {
         m_api_window_events: events,
         m_fullscreen: false,
         m_vsync: true,
-        m_window_bounds: bounds
+        m_window_bounds: bounds,
       })
     }
   }
@@ -122,7 +124,7 @@ impl GlfwWindow {
           true
         }
         glfw::WindowEvent::Key(glfw::Key::Enter, _, glfw::Action::Press, glfw::Modifiers::Alt) => unsafe {
-          S_CONTEXT.unwrap().with_primary_monitor_mut(|_, monitor| {
+          S_CONTEXT.as_mut().unwrap().with_primary_monitor(|_, monitor| {
             let mode: glfw::VidMode = monitor.unwrap().get_video_mode().unwrap();
             if !self.m_fullscreen {
               self.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
@@ -144,10 +146,10 @@ impl GlfwWindow {
         }
         glfw::WindowEvent::Key(glfw::Key::V, _, glfw::Action::Press, glfw::Modifiers::Alt) => unsafe {
           if self.m_vsync {
-            S_CONTEXT.unwrap().set_swap_interval(glfw::SwapInterval::None);
+            S_CONTEXT.as_mut().unwrap().set_swap_interval(glfw::SwapInterval::None);
             self.m_vsync = false;
           } else {
-            S_CONTEXT.unwrap().set_swap_interval(glfw::SwapInterval::Sync(1));
+            S_CONTEXT.as_mut().unwrap().set_swap_interval(glfw::SwapInterval::Sync(1));
             self.m_vsync = true;
           }
           return false;
@@ -206,13 +208,7 @@ impl GlfwWindow {
     return &self.m_window_bounds;
   }
   
-  pub fn get_active_context() -> Option<glfw::Glfw> {
-    unsafe { return S_CONTEXT; }
-  }
-}
-
-impl Drop for GlfwWindow {
-  fn drop(&mut self) {
-    log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t Closing window!");
+  pub fn get_active_context() -> Option<&'static mut glfw::Glfw> {
+    unsafe { return S_CONTEXT.as_mut(); }
   }
 }

@@ -116,7 +116,6 @@ impl GlREntity {
     // Inverse x and y to correspond to the right orientation.
     self.m_transform[1].x = amount.x;
     self.m_transform[1].y = amount.y;
-    
     self.m_transform[1].z = amount.z;
   }
   
@@ -145,7 +144,7 @@ impl Display for GlREntity {
 
 impl PartialEq for GlREntity {
   fn eq(&self, other: &Self) -> bool {
-    return self.m_renderer_id == other.m_renderer_id;
+    return self.m_entity_id == other.m_entity_id;
   }
   
   fn ne(&self, other: &Self) -> bool {

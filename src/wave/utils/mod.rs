@@ -170,7 +170,7 @@ macro_rules! file_name {
 /// --> "Error in [wave/utils/mod.rs    | ...::logger::init    | 47]! Logger init failed unexpectedly!"
 /// ```
 ///
-#[cfg(feature = "trace")]
+#[cfg(feature = "debug")]
 #[macro_export]
 macro_rules! trace {
     () => {{
@@ -179,7 +179,7 @@ macro_rules! trace {
     }};
 }
 
-#[cfg(not(feature = "trace"))]
+#[cfg(not(feature = "debug"))]
 #[macro_export]
 macro_rules! trace {
     () => {{ "" }};
@@ -361,6 +361,26 @@ macro_rules! create_vec {
     };
 }
 
+#[cfg(not(feature = "profiler"))]
+#[macro_export]
+macro_rules! profile {
+    ($expression: expr) => { $expression; };
+}
+
+#[cfg(feature = "profiler")]
+#[macro_export]
+macro_rules! profile {
+  ($expression: expr) => {
+    use crate::wave::Time;
+    
+    let current_time = Time::from(chrono::Utc::now());
+    $expression;
+    let end_time = Time::from(chrono::Utc::now());
+    log!(EnumLogColor::Blue, "TIMER", "Instruction took {0} milliseconds",
+      Time::get_delta(&current_time, &end_time).to_millis());
+  }
+}
+
 /*
 ///////////////////////////////////   LOGGER  ///////////////////////////////////
 ///////////////////////////////////           ///////////////////////////////////
@@ -379,7 +399,7 @@ pub mod logger {
     Purple,
   }
   
-  #[cfg(not(feature = "logging"))]
+  #[cfg(not(feature = "debug"))]
   #[macro_export]
   macro_rules! log {
     () => {};
@@ -429,7 +449,7 @@ pub mod logger {
   /// --> "[INFO]  [2023-07-17 23:26:45] | mod.rs::add()::47 | [Math] --> Addition of 6 AND 8 = 14"
   /// ```
   ///
-  #[cfg(feature = "logging")]
+  #[cfg(feature = "debug")]
   #[macro_export]
   macro_rules! log {
     () => {
@@ -443,7 +463,7 @@ pub mod logger {
 
       let current_time = chrono::Local::now();
 
-      let format_string: String = format!("\x1b[0m[{0}]\t[{1:19}] {2:<60}\t",
+      let format_string: String = format!("\x1b[0m[{0}]\t\t[{1:19}] {2:<60}\t",
                                            $log_type, &current_time.to_string()[0..19], trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
@@ -464,7 +484,7 @@ pub mod logger {
       let current_time = chrono::Local::now();
 
       let log_color: &str = utils::logger::color_to_str($log_color);
-      let format_string: String = format!("{0}[{1}]\t[{2:19}] {3:<60}\t",
+      let format_string: String = format!("{0}[{1}]\t\t[{2:19}] {3:<60}\t",
                                           log_color, $log_type, &current_time.to_string()[0..19],
                                           trace!());
 

@@ -25,6 +25,7 @@
 use wave_engine::wave::graphics::renderer::GlRenderer;
 use wave_engine::wave::graphics::shader;
 use wave_engine::wave::graphics::shader::GlShader;
+use wave_engine::wave::math::Mat4;
 use wave_engine::wave::window;
 use wave_engine::wave::window::GlfwWindow;
 
@@ -76,8 +77,8 @@ fn test_load_uniforms() {
   let renderer = GlRenderer::new();
   assert!(renderer.is_ok());
   
-  let mut new_shader = GlShader::new("res/shaders/default_3D.vert",
-    "res/shaders/default_3D.frag");
+  let mut new_shader = GlShader::new("res/shaders/test_vert.glsl",
+    "res/shaders/test_frag.glsl");
   
   assert!(new_shader.as_ref().is_ok());
   assert_ne!(new_shader.as_ref().unwrap().m_vertex_str, "");
@@ -92,8 +93,8 @@ fn test_load_uniforms() {
     Err(_) => { return assert!(false); }
   }
   // Load uniforms.
-  let uniform = new_shader.as_mut().unwrap().upload_uniform("u_has_texture",
-    &1i32);
+  let uniform = new_shader.as_mut().unwrap().upload_uniform("u_model_matrix",
+    &Mat4::new(1.0));
   
   match uniform {
     Ok(_) => {}

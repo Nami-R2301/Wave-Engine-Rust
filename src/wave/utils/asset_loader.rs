@@ -136,8 +136,11 @@ impl ResLoader {
         let mut indices: Vec<usize> = Vec::new();
         
         for line in buffer {
-          if line.is_err() || line.as_ref().unwrap().is_empty() {
-            log!(EnumLogColor::Yellow, "WARN", "[ResLoader] -->\t Cannot read line {0}! \
+          if line.as_ref().unwrap().is_empty() {
+            continue;
+          }
+          if line.is_err() {
+            log!(EnumLogColor::Yellow, "WARN", "[ResLoader] -->\t Cannot read line '{0}'! \
               Skipping it...", line.unwrap());
             continue;
           }

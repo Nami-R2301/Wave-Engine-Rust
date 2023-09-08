@@ -1,4 +1,4 @@
-#version 420
+#version 330
 
 // Outputs.
 struct Vertex_data_s
@@ -17,8 +17,8 @@ layout (location = 2) in vec3 in_normal;
 layout (location = 3) in vec4 in_color;
 layout (location = 4) in vec2 in_tex_coords;
 
-layout (location = 0) flat out uint vout_entity_ID;
-layout (location = 1) out Vertex_data_s vout_vertex_data;
+flat out uint vout_entity_ID;
+out Vertex_data_s vout_vertex_data;
 
 void main() {
     gl_Position = u_view_projection * (u_model_matrix * vec4(in_position, 1.0));
