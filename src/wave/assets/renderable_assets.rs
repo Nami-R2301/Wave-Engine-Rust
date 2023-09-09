@@ -27,11 +27,11 @@ use std::fmt::{Debug, Display};
 use std::mem::size_of;
 
 use once_cell::sync::Lazy;
-use crate::wave::graphics::shader::GlShader;
 
 use crate::log;
 use crate::wave::graphics::renderer::{EnumErrors, TraitRenderableEntity};
-use crate::wave::graphics::renderer::GlRenderer;
+use crate::wave::graphics::renderer;
+use crate::wave::graphics::shader::GlShader;
 use crate::wave::math::{Mat4, Vec3};
 
 /*
@@ -154,7 +154,7 @@ impl PartialEq for GlREntity {
 
 impl TraitRenderableEntity for GlREntity {
   fn send(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
-    return match GlRenderer::send(self, shader_associated) {
+    return match renderer::send(self, shader_associated) {
       Ok(_) => {
         self.m_sent = true;
         Ok(())
@@ -172,7 +172,7 @@ impl TraitRenderableEntity for GlREntity {
   }
   
   fn free(&mut self, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
-    return match GlRenderer::free(&self.m_renderer_id) {
+    return match renderer::free(&self.m_renderer_id) {
       Ok(_) => {
         self.m_sent = false;
         Ok(())

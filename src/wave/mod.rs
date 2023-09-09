@@ -28,6 +28,7 @@ use crate::log;
 use crate::wave::assets::renderable_assets::GlREntity;
 use crate::wave::camera::PerspectiveCamera;
 use crate::wave::graphics::{renderer, renderer::TraitRenderableEntity};
+use crate::wave::graphics::renderer::EnumApi;
 use crate::wave::graphics::shader::GlShader;
 use crate::wave::math::Vec3;
 use crate::wave::utils::asset_loader::ResLoader;
@@ -128,20 +129,17 @@ impl Engine {
       }
     }
     
-    // Setup basic renderer features.
-    let renderer = renderer::GlRenderer::new();
-    
-    match renderer {
+    match renderer::Renderer::new(Some(EnumApi::OpenGL)) {
       Ok(_) => {
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::GlRenderer::get_renderer_info());
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {:?}", renderer::GlRenderer::get_api_info());
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::GlRenderer::get_shading_info());
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_renderer_info());
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_api_info());
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_shading_info());
         
-        let _ = renderer::GlRenderer::toggle_feature(renderer::EnumFeature::DepthTest(true));
-        let _ = renderer::GlRenderer::toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));
-        let _ = renderer::GlRenderer::toggle_feature(renderer::EnumFeature::Debug(true));
-        let _ = renderer::GlRenderer::toggle_feature(renderer::EnumFeature::Wireframe(true));
-        let _ = renderer::GlRenderer::toggle_feature(renderer::EnumFeature::MSAA(true));
+        let _ = renderer::toggle_feature(renderer::EnumFeature::DepthTest(true));
+        let _ = renderer::toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));
+        let _ = renderer::toggle_feature(renderer::EnumFeature::Debug(true));
+        let _ = renderer::toggle_feature(renderer::EnumFeature::Wireframe(true));
+        let _ = renderer::toggle_feature(renderer::EnumFeature::MSAA(true));
       }
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error creating OpenGL context! \
@@ -197,7 +195,7 @@ impl Engine {
     }
     
     self.m_state = EnumState::ShuttingDown;
-    let result = renderer::GlRenderer::shutdown();
+    let result = renderer::shutdown();
     match result {
       Ok(_) => {}
       Err(err) => {
@@ -237,14 +235,6 @@ impl Engine {
       S_ACTIVE_WINDOW = &mut self.m_window;
     }
     
-    match renderer::GlRenderer::new() {
-      Ok(_) => {}
-      Err(err) => {
-        log!("ERROR", "[Renderer] -->\t Error creating renderer context! Exiting... Error code => \
-         {:?}", err);
-        return Err(EnumErrors::RendererError);
-      }
-    }
     match self.m_app.on_new() {
       Ok(_) => {
         log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
@@ -424,7 +414,7 @@ impl TraitApp for ExampleApp {
   fn on_update(&mut self, _time_step: f64) -> () {}
   
   fn on_render(&self) -> () {
-    let result = renderer::GlRenderer::draw();
+    let result = renderer::draw();
     match result {
       Ok(_) => {}
       Err(err) => {

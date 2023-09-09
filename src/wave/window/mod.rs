@@ -48,8 +48,8 @@ pub struct GlfwWindow {
   m_api_window: glfw::Window,
   m_api_window_events: std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>,
   m_fullscreen: bool,
-  m_vsync: bool,
-  m_window_bounds: Vec2<i32>,
+  pub m_vsync: bool,
+  pub m_window_bounds: Vec2<i32>,
 }
 
 impl GlfwWindow {
@@ -79,7 +79,9 @@ impl GlfwWindow {
       context_ref.window_hint(glfw::WindowHint::RefreshRate(None));
       
       #[cfg(feature = "debug")]
-      context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
+      if !context_ref.vulkan_supported() {
+        context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
+      }
       
       // Create a windowed mode window and its OpenGL context
       let (mut window, events) = context_ref.create_window(1920, 1080,

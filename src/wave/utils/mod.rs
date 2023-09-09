@@ -463,7 +463,7 @@ pub mod logger {
 
       let current_time = chrono::Local::now();
 
-      let format_string: String = format!("\x1b[0m[{0}]\t\t[{1:19}] {2:<60}\t",
+      let format_string: String = format!("\x1b[0m[{0}]\t[{1:19}] {2:<60}\t",
                                            $log_type, &current_time.to_string()[0..19], trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
@@ -484,7 +484,7 @@ pub mod logger {
       let current_time = chrono::Local::now();
 
       let log_color: &str = utils::logger::color_to_str($log_color);
-      let format_string: String = format!("{0}[{1}]\t\t[{2:19}] {3:<60}\t",
+      let format_string: String = format!("{0}[{1}]\t[{2:19}] {3:<60}\t",
                                           log_color, $log_type, &current_time.to_string()[0..19],
                                           trace!());
 
