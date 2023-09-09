@@ -211,12 +211,22 @@ impl Engine {
     return Ok(());
   }
   
-  pub fn get() -> *mut Engine {
-    unsafe { return S_ENGINE; }
+  pub fn get() -> Option<*mut Engine> {
+    unsafe {
+      if S_ENGINE == std::ptr::null_mut() {
+        return None;
+      }
+      return Some(S_ENGINE);
+    }
   }
   
-  pub fn get_active_window() -> *mut GlfwWindow {
-    unsafe { return S_ACTIVE_WINDOW; }
+  pub fn get_active_window() -> Option<*mut GlfwWindow> {
+    unsafe {
+      if S_ACTIVE_WINDOW == std::ptr::null_mut() {
+        return None;
+      }
+      return Some(S_ACTIVE_WINDOW);
+    }
   }
   
   pub fn on_new(&mut self) -> Result<(), EnumErrors> {

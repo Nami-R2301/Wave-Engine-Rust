@@ -27,7 +27,7 @@ use std::mem::size_of;
 
 use gl::types::GLDEBUGPROC;
 
-use crate::{check_gl_call, log, profile};
+use crate::{check_gl_call, log};
 use crate::wave::assets::renderable_assets::GlREntity;
 use crate::wave::Engine;
 use crate::wave::graphics::buffer::{EnumAttributeType, GlVertexAttribute};
@@ -135,6 +135,7 @@ pub enum EnumErrors {
   WrongOffset,
   WrongSize,
   NoAttributes,
+  NoActiveWindow
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -280,13 +281,12 @@ impl GlRenderer {
   }
   
   pub fn draw() -> Result<(), EnumErrors> {
-    profile!({
     for index in 0usize..unsafe { S_BATCH.m_shaders.len() } {
       check_gl_call!("Renderer", gl::UseProgram(S_BATCH.m_shaders[index]));
       unsafe { S_BATCH.m_vao_buffers[index].bind()?; }
       check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0,
           S_BATCH.m_vbo_buffers[index].m_count as GLsizei));
-    }});
+    };
     return Ok(());
   }
   
@@ -421,14 +421,13 @@ impl GlRenderer {
 fn init_api() -> Result<(), EnumErrors> {
   gl::load_with(|f_name| GlfwWindow::get_active_context().unwrap().get_proc_address_raw(f_name));
   
-  let current_window = Engine::get_active_window();
-  if current_window == std::ptr::null_mut() {
-    check_gl_call!("Renderer", gl::Viewport(0, 0, 640, 480));
-  } else {
-    check_gl_call!("Renderer", gl::Viewport(0, 0, (*current_window).get_size().x, (*current_window).get_size().y));
+  match Engine::get_active_window() {
+    None => { return Err(EnumErrors::NoActiveWindow); }
+    Some(window) => {
+      check_gl_call!("Renderer", gl::Viewport(0, 0, (*window).get_size().x, (*window).get_size().y));
+      check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
+    }
   }
-  check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
-  
   check_gl_call!("Renderer", gl::FrontFace(gl::CW));
   
   return Ok(());
