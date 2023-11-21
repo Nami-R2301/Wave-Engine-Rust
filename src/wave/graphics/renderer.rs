@@ -22,10 +22,16 @@
  SOFTWARE.
 */
 
+extern crate ash;
+
+
 use std::fmt::Debug;
 use std::mem::size_of;
+use std::ptr::{null_mut};
 
 use gl::types::GLDEBUGPROC;
+use ash::vk::{self, TaggedStructure};
+use ash::extensions::{ext, khr};
 
 use crate::{check_gl_call, log};
 use crate::wave::assets::renderable_assets::GlREntity;
@@ -36,7 +42,7 @@ use crate::wave::window::GlfwWindow;
 
 use super::buffer::*;
 
-static mut S_API: EnumApi = EnumApi::Vulkan;
+static mut S_VULKAN: *mut VkApp = null_mut();
 static mut S_STATE: EnumState = EnumState::Ok;
 static S_ERROR_CALLBACK: GLDEBUGPROC = Some(gl_error_callback);
 static mut S_STATS: Stats = Stats {
@@ -52,6 +58,8 @@ static mut S_BATCH: BatchPrimitives = BatchPrimitives {
   m_vao_buffers: vec![],
   m_vbo_buffers: vec![],
 };
+
+const REQUIRED_LAYERS: [&str; 2] = ["VK_LAYER_KHRONOS_profiles", "VK_LAYER_KHRONOS_validation"];
 
 #[macro_export]
 macro_rules! check_gl_call {
@@ -127,14 +135,26 @@ pub enum EnumFeature {
 pub enum EnumErrors {
   Init,
   NotImplemented,
+  ContextError,
   InvalidEntity,
   EntityNotFound,
   GlError(GLenum),
+  VulkanError(EnumVulkanErrors),
+  CError,
   ShaderError,
   WrongOffset,
   WrongSize,
   NoAttributes,
-  NoActiveWindow
+  NoActiveWindow,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum EnumVulkanErrors {
+  NotSupported,
+  EntryError,
+  InstanceError,
+  DebugError,
+  DeviceError,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -185,49 +205,34 @@ struct BatchPrimitives {
   m_vbo_buffers: Vec<GlVbo>,
 }
 
-pub struct Renderer {}
+trait TraitRenderer {}
 
-impl Renderer {
-  pub fn new(api_chosen: Option<EnumApi>) -> Result<(), EnumErrors> {
-    return init_api(api_chosen.unwrap_or(EnumApi::Vulkan));
+pub fn init(api_chosen: EnumApi) -> Result<(), EnumErrors> {
+  return match api_chosen {
+    EnumApi::OpenGL => { GlApp::new() }
+    EnumApi::Vulkan => unsafe {
+      S_VULKAN = &mut VkApp::new()?;
+      Ok(())
+    }
   }
 }
 
-fn init_api(api_chosen: EnumApi) -> Result<(), EnumErrors> {
-    // Set up graphics api
-    match GlfwWindow::get_active_context() {
-      Some (window_context) => {
-        if let EnumApi::Vulkan = api_chosen {
-          if window_context.vulkan_supported() {
-            let _vulkan_instance = window_context.get_instance_proc_address_raw(Default::default(),
-              "vkCreateInstance");
-          } else {
-            unsafe { S_API = EnumApi::OpenGL; }
-          }
-        } else {
-          // OpenGL
-          gl::load_with(|f_name| GlfwWindow::get_active_context().unwrap().get_proc_address_raw(f_name));
-          
-          match Engine::get_active_window() {
-            None => { return Err(EnumErrors::NoActiveWindow); }
-            Some(window) => {
-              check_gl_call!("Renderer", gl::Viewport(0, 0, (*window).get_size().x, (*window).get_size().y));
-              check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
-            }
-          }
-          check_gl_call!("Renderer", gl::FrontFace(gl::CW));
-        }
-      },
-      None => {}
-    }
-  
-  return Ok(());
-}
 
 pub fn shutdown() -> Result<(), EnumErrors> {
   if unsafe { S_STATE == EnumState::Error } {
     return Err(EnumErrors::NotImplemented);
   }
+  
+  unsafe {
+    if !(S_VULKAN.is_null()) {
+      (*S_VULKAN).m_surface.destroy_surface((*S_VULKAN).m_surface_khr, None);
+      if let Some((debug, messenger)) = (*S_VULKAN).m_debug_report_callback.take() {
+        debug.destroy_debug_utils_messenger(messenger, None);
+      }
+      (*S_VULKAN).m_instance.destroy_instance(None);
+    }
+  }
+  
   return Ok(());
 }
 
@@ -359,9 +364,7 @@ pub fn get_state() -> EnumState {
   return unsafe { S_STATE };
 }
 
-pub fn get_callback() -> GLDEBUGPROC {
-  return S_ERROR_CALLBACK;
-}
+pub fn get_callback() {}
 
 pub fn get_stats() -> &'static Stats {
   unsafe { return &S_STATS; }
@@ -447,10 +450,218 @@ pub fn toggle_feature(feature: EnumFeature) -> Result<(), EnumErrors> {
 }
 
 /*
+///////////////////////////////////   Vulkan    ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+ */
+
+pub struct VkApp {
+  m_instance: ash::Instance,
+  m_surface: khr::Surface,
+  m_surface_khr: vk::SurfaceKHR,
+  m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
+}
+
+impl VkApp {
+  pub fn new() -> Result<Self, EnumErrors> {
+    let window_context = GlfwWindow::get_active_context();
+    if window_context.is_none() {
+      return Err(EnumErrors::NoActiveWindow);
+    }
+    
+    return match VkApp::create_instance(window_context.as_ref().unwrap()) {
+      Ok((entry, vk_instance)) => {
+        // For debug callback function
+        let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
+        debug_create_info.s_type = vk::DebugUtilsMessengerCreateInfoEXT::STRUCTURE_TYPE;
+        debug_create_info.message_severity |= vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
+          vk::DebugUtilsMessageSeverityFlagsEXT::WARNING |
+          vk::DebugUtilsMessageSeverityFlagsEXT::ERROR |
+          vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE;
+        debug_create_info.message_type |= vk::DebugUtilsMessageTypeFlagsEXT::GENERAL |
+          vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION |
+          vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
+        debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
+        debug_create_info.p_user_data = null_mut(); // Optional
+        
+        let debug_utils = ext::DebugUtils::new(&entry, &vk_instance);
+        let debug_messenger = unsafe {
+          debug_utils
+            .create_debug_utils_messenger(&debug_create_info, None)
+            .unwrap()
+        };
+        
+        let vk_surface = khr::Surface::new(&entry, &vk_instance);
+        let khr_surface = vk::SurfaceKHR::default();
+        
+        let mut vulkan_instance = VkApp {
+          m_instance: vk_instance,
+          m_surface: vk_surface,
+          m_surface_khr: khr_surface,
+          m_debug_report_callback: Some((debug_utils, debug_messenger)),
+        };
+        
+        unsafe { S_VULKAN = &mut vulkan_instance };
+        
+        Ok(vulkan_instance)
+      }
+      Err(err) => {
+        Err(err)
+      }
+    };
+  }
+  
+  pub fn create_instance(window_context: &glfw::Glfw) -> Result<(ash::Entry, ash::Instance), EnumErrors> {
+    let entry = unsafe {
+      ash::Entry::load().expect("[Renderer] --> Cannot load Vulkan entry!")
+    };
+    
+    let app_name = std::ffi::CString::new("Wave Engine Rust").unwrap();
+    let engine_name = std::ffi::CString::new("Wave Engine").unwrap();
+    let mut app_info = vk::ApplicationInfo::default();
+    app_info.p_application_name = app_name.as_ptr();
+    app_info.s_type = vk::ApplicationInfo::STRUCTURE_TYPE;
+    app_info.p_engine_name = engine_name.as_ptr();
+    app_info.engine_version = vk::make_api_version(0, 0, 1, 0);
+    app_info.api_version = vk::API_VERSION_1_3;
+    
+    let extensions = VkApp::load_extensions(window_context)?;
+    let layers = VkApp::load_layers(&entry);
+    let mut instance_create_info = vk::InstanceCreateInfo::default();
+    instance_create_info.s_type = vk::InstanceCreateInfo::STRUCTURE_TYPE;
+    instance_create_info.enabled_layer_count = layers.len() as u32;
+    instance_create_info.pp_enabled_layer_names = layers.as_ptr();
+    instance_create_info.enabled_extension_count = extensions.len() as u32;
+    instance_create_info.pp_enabled_extension_names = extensions.as_ptr();
+    instance_create_info.p_application_info = &app_info;
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+      instance_create_info.flags |= vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
+    }
+    
+    unsafe {
+      return match entry.create_instance(&instance_create_info, None) {
+        Ok(vk_instance) => {
+          Ok((entry, vk_instance))
+        }
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[Renderer] --> \t Vulkan Error : {:#?}", err);
+          
+          Err(EnumErrors::VulkanError(EnumVulkanErrors::InstanceError))
+        }
+      };
+    }
+  }
+  
+  /// Load window extensions for the Vulkan surface.
+  pub fn load_extensions(window_context: &glfw::Glfw) -> Result<Vec<*const std::ffi::c_char>, EnumErrors> {
+    // Get required extensions.
+    if window_context.get_required_instance_extensions().is_some() {
+      let extensions = unsafe {
+        vec![std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_surface\0").as_ptr(),
+          std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_xcb_surface\0").as_ptr(),
+          std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_EXT_debug_utils\0").as_ptr()]
+      };
+      
+      #[cfg(any(target_os = "macos", target_os = "ios"))]
+      {
+        extension_names.push(KhrPortabilityEnumerationFn::NAME.as_ptr());
+        // Enabling this extension is a requirement when using `VK_KHR_portability_subset`
+        extension_names.push(KhrGetPhysicalDeviceProperties2Fn::NAME.as_ptr());
+      }
+      return Ok(extensions);
+    }
+    return Err(EnumErrors::ContextError);
+  }
+  
+  /// Load validation layers for the Vulkan instance.
+  pub fn load_layers(entry: &ash::Entry) -> Vec<*const std::ffi::c_char> {
+    VkApp::check_validation_layer_support(entry);
+    
+    let layers = unsafe {
+      vec![std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_profiles\0").as_ptr(),
+        std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0").as_ptr()]
+    };
+    
+    return layers;
+  }
+  
+  /// Check if the required validation set in `REQUIRED_LAYERS`
+  /// are supported by the Vulkan instance.
+  ///
+  /// # Panics
+  ///
+  /// Panic if at least one on the layer is not supported.
+  pub fn check_validation_layer_support(entry: &ash::Entry) {
+    for required in REQUIRED_LAYERS.iter() {
+      let found = entry
+        .enumerate_instance_layer_properties()
+        .unwrap()
+        .iter()
+        .any(|layer| {
+          let name = unsafe { std::ffi::CStr::from_ptr(layer.layer_name.as_ptr()) };
+          let name = name.to_str().expect("Failed to get layer name pointer");
+          required == &name
+        });
+      
+      if !found {
+        panic!("Validation layer not supported: {}", required);
+      }
+    }
+  }
+}
+
+unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSeverityFlagsEXT,
+                                                type_: vk::DebugUtilsMessageTypeFlagsEXT,
+                                                p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+                                                _: *mut std::ffi::c_void) -> vk::Bool32 {
+  use vk::DebugUtilsMessageSeverityFlagsEXT as Flag;
+  
+  let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
+  match flag {
+    Flag::VERBOSE => log!("INFO", "{:?} - {:?}", type_, message),
+    Flag::INFO => log!("INFO", "{:?} - {:?}", type_, message),
+    Flag::WARNING => log!(EnumLogColor::Yellow, "WARN", "{:?} - {:?}", type_, message),
+    _ => log!(EnumLogColor::Red, "ERR", "{:?} - {:?}", type_, message),
+  }
+  
+  return vk::FALSE;
+}
+
+
+/*
 ///////////////////////////////////   OpenGL    ///////////////////////////////////
 ///////////////////////////////////             ///////////////////////////////////
 ///////////////////////////////////             ///////////////////////////////////
  */
+
+pub struct GlApp {}
+
+impl TraitRenderer for GlApp {}
+
+impl GlApp {
+  
+  pub fn new() -> Result<(), EnumErrors> {
+    return match GlfwWindow::get_active_context() {
+      None => { Err(EnumErrors::NoActiveWindow) }
+      Some(context) => {
+        gl::load_with(|f_name| context.get_proc_address_raw(f_name));
+        
+        let current_window = Engine::get_active_window();
+        if current_window.is_none() {
+          check_gl_call!("Renderer", gl::Viewport(0, 0, 640, 480));
+        } else {
+          check_gl_call!("Renderer", gl::Viewport(0, 0, (*current_window.unwrap()).get_size().x,
+                              (*current_window.unwrap()).get_size().y));
+        }
+        check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
+        
+        check_gl_call!("Renderer", gl::FrontFace(gl::CW));
+        Ok(())
+      }
+    };
+  }
+}
 
 extern "system" fn gl_error_callback(error_code: GLenum, e_type: GLenum, _id: GLuint,
                                      severity: GLenum, _length: GLsizei, error_message: *const GLchar,
@@ -490,10 +701,4 @@ extern "system" fn gl_error_callback(error_code: GLenum, e_type: GLenum, _id: GL
     log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t {0}", final_error_msg);
   }
 }
-
-/*
-///////////////////////////////////   Vulkan    ///////////////////////////////////
-///////////////////////////////////             ///////////////////////////////////
-///////////////////////////////////             ///////////////////////////////////
- */
 

@@ -27,10 +27,10 @@ use std::fmt::{Debug, Display};
 use std::mem::size_of;
 
 use once_cell::sync::Lazy;
+use crate::wave::graphics::renderer;
 
 use crate::log;
 use crate::wave::graphics::renderer::{EnumErrors, TraitRenderableEntity};
-use crate::wave::graphics::renderer;
 use crate::wave::graphics::shader::GlShader;
 use crate::wave::math::{Mat4, Vec3};
 

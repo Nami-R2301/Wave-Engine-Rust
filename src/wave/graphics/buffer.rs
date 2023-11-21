@@ -190,7 +190,6 @@ impl GlVao {
 impl Drop for GlVao {
   fn drop(&mut self) {
     unsafe {
-      gl::BindVertexArray(0);
       gl::DeleteVertexArrays(1, &self.m_renderer_id);
     }
   }
@@ -337,7 +336,6 @@ impl GlVbo {
 impl Drop for GlVbo {
   fn drop(&mut self) {
     unsafe {
-      gl::BindBuffer(gl::ARRAY_BUFFER, 0);
       gl::DeleteBuffers(1, &self.m_renderer_id);
     }
   }

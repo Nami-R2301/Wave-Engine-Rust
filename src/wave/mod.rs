@@ -27,8 +27,7 @@ use once_cell::sync::Lazy;
 use crate::log;
 use crate::wave::assets::renderable_assets::GlREntity;
 use crate::wave::camera::PerspectiveCamera;
-use crate::wave::graphics::{renderer, renderer::TraitRenderableEntity};
-use crate::wave::graphics::renderer::EnumApi;
+use crate::wave::graphics::{renderer, renderer::EnumApi, renderer::TraitRenderableEntity};
 use crate::wave::graphics::shader::GlShader;
 use crate::wave::math::Vec3;
 use crate::wave::utils::asset_loader::ResLoader;
@@ -70,7 +69,7 @@ pub trait TraitApp {
   
   fn on_event(&mut self) -> bool;
   fn on_update(&mut self, time_step: f64);
-  fn on_render(&self);
+  fn on_render(&mut self);
 }
 
 pub struct Engine {
@@ -129,8 +128,12 @@ impl Engine {
       }
     }
     
-    match renderer::Renderer::new(Some(EnumApi::OpenGL)) {
-      Ok(_) => {
+    let mut api_chosen = EnumApi::OpenGL;
+    if window.is_ok() && window.as_ref().unwrap().m_vulkan_compatible {
+      api_chosen = EnumApi::Vulkan;
+    }
+    match renderer::init(api_chosen) {
+      Ok(()) => {
         log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_renderer_info());
         log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_api_info());
         log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_shading_info());
@@ -140,24 +143,23 @@ impl Engine {
         let _ = renderer::toggle_feature(renderer::EnumFeature::Debug(true));
         let _ = renderer::toggle_feature(renderer::EnumFeature::Wireframe(true));
         let _ = renderer::toggle_feature(renderer::EnumFeature::MSAA(true));
+        
+        Ok({
+          log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
+          Engine {
+            m_app: app_provided,
+            m_window: window.unwrap(),
+            m_time_step: 0.0,
+            m_tick_rate: 0.0,
+            m_state: EnumState::NotStarted,
+          }
+        })
       }
       Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error creating OpenGL context! \
-        Exiting... Error code => {:?}", err);
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error creating context! Error => {:?}", err);
         return Err(EnumErrors::RendererError);
       }
     }
-    
-    Ok({
-      log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
-      Engine {
-        m_app: app_provided,
-        m_window: window.unwrap(),
-        m_time_step: 0.0,
-        m_tick_rate: 0.0,
-        m_state: EnumState::NotStarted,
-      }
-    })
   }
   
   /// Teardown engine. This effectively first shuts down the renderer and then flags the window to
@@ -323,7 +325,7 @@ impl Engine {
     self.m_app.on_update(time_step);
   }
   
-  pub fn on_render(&self) {
+  pub fn on_render(&mut self) {
     unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); }
     self.m_app.on_render();
   }
@@ -413,7 +415,7 @@ impl TraitApp for ExampleApp {
   
   fn on_update(&mut self, _time_step: f64) -> () {}
   
-  fn on_render(&self) -> () {
+  fn on_render(&mut self) -> () {
     let result = renderer::draw();
     match result {
       Ok(_) => {}
