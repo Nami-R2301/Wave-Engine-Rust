@@ -23,7 +23,7 @@
 */
 
 use std::io::BufRead;
-use crate::wave::assets::renderable_assets::GlREntity;
+use crate::wave::assets::renderable_assets::REntity;
 
 use crate::log;
 
@@ -78,7 +78,7 @@ impl ResLoader {
   /// assert_eq!(diamond, EnumErrors::InvalidPath);
   /// assert!(pyramid.is_ok());
   /// ```
-  pub fn new(file_name: &str) -> Result<GlREntity, EnumErrors> {
+  pub fn new(file_name: &str) -> Result<REntity, EnumErrors> {
     let asset_path = &("res/assets/".to_string() + file_name);
     let path = std::path::Path::new(asset_path).extension();
     
@@ -103,8 +103,8 @@ impl ResLoader {
     };
   }
   
-  /// Internal function to load an *obj*'s file contents into a [GlREntity] container to eventually pass
-  /// on to the GPU. Due to the tightly packed oriented dataset of [GlREntity], [GlREntity] can be made of
+  /// Internal function to load an *obj*'s file contents into a [REntity] container to eventually pass
+  /// on to the GPU. Due to the tightly packed oriented dataset of [REntity], [REntity] can be made of
   /// 2D and/or 3D vertices.
   ///
   /// # Arguments
@@ -125,7 +125,7 @@ impl ResLoader {
   ///     + [EnumErrors::InvalidShapeData] : If the file could not be loaded properly due to data
   ///     corruption or invalid shape data.
   ///
-  fn load_obj(file_name: &str) -> Result<GlREntity, EnumErrors> {
+  fn load_obj(file_name: &str) -> Result<REntity, EnumErrors> {
     let file = std::fs::File::open(file_name);
     return match file {
       Ok(_) => {
@@ -171,7 +171,7 @@ impl ResLoader {
   }
   
   /// Internal function to read an *obj* line containing a vertex position (i.e. "v 1.00, 0.00, 1.00").
-  /// Note that due to the tightly packed architecture of the resulting [GlREntity], [GlREntity] can be made of
+  /// Note that due to the tightly packed architecture of the resulting [REntity], [REntity] can be made of
   /// 2D and/or 3D vertices.
   ///
   /// # Arguments
@@ -200,7 +200,7 @@ impl ResLoader {
   /// (i.e. "f v/vt/vn v/vt/vn v/vt/vn") for each index.
   ///
   /// \
-  /// Note that due to the tightly packed architecture of the resulting [GlREntity], this should work for
+  /// Note that due to the tightly packed architecture of the resulting [REntity], this should work for
   /// 2D vertices as well. Conversely it also will work with more than 3D, which is a **bug**, not a
   /// feature, therefore this function takes into account that the line split provided is valid at
   /// all times.
@@ -305,7 +305,7 @@ impl ResLoader {
   ///   **Consumed on use**.
   ///
   /// # Returns:
-  /// - [GlREntity] : A new renderable entity containing all attributes relevant to the GPU.
+  /// - [REntity] : A new renderable entity containing all attributes relevant to the GPU.
   ///
   /// # Examples
   ///
@@ -313,8 +313,8 @@ impl ResLoader {
   ///
   /// ```
   fn reorganize_data(vertices: &Vec<f32>, indices: &Vec<usize>, normals: &Vec<f32>,
-                     texture_coords: &Vec<f32>) -> GlREntity {
-    let mut object: GlREntity = GlREntity::new();
+                     texture_coords: &Vec<f32>) -> REntity {
+    let mut object: REntity = REntity::new();
     
     for index in (0..indices.len()).step_by(3) {
       object.m_vertices.push(vertices[indices[index] * 3]);
@@ -348,7 +348,7 @@ impl ResLoader {
     return object;
   }
   
-  fn load_gltf(_file_name: &str) -> Result<GlREntity, EnumErrors> {
+  fn load_gltf(_file_name: &str) -> Result<REntity, EnumErrors> {
     todo!()
   }
 }

@@ -22,9 +22,9 @@
  SOFTWARE.
 */
 
-use wave_engine::wave::graphics::renderer::GlRenderer;
+use wave_engine::wave::graphics::renderer::init;
 use wave_engine::wave::graphics::shader;
-use wave_engine::wave::graphics::shader::GlShader;
+use wave_engine::wave::graphics::shader::GlslShader;
 use wave_engine::wave::math::Mat4;
 use wave_engine::wave::window;
 use wave_engine::wave::window::GlfwWindow;
@@ -41,12 +41,12 @@ fn test_shader_send() {
   }
   
   // Setup renderer in order to use gl functions.
-  let renderer = GlRenderer::new();
+  let renderer = init();
   assert!(renderer.is_ok());
   
-  let mut result = GlShader::new("res/shaders/default_3D.vert",
+  let mut result = GlslShader::new("res/shaders/default_3D.vert",
     "res/shaders/default_3D.frag");
-  let new_shader: &mut GlShader;
+  let new_shader: &mut GlslShader;
   
   match result {
     Ok(_) => {
@@ -76,10 +76,10 @@ fn test_load_uniforms() {
   }
   
   // Setup renderer in order to use gl functions.
-  let renderer = GlRenderer::new();
+  let renderer = init();
   assert!(renderer.is_ok());
   
-  let mut new_shader = GlShader::new("res/shaders/test_vert.glsl",
+  let mut new_shader = GlslShader::new("res/shaders/test_vert.glsl",
     "res/shaders/test_frag.glsl");
   
   assert!(new_shader.as_ref().is_ok());

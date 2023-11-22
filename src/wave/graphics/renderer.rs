@@ -26,25 +26,27 @@ extern crate ash;
 
 
 use std::fmt::Debug;
-use std::mem::size_of;
 use std::ptr::{null_mut};
 
-use gl::types::GLDEBUGPROC;
 use ash::vk::{self, TaggedStructure};
 use ash::extensions::{ext, khr};
 
-use crate::{check_gl_call, log};
-use crate::wave::assets::renderable_assets::GlREntity;
+use crate::log;
+use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::Engine;
-use crate::wave::graphics::buffer::{EnumAttributeType, GlVertexAttribute};
-use crate::wave::graphics::shader::GlShader;
+use crate::wave::graphics::shader::GlslShader;
 use crate::wave::window::GlfwWindow;
 
 use super::buffer::*;
 
-static mut S_VULKAN: *mut VkApp = null_mut();
+static mut S_VULKAN: Option<VkApp> = None;
 static mut S_STATE: EnumState = EnumState::Ok;
-static S_ERROR_CALLBACK: GLDEBUGPROC = Some(gl_error_callback);
+
+#[cfg(feature = "OpenGL")]
+use crate::wave::graphics::buffer::{EnumAttributeType, GlVertexAttribute};
+
+#[cfg(feature = "OpenGL")]
+static S_ERROR_CALLBACK: gl::types::GLDEBUGPROC = Some(gl_error_callback);
 static mut S_STATS: Stats = Stats {
   m_entities_sent_count: 0,
   m_shader_bound_count: 0,
@@ -165,9 +167,9 @@ pub enum EnumState {
 }
 
 pub trait TraitRenderableEntity {
-  fn send(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
-  fn resend(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
-  fn free(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
+  fn send(&mut self, shader_associated: &mut GlslShader) -> Result<(), EnumErrors>;
+  fn resend(&mut self, shader_associated: &mut GlslShader) -> Result<(), EnumErrors>;
+  fn free(&mut self, shader_associated: &mut GlslShader) -> Result<(), EnumErrors>;
   fn is_sent(&self) -> bool;
 }
 
@@ -207,13 +209,28 @@ struct BatchPrimitives {
 
 trait TraitRenderer {}
 
-pub fn init(api_chosen: EnumApi) -> Result<(), EnumErrors> {
-  return match api_chosen {
-    EnumApi::OpenGL => { GlApp::new() }
-    EnumApi::Vulkan => unsafe {
-      S_VULKAN = &mut VkApp::new()?;
-      Ok(())
+pub fn init() -> Result<(), EnumErrors> {
+  #[cfg(feature = "OpenGL")]
+  {
+    gl::load_with(|f_name| GlfwWindow::get_active_context().expect("Not window context loaded!")
+      .get_proc_address_raw(f_name));
+    
+    let current_window = Engine::get_active_window();
+    if current_window.is_none() {
+      check_gl_call!("Renderer", gl::Viewport(0, 0, 640, 480));
+    } else {
+      check_gl_call!("Renderer", gl::Viewport(0, 0, (*current_window.unwrap()).get_size().x,
+                              (*current_window.unwrap()).get_size().y));
     }
+    check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
+    
+    check_gl_call!("Renderer", gl::FrontFace(gl::CW));
+    return Ok(());
+  }
+  #[cfg(feature = "Vulkan")]
+  {
+    unsafe { S_VULKAN = Some(VkApp::new()?) };
+    return Ok(());
   }
 }
 
@@ -221,16 +238,6 @@ pub fn init(api_chosen: EnumApi) -> Result<(), EnumErrors> {
 pub fn shutdown() -> Result<(), EnumErrors> {
   if unsafe { S_STATE == EnumState::Error } {
     return Err(EnumErrors::NotImplemented);
-  }
-  
-  unsafe {
-    if !(S_VULKAN.is_null()) {
-      (*S_VULKAN).m_surface.destroy_surface((*S_VULKAN).m_surface_khr, None);
-      if let Some((debug, messenger)) = (*S_VULKAN).m_debug_report_callback.take() {
-        debug.destroy_debug_utils_messenger(messenger, None);
-      }
-      (*S_VULKAN).m_instance.destroy_instance(None);
-    }
   }
   
   return Ok(());
@@ -244,85 +251,91 @@ pub fn batch() {}
 
 pub fn flush() {}
 
-pub fn send(sendable_entity: &GlREntity, shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
+pub fn send(sendable_entity: &REntity, _shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
   if sendable_entity.is_empty() {
     log!(EnumLogColor::Yellow, "WARN", "[Renderer] --> Entity {0} sent has no \
       vertices! Not sending it...", sendable_entity)
   }
   
-  let mut offset: usize = 0;
-  
-  // Allocate main dynamic vbo to hold all the data provided.
-  let mut vbo: GlVbo = GlVbo::new(sendable_entity.size(), sendable_entity.count())?;
-  let mut vao: GlVao = GlVao::new()?;
-  
-  // IDs (Vec3).
-  vbo.set_data(sendable_entity.m_entity_id.as_ptr() as *const GLvoid,
-    size_of::<u32>() * sendable_entity.m_entity_id.len(), offset)?;
-  offset += size_of::<u32>() * sendable_entity.m_entity_id.len();
-  
-  // Positions (Vec3s).
-  vbo.set_data(sendable_entity.m_vertices.as_ptr() as *const GLvoid,
-    size_of::<f32>() * sendable_entity.m_vertices.len(), offset)?;
-  offset += size_of::<f32>() * sendable_entity.m_vertices.len();
-  
-  // Normals (Vec3s).
-  vbo.set_data(sendable_entity.m_normals.as_ptr() as *const GLvoid,
-    size_of::<f32>() * sendable_entity.m_normals.len(), offset)?;
-  offset += size_of::<f32>() * sendable_entity.m_normals.len();
-  
-  // Colors (Colors).
-  vbo.set_data(sendable_entity.m_colors.as_ptr() as *const GLvoid,
-    size_of::<f32>() * sendable_entity.m_colors.len(), offset)?;
-  offset += size_of::<f32>() * sendable_entity.m_colors.len();
-  
-  // Texture coordinates (Vec2s).
-  vbo.set_data(sendable_entity.m_texture_coords.as_ptr() as *const GLvoid,
-    size_of::<f32>() * sendable_entity.m_texture_coords.len(), offset)?;
-  
-  offset = 0;
-  
-  // Establish vao attributes.
-  let mut attributes: Vec<GlVertexAttribute> = Vec::with_capacity(5);
-  
-  attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1),
-    false, offset));
-  offset += size_of::<u32>() * sendable_entity.m_entity_id.len();
-  
-  attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
-    false, offset));
-  offset += size_of::<f32>() * sendable_entity.m_vertices.len();
-  
-  attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
-    false, offset));
-  offset += size_of::<f32>() * sendable_entity.m_normals.len();
-  
-  attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec4,
-    false, offset));
-  offset += size_of::<f32>() * sendable_entity.m_colors.len();
-  
-  attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec2,
-    false, offset));
-  
-  // Enable vertex attributes.
-  vao.enable_attributes(attributes)?;
-  
-  unsafe {
-    S_BATCH.m_shaders.push(shader_associated.m_program_id);
-    S_BATCH.m_vao_buffers.push(vao);
-    S_BATCH.m_vbo_buffers.push(vbo);
+  #[cfg(feature = "OpenGL")]
+  {
+    let mut offset: usize = 0;
+    
+    // Allocate main dynamic vbo to hold all the data provided.
+    let mut vbo: GlVbo = GlVbo::new(sendable_entity.size(), sendable_entity.count())?;
+    let mut vao: GlVao = GlVao::new()?;
+    
+    // IDs (Vec3).
+    vbo.set_data(sendable_entity.m_entity_id.as_ptr() as *const GLvoid,
+      std::mem::size_of::<u32>() * sendable_entity.m_entity_id.len(), offset)?;
+    offset += std::mem::size_of::<u32>() * sendable_entity.m_entity_id.len();
+    
+    // Positions (Vec3s).
+    vbo.set_data(sendable_entity.m_vertices.as_ptr() as *const GLvoid,
+      std::mem::size_of::<f32>() * sendable_entity.m_vertices.len(), offset)?;
+    offset += std::mem::size_of::<f32>() * sendable_entity.m_vertices.len();
+    
+    // Normals (Vec3s).
+    vbo.set_data(sendable_entity.m_normals.as_ptr() as *const GLvoid,
+      std::mem::size_of::<f32>() * sendable_entity.m_normals.len(), offset)?;
+    offset += std::mem::size_of::<f32>() * sendable_entity.m_normals.len();
+    
+    // Colors (Colors).
+    vbo.set_data(sendable_entity.m_colors.as_ptr() as *const GLvoid,
+      std::mem::size_of::<f32>() * sendable_entity.m_colors.len(), offset)?;
+    offset += std::mem::size_of::<f32>() * sendable_entity.m_colors.len();
+    
+    // Texture coordinates (Vec2s).
+    vbo.set_data(sendable_entity.m_texture_coords.as_ptr() as *const GLvoid,
+      std::mem::size_of::<f32>() * sendable_entity.m_texture_coords.len(), offset)?;
+    
+    offset = 0;
+    
+    // Establish vao attributes.
+    let mut attributes: Vec<GlVertexAttribute> = Vec::with_capacity(5);
+    
+    attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1),
+      false, offset));
+    offset += std::mem::size_of::<u32>() * sendable_entity.m_entity_id.len();
+    
+    attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
+      false, offset));
+    offset += std::mem::size_of::<f32>() * sendable_entity.m_vertices.len();
+    
+    attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
+      false, offset));
+    offset += std::mem::size_of::<f32>() * sendable_entity.m_normals.len();
+    
+    attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec4,
+      false, offset));
+    offset += std::mem::size_of::<f32>() * sendable_entity.m_colors.len();
+    
+    attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec2,
+      false, offset));
+    
+    // Enable vertex attributes.
+    vao.enable_attributes(attributes)?;
+    
+    unsafe {
+      S_BATCH.m_shaders.push(_shader_associated.m_program_id);
+      S_BATCH.m_vao_buffers.push(vao);
+      S_BATCH.m_vbo_buffers.push(vbo);
+    }
   }
   
   return Ok(());
 }
 
 pub fn draw() -> Result<(), EnumErrors> {
-  for index in 0usize..unsafe { S_BATCH.m_shaders.len() } {
-    check_gl_call!("Renderer", gl::UseProgram(S_BATCH.m_shaders[index]));
-    unsafe { S_BATCH.m_vao_buffers[index].bind()?; }
-    check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0,
+  #[cfg(feature = "OpenGL")]
+  {
+    for index in 0usize..unsafe { S_BATCH.m_shaders.len() } {
+      check_gl_call!("Renderer", gl::UseProgram(S_BATCH.m_shaders[index]));
+      unsafe { S_BATCH.m_vao_buffers[index].bind()?; }
+      check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0,
           S_BATCH.m_vbo_buffers[index].m_count as GLsizei));
-  };
+    };
+  }
   return Ok(());
 }
 
@@ -332,31 +345,52 @@ pub fn free(_entity_sent_id: &u64) -> Result<(), EnumErrors> {
 
 pub fn get_renderer_info() -> String {
   unsafe {
-    let renderer_info = std::ffi::CStr::from_ptr(gl::GetString(gl::RENDERER) as *const i8)
-      .to_str().unwrap_or("Cannot retrieve renderer information!");
-    
-    let str: String = format!("Renderer Hardware => {0}", renderer_info);
-    return str;
+    #[cfg(feature = "OpenGL")]
+    {
+      let renderer_info = std::ffi::CStr::from_ptr(gl::GetString(gl::RENDERER) as *const i8)
+        .to_str().unwrap_or("Cannot retrieve renderer information!");
+      
+      let str: String = format!("Renderer Hardware => {0}", renderer_info);
+      return str;
+    }
+    #[cfg(feature = "Vulkan")]
+    {
+      return "Renderer Hardware => NVIDIA Corporation".to_string();
+    }
   }
 }
 
 pub fn get_api_info() -> String {
   unsafe {
-    let api_vendor = std::ffi::CStr::from_ptr(gl::GetString(gl::VENDOR) as *const i8)
-      .to_str().unwrap_or("Cannot retrieve api vendor information!");
-    let api_version = std::ffi::CStr::from_ptr(gl::GetString(gl::VERSION) as *const i8)
-      .to_str().unwrap_or("Cannot retrieve api version information!");
-    
-    return format!("Renderer SDK => {0}, OpenGL {1}", api_vendor, api_version);
+    #[cfg(feature = "OpenGL")]
+    {
+      let api_vendor = std::ffi::CStr::from_ptr(gl::GetString(gl::VENDOR) as *const i8)
+        .to_str().unwrap_or("Cannot retrieve api vendor information!");
+      let api_version = std::ffi::CStr::from_ptr(gl::GetString(gl::VERSION) as *const i8)
+        .to_str().unwrap_or("Cannot retrieve api version information!");
+      
+      return format!("Renderer SDK => {0}, OpenGL {1}", api_vendor, api_version);
+    }
+    #[cfg(feature = "Vulkan")]
+    {
+      return "Renderer SDK => Vulkan SDK, Api version 1.3".to_string();
+    }
   }
 }
 
 pub fn get_shading_info() -> String {
   unsafe {
-    let shading_info = std::ffi::CStr::from_ptr(gl::GetString(gl::SHADING_LANGUAGE_VERSION) as *const i8)
-      .to_str().unwrap_or("Cannot retrieve shading language information!");
-    
-    return format!("Shading Language (GLSL) => {0}", shading_info);
+    #[cfg(feature = "OpenGL")]
+    {
+      let shading_info = std::ffi::CStr::from_ptr(gl::GetString(gl::SHADING_LANGUAGE_VERSION) as *const i8)
+        .to_str().unwrap_or("Cannot retrieve shading language information!");
+      
+      return format!("Shading Language (GLSL) => {0}", shading_info);
+    }
+    #[cfg(feature = "Vulkan")]
+    {
+      return "Shading Language (GLSL) => 4.60".to_string();
+    }
   }
 }
 
@@ -376,73 +410,115 @@ pub fn toggle_feature(feature: EnumFeature) -> Result<(), EnumErrors> {
       if flag {
         #[cfg(feature = "debug")]
         {
-          check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT));
-          check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
-          check_gl_call!("Renderer", gl::DebugMessageCallback(S_ERROR_CALLBACK, std::ptr::null()));
-          check_gl_call!("Renderer", gl::DebugMessageControl(gl::DONT_CARE, gl::DEBUG_TYPE_OTHER,
+          #[cfg(feature = "OpenGL")]
+          {
+            check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT));
+            check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
+            check_gl_call!("Renderer", gl::DebugMessageCallback(S_ERROR_CALLBACK, std::ptr::null()));
+            check_gl_call!("Renderer", gl::DebugMessageControl(gl::DONT_CARE, gl::DEBUG_TYPE_OTHER,
             gl::DONT_CARE, 0, std::ptr::null(), gl::FALSE));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode enabled")
+            log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode enabled")
+          }
         }
       } else {
-        check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT));
-        check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode disabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT));
+          check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode disabled")
+        }
       }
     }
     EnumFeature::DepthTest(flag) => {
       if flag {
-        check_gl_call!("Renderer", gl::Enable(gl::DEPTH_TEST));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Depth test enabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Enable(gl::DEPTH_TEST));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Depth test enabled")
+        }
       } else {
-        check_gl_call!("Renderer", gl::Disable(gl::DEPTH_TEST));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Depth test disabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Disable(gl::DEPTH_TEST));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Depth test disabled")
+        }
       }
     }
     EnumFeature::MSAA(flag) => {
       if flag {
-        check_gl_call!("Renderer", gl::Enable(gl::MULTISAMPLE));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t MSAA enabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Enable(gl::MULTISAMPLE));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t MSAA enabled")
+        }
       } else {
-        check_gl_call!("Renderer", gl::Disable(gl::MULTISAMPLE));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t MSAA disabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Disable(gl::MULTISAMPLE));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t MSAA disabled")
+        }
       }
     }
     EnumFeature::Blending(flag, s_factor, d_factor) => {
       if flag {
-        check_gl_call!("Renderer", gl::Enable(gl::BLEND));
-        check_gl_call!("Renderer", gl::BlendFunc(s_factor, d_factor));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Blending enabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Enable(gl::BLEND));
+          check_gl_call!("Renderer", gl::BlendFunc(s_factor, d_factor));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Blending enabled")
+        }
       } else {
-        check_gl_call!("Renderer", gl::Disable(gl::BLEND));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Blending disabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Disable(gl::BLEND));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Blending disabled")
+        }
       }
     }
     EnumFeature::Wireframe(flag) => {
       if flag {
-        check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Wireframe mode enabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Wireframe mode enabled")
+        }
       } else {
-        check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Wireframe mode disabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Wireframe mode disabled")
+        }
       }
     }
     EnumFeature::SRGB(flag) => {
       if flag {
-        check_gl_call!("Renderer", gl::Enable(gl::FRAMEBUFFER_SRGB));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t SRGB framebuffer enabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Enable(gl::FRAMEBUFFER_SRGB));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t SRGB framebuffer enabled")
+        }
       } else {
-        check_gl_call!("Renderer", gl::Disable(gl::FRAMEBUFFER_SRGB));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t SRGB framebuffer disabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Disable(gl::FRAMEBUFFER_SRGB));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t SRGB framebuffer disabled")
+        }
       }
     }
     EnumFeature::CullFacing(flag, face) => {
       if flag {
-        check_gl_call!("Renderer", gl::Enable(gl::CULL_FACE));
-        check_gl_call!("Renderer", gl::CullFace(face));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Cull facing enabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Enable(gl::CULL_FACE));
+          check_gl_call!("Renderer", gl::CullFace(face));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Cull facing enabled")
+        }
       } else {
-        check_gl_call!("Renderer", gl::Disable(gl::CULL_FACE));
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Cull facing disabled")
+        #[cfg(feature = "OpenGL")]
+        {
+          check_gl_call!("Renderer", gl::Disable(gl::CULL_FACE));
+          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Cull facing disabled")
+        }
       }
     }
   }
@@ -455,7 +531,9 @@ pub fn toggle_feature(feature: EnumFeature) -> Result<(), EnumErrors> {
 ///////////////////////////////////             ///////////////////////////////////
  */
 
+#[derive(Clone)]
 pub struct VkApp {
+  m_entry: ash::Entry,
   m_instance: ash::Instance,
   m_surface: khr::Surface,
   m_surface_khr: vk::SurfaceKHR,
@@ -471,39 +549,54 @@ impl VkApp {
     
     return match VkApp::create_instance(window_context.as_ref().unwrap()) {
       Ok((entry, vk_instance)) => {
-        // For debug callback function
-        let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
-        debug_create_info.s_type = vk::DebugUtilsMessengerCreateInfoEXT::STRUCTURE_TYPE;
-        debug_create_info.message_severity |= vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
-          vk::DebugUtilsMessageSeverityFlagsEXT::WARNING |
-          vk::DebugUtilsMessageSeverityFlagsEXT::ERROR |
-          vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE;
-        debug_create_info.message_type |= vk::DebugUtilsMessageTypeFlagsEXT::GENERAL |
-          vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION |
-          vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
-        debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
-        debug_create_info.p_user_data = null_mut(); // Optional
-        
-        let debug_utils = ext::DebugUtils::new(&entry, &vk_instance);
-        let debug_messenger = unsafe {
-          debug_utils
-            .create_debug_utils_messenger(&debug_create_info, None)
-            .unwrap()
-        };
-        
         let vk_surface = khr::Surface::new(&entry, &vk_instance);
         let khr_surface = vk::SurfaceKHR::default();
         
-        let mut vulkan_instance = VkApp {
-          m_instance: vk_instance,
-          m_surface: vk_surface,
-          m_surface_khr: khr_surface,
-          m_debug_report_callback: Some((debug_utils, debug_messenger)),
-        };
+        #[cfg(feature = "debug")]
+        {
+          // For debug callback function
+          let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
+          debug_create_info.s_type = vk::DebugUtilsMessengerCreateInfoEXT::STRUCTURE_TYPE;
+          debug_create_info.message_severity |= vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
+            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING |
+            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR |
+            vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE;
+          debug_create_info.message_type |= vk::DebugUtilsMessageTypeFlagsEXT::GENERAL |
+            vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION |
+            vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
+          debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
+          debug_create_info.p_user_data = null_mut(); // Optional
+          
+          let debug_utils = ext::DebugUtils::new(&entry, &vk_instance);
+          let debug_messenger = unsafe {
+            debug_utils
+              .create_debug_utils_messenger(&debug_create_info, None)
+              .unwrap()
+          };
+          
+          let vulkan_instance = VkApp {
+            m_entry: entry,
+            m_instance: vk_instance,
+            m_surface: vk_surface,
+            m_surface_khr: khr_surface,
+            m_debug_report_callback: Some((debug_utils, debug_messenger)),
+          };
+          unsafe { S_VULKAN = Some(vulkan_instance.clone()) };
+          Ok(vulkan_instance)
+        }
         
-        unsafe { S_VULKAN = &mut vulkan_instance };
-        
-        Ok(vulkan_instance)
+        #[cfg(not(feature = "debug"))]
+        {
+          let mut vulkan_instance = VkApp {
+            m_entry: entry,
+            m_instance: vk_instance,
+            m_surface: vk_surface,
+            m_surface_khr: khr_surface,
+            m_debug_report_callback: None,
+          };
+          unsafe { S_VULKAN = Some(vulkan_instance.clone()) };
+          Ok(vulkan_instance)
+        }
       }
       Err(err) => {
         Err(err)
@@ -512,28 +605,30 @@ impl VkApp {
   }
   
   pub fn create_instance(window_context: &glfw::Glfw) -> Result<(ash::Entry, ash::Instance), EnumErrors> {
-    let entry = unsafe {
-      ash::Entry::load().expect("[Renderer] --> Cannot load Vulkan entry!")
-    };
+    let entry = ash::Entry::linked();
     
     let app_name = std::ffi::CString::new("Wave Engine Rust").unwrap();
     let engine_name = std::ffi::CString::new("Wave Engine").unwrap();
     let mut app_info = vk::ApplicationInfo::default();
     app_info.p_application_name = app_name.as_ptr();
-    app_info.s_type = vk::ApplicationInfo::STRUCTURE_TYPE;
     app_info.p_engine_name = engine_name.as_ptr();
     app_info.engine_version = vk::make_api_version(0, 0, 1, 0);
     app_info.api_version = vk::API_VERSION_1_3;
     
     let extensions = VkApp::load_extensions(window_context)?;
+    let c_extensions_ptr = extensions
+      .iter()
+      .map(|c_extension| c_extension.as_ptr())
+      .collect::<Vec<*const std::ffi::c_char>>();
+    
     let layers = VkApp::load_layers(&entry);
     let mut instance_create_info = vk::InstanceCreateInfo::default();
-    instance_create_info.s_type = vk::InstanceCreateInfo::STRUCTURE_TYPE;
     instance_create_info.enabled_layer_count = layers.len() as u32;
     instance_create_info.pp_enabled_layer_names = layers.as_ptr();
-    instance_create_info.enabled_extension_count = extensions.len() as u32;
-    instance_create_info.pp_enabled_extension_names = extensions.as_ptr();
+    instance_create_info.enabled_extension_count = c_extensions_ptr.len() as u32;
+    instance_create_info.pp_enabled_extension_names = c_extensions_ptr.as_ptr();
     instance_create_info.p_application_info = &app_info;
+    
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
       instance_create_info.flags |= vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
@@ -554,22 +649,30 @@ impl VkApp {
   }
   
   /// Load window extensions for the Vulkan surface.
-  pub fn load_extensions(window_context: &glfw::Glfw) -> Result<Vec<*const std::ffi::c_char>, EnumErrors> {
+  pub fn load_extensions(window_context: &glfw::Glfw) -> Result<Vec<std::ffi::CString>, EnumErrors> {
     // Get required extensions.
-    if window_context.get_required_instance_extensions().is_some() {
-      let extensions = unsafe {
-        vec![std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_surface\0").as_ptr(),
-          std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_xcb_surface\0").as_ptr(),
-          std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_EXT_debug_utils\0").as_ptr()]
-      };
+    let window_extensions = window_context.get_required_instance_extensions();
+    if window_extensions.is_some() {
+      let mut c_extensions = window_extensions.unwrap()
+        .iter()
+        .map(|extension| std::ffi::CString::new(extension.as_bytes())
+          .expect("Failed to create C string from extension in load_extensions()"))
+        .collect::<Vec<std::ffi::CString>>();
+      
+      #[cfg(feature = "debug")]
+      {
+        c_extensions.push(std::ffi::CString::new("VK_EXT_debug_utils")
+          .expect("Failed to convert to C string!"));
+      }
       
       #[cfg(any(target_os = "macos", target_os = "ios"))]
       {
-        extension_names.push(KhrPortabilityEnumerationFn::NAME.as_ptr());
+        c_extensions.push(std::ffi::CString::from(vk::KhrPortabilityEnumerationFn::name()));
         // Enabling this extension is a requirement when using `VK_KHR_portability_subset`
-        extension_names.push(KhrGetPhysicalDeviceProperties2Fn::NAME.as_ptr());
+        c_extensions.push(std::ffi::CString::from(vk::KhrGetPhysicalDeviceProperties2Fn::name()));
       }
-      return Ok(extensions);
+      
+      return Ok(c_extensions);
     }
     return Err(EnumErrors::ContextError);
   }
@@ -579,8 +682,7 @@ impl VkApp {
     VkApp::check_validation_layer_support(entry);
     
     let layers = unsafe {
-      vec![std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_profiles\0").as_ptr(),
-        std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0").as_ptr()]
+      vec![std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0").as_ptr()]
     };
     
     return layers;
@@ -611,6 +713,21 @@ impl VkApp {
   }
 }
 
+impl Drop for VkApp {
+  fn drop(&mut self) {
+    unsafe {
+      self.m_surface.destroy_surface(self.m_surface_khr, None);
+      #[cfg(feature = "debug")]
+      {
+        if let Some((debug, messenger)) = self.m_debug_report_callback.take() {
+          debug.destroy_debug_utils_messenger(messenger, None);
+        }
+      }
+      self.m_instance.destroy_instance(None);
+    }
+  }
+}
+
 unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSeverityFlagsEXT,
                                                 type_: vk::DebugUtilsMessageTypeFlagsEXT,
                                                 p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
@@ -634,35 +751,6 @@ unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSever
 ///////////////////////////////////             ///////////////////////////////////
 ///////////////////////////////////             ///////////////////////////////////
  */
-
-pub struct GlApp {}
-
-impl TraitRenderer for GlApp {}
-
-impl GlApp {
-  
-  pub fn new() -> Result<(), EnumErrors> {
-    return match GlfwWindow::get_active_context() {
-      None => { Err(EnumErrors::NoActiveWindow) }
-      Some(context) => {
-        gl::load_with(|f_name| context.get_proc_address_raw(f_name));
-        
-        let current_window = Engine::get_active_window();
-        if current_window.is_none() {
-          check_gl_call!("Renderer", gl::Viewport(0, 0, 640, 480));
-        } else {
-          check_gl_call!("Renderer", gl::Viewport(0, 0, (*current_window.unwrap()).get_size().x,
-                              (*current_window.unwrap()).get_size().y));
-        }
-        check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
-        
-        check_gl_call!("Renderer", gl::FrontFace(gl::CW));
-        Ok(())
-      }
-    };
-  }
-}
-
 extern "system" fn gl_error_callback(error_code: GLenum, e_type: GLenum, _id: GLuint,
                                      severity: GLenum, _length: GLsizei, error_message: *const GLchar,
                                      _user_param: *mut std::ffi::c_void) {

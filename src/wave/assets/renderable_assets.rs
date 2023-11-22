@@ -31,7 +31,7 @@ use crate::wave::graphics::renderer;
 
 use crate::log;
 use crate::wave::graphics::renderer::{EnumErrors, TraitRenderableEntity};
-use crate::wave::graphics::shader::GlShader;
+use crate::wave::graphics::shader::GlslShader;
 use crate::wave::math::{Mat4, Vec3};
 
 /*
@@ -43,7 +43,7 @@ use crate::wave::math::{Mat4, Vec3};
 static mut S_ENTITIES_ID_CACHE: Lazy<HashSet<u32>> = Lazy::new(|| HashSet::new());
 
 #[derive(Debug, Clone)]
-pub struct GlREntity {
+pub struct REntity {
   // Mouse picking ID per vertex.
   pub m_entity_id: Vec<u32>,
   pub m_vertices: Vec<f32>,
@@ -58,9 +58,9 @@ pub struct GlREntity {
   m_sent: bool,
 }
 
-impl GlREntity {
+impl REntity {
   pub fn new() -> Self {
-    return GlREntity {
+    return REntity {
       m_renderer_id: u64::MAX,
       m_entity_id: Vec::new(),
       m_vertices: Vec::new(),
@@ -132,7 +132,7 @@ impl GlREntity {
 
 ///////////////////////////////////   DISPLAY  ///////////////////////////////////
 
-impl Display for GlREntity {
+impl Display for REntity {
   fn fmt(&self, format: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(format, "[REntity] --> \nSent => {0}\nIDs => {1:#?}\nPositions => {2:#?}\n\
      Normals => {3:#?}\nColors => {4:#?}\nTexture coords => {5:#?}", self.m_sent, self.m_entity_id,
@@ -142,7 +142,7 @@ impl Display for GlREntity {
 
 ///////////////////////////////////   EQUALITY  ///////////////////////////////////
 
-impl PartialEq for GlREntity {
+impl PartialEq for REntity {
   fn eq(&self, other: &Self) -> bool {
     return self.m_entity_id == other.m_entity_id;
   }
@@ -152,8 +152,8 @@ impl PartialEq for GlREntity {
   }
 }
 
-impl TraitRenderableEntity for GlREntity {
-  fn send(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
+impl TraitRenderableEntity for REntity {
+  fn send(&mut self, shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
     return match renderer::send(self, shader_associated) {
       Ok(_) => {
         self.m_sent = true;
@@ -167,11 +167,11 @@ impl TraitRenderableEntity for GlREntity {
     };
   }
   
-  fn resend(&mut self, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
+  fn resend(&mut self, _shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
     todo!()
   }
   
-  fn free(&mut self, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
+  fn free(&mut self, _shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
     return match renderer::free(&self.m_renderer_id) {
       Ok(_) => {
         self.m_sent = false;

@@ -23,3 +23,4 @@
 */
 
 pub mod test_shader;
+pub mod test_vulkan;

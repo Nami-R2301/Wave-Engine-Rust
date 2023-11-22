@@ -25,10 +25,10 @@
 use once_cell::sync::Lazy;
 
 use crate::log;
-use crate::wave::assets::renderable_assets::GlREntity;
+use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::camera::PerspectiveCamera;
 use crate::wave::graphics::{renderer, renderer::EnumApi, renderer::TraitRenderableEntity};
-use crate::wave::graphics::shader::GlShader;
+use crate::wave::graphics::shader::{GlslShader};
 use crate::wave::math::Vec3;
 use crate::wave::utils::asset_loader::ResLoader;
 use crate::wave::utils::Time;
@@ -132,7 +132,7 @@ impl Engine {
     if window.is_ok() && window.as_ref().unwrap().m_vulkan_compatible {
       api_chosen = EnumApi::Vulkan;
     }
-    match renderer::init(api_chosen) {
+    match renderer::init() {
       Ok(()) => {
         log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_renderer_info());
         log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_api_info());
@@ -309,6 +309,9 @@ impl Engine {
       frame_counter += 1;
       
       if Time::get_delta(&runtime, &Time::from(chrono::Utc::now())).to_secs() >= 1.0 {
+        #[cfg(feature = "Vulkan")]
+          let title_format: String = format!("Wave Engine (Rust) | Vulkan | {0} FPS", &frame_counter);
+        #[cfg(feature = "OpenGL")]
         let title_format: String = format!("Wave Engine (Rust) | OpenGL | {0} FPS", &frame_counter);
         self.m_window.set_title(&title_format);
         frame_counter = 0;
@@ -326,7 +329,10 @@ impl Engine {
   }
   
   pub fn on_render(&mut self) {
-    unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); }
+    #[cfg(feature = "OpenGL")]
+    {
+      unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); }
+    }
     self.m_app.on_render();
   }
   
@@ -337,8 +343,8 @@ impl Engine {
 
 
 pub struct ExampleApp {
-  m_shaders: Vec<GlShader>,
-  m_renderable_assets: Vec<GlREntity>,
+  m_shaders: Vec<GlslShader>,
+  m_renderable_assets: Vec<REntity>,
 }
 
 impl ExampleApp {
@@ -353,10 +359,10 @@ impl ExampleApp {
 impl TraitApp for ExampleApp {
   fn on_new(&mut self) -> Result<(), EnumErrors> {
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading GLSL shaders...");
-    let result = GlShader::new("res/shaders/test_vert.glsl",
+    let result = GlslShader::new("res/shaders/test_vert.glsl",
       "res/shaders/test_frag.glsl");
     match result {
-      Ok(gl_shader) => { self.m_shaders.push(gl_shader); }
+      Ok(vk_shader) => { self.m_shaders.push(vk_shader); }
       Err(_) => {
         return Err(EnumErrors::ShaderError);
       }
@@ -384,7 +390,7 @@ impl TraitApp for ExampleApp {
     match result {
       Ok(gl_vertices) => {
         log!("INFO", "[ResLoader] -->\t Asset {0} loaded successfully", "awp.obj");
-        self.m_renderable_assets.push(GlREntity::from(gl_vertices));
+        self.m_renderable_assets.push(REntity::from(gl_vertices));
         self.m_renderable_assets[0].translate(Vec3::from(&[10.0, -10.0, 30.0]));
         self.m_renderable_assets[0].rotate(Vec3::from(&[-90.0, 90.0, 0.0]));
         match self.m_shaders[0].upload_uniform("u_model_matrix", self.m_renderable_assets[0].get_matrix()) {
