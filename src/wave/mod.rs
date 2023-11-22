@@ -27,7 +27,7 @@ use once_cell::sync::Lazy;
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::camera::PerspectiveCamera;
-use crate::wave::graphics::{renderer, renderer::EnumApi, renderer::TraitRenderableEntity};
+use crate::wave::graphics::renderer::{self, Renderer, TraitRenderableEntity, TraitRenderer, GlApp, VkApp};
 use crate::wave::graphics::shader::{GlslShader};
 use crate::wave::math::Vec3;
 use crate::wave::utils::asset_loader::ResLoader;
@@ -41,7 +41,12 @@ pub mod utils;
 pub mod assets;
 pub mod camera;
 
-static mut S_ENGINE: *mut Engine = std::ptr::null_mut();
+#[cfg(feature = "Vulkan")]
+static mut S_ENGINE: *mut Engine<VkApp> = std::ptr::null_mut();
+
+#[cfg(feature = "OpenGL")]
+static mut S_ENGINE: *mut Engine<GlApp> = std::ptr::null_mut();
+
 static mut S_ACTIVE_WINDOW: *mut GlfwWindow = std::ptr::null_mut();
 static S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::logger::init().unwrap());
 
@@ -72,15 +77,16 @@ pub trait TraitApp {
   fn on_render(&mut self);
 }
 
-pub struct Engine {
+pub struct Engine<T: TraitRenderer> {
   m_app: Box<dyn TraitApp>,
   m_window: GlfwWindow,
+  m_renderer: Renderer<T>,
   m_time_step: f64,
   m_tick_rate: f64,
   m_state: EnumState,
 }
 
-impl Engine {
+impl<T: TraitRenderer> Engine<T> {
   /// Setup new engine struct containing an app with the [TraitApp] behavior in order to call
   /// `on_new()`, `on_delete()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
   /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
@@ -113,7 +119,7 @@ impl Engine {
   /// engine.on_delete();
   /// return Ok(());
   /// ```
-  pub fn new<T: TraitApp + 'static>(app_provided: Box<T>) -> Result<Engine, EnumErrors> {
+  pub fn new<S: TraitApp + 'static>(app_provided: Box<S>) -> Result<Engine<T>, EnumErrors> {
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
     
     // Setup and launch engine.
@@ -128,27 +134,22 @@ impl Engine {
       }
     }
     
-    let mut api_chosen = EnumApi::OpenGL;
-    if window.is_ok() && window.as_ref().unwrap().m_vulkan_compatible {
-      api_chosen = EnumApi::Vulkan;
-    }
-    match renderer::init() {
-      Ok(()) => {
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_renderer_info());
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_api_info());
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer::get_shading_info());
+    match Renderer::<T>::new() {
+      Ok(mut renderer) => {
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer.m_api_data.get_api_info());
         
-        let _ = renderer::toggle_feature(renderer::EnumFeature::DepthTest(true));
-        let _ = renderer::toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));
-        let _ = renderer::toggle_feature(renderer::EnumFeature::Debug(true));
-        let _ = renderer::toggle_feature(renderer::EnumFeature::Wireframe(true));
-        let _ = renderer::toggle_feature(renderer::EnumFeature::MSAA(true));
+        let _ = renderer.m_api_data.toggle_feature(renderer::EnumFeature::DepthTest(true));
+        let _ = renderer.m_api_data.toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));
+        let _ = renderer.m_api_data.toggle_feature(renderer::EnumFeature::Debug(true));
+        let _ = renderer.m_api_data.toggle_feature(renderer::EnumFeature::Wireframe(true));
+        let _ = renderer.m_api_data.toggle_feature(renderer::EnumFeature::MSAA(true));
         
         Ok({
           log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
           Engine {
             m_app: app_provided,
             m_window: window.unwrap(),
+            m_renderer: renderer,
             m_time_step: 0.0,
             m_tick_rate: 0.0,
             m_state: EnumState::NotStarted,
@@ -197,7 +198,7 @@ impl Engine {
     }
     
     self.m_state = EnumState::ShuttingDown;
-    let result = renderer::shutdown();
+    let result = self.m_renderer.shutdown();
     match result {
       Ok(_) => {}
       Err(err) => {
@@ -211,7 +212,18 @@ impl Engine {
     return Ok(());
   }
   
-  pub fn get() -> Option<*mut Engine> {
+  #[cfg(feature = "Vulkan")]
+  pub fn get() -> Option<*mut Engine<VkApp>> {
+    unsafe {
+      if S_ENGINE == std::ptr::null_mut() {
+        return None;
+      }
+      return Some(S_ENGINE);
+    }
+  }
+  
+  #[cfg(feature = "OpenGL")]
+  pub fn get() -> Option<*mut Engine<GlApp>> {
     unsafe {
       if S_ENGINE == std::ptr::null_mut() {
         return None;
@@ -227,35 +239,6 @@ impl Engine {
       }
       return Some(S_ACTIVE_WINDOW);
     }
-  }
-  
-  pub fn on_new(&mut self) -> Result<(), EnumErrors> {
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
-    self.m_state = EnumState::Starting;
-    unsafe {
-      S_ENGINE = self;
-      S_ACTIVE_WINDOW = &mut self.m_window;
-    }
-    
-    match self.m_app.on_new() {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[App] -->\t Started app unsuccessfully! Error => {:?}",
-  err);
-        match self.on_delete() {
-          Ok(_) => {}
-          Err(err) => {
-            log!("ERROR", "[Renderer] -->\t Error deleting renderer context! Exiting... Error code => \
-              {:?}", err);
-            return Err(EnumErrors::RendererError);
-          }
-        }
-        return Err(err);
-      }
-    }
-    return Ok(());
   }
   
   pub fn on_delete(&mut self) -> Result<(), EnumErrors> {
@@ -312,7 +295,7 @@ impl Engine {
         #[cfg(feature = "Vulkan")]
           let title_format: String = format!("Wave Engine (Rust) | Vulkan | {0} FPS", &frame_counter);
         #[cfg(feature = "OpenGL")]
-        let title_format: String = format!("Wave Engine (Rust) | OpenGL | {0} FPS", &frame_counter);
+          let title_format: String = format!("Wave Engine (Rust) | OpenGL | {0} FPS", &frame_counter);
         self.m_window.set_title(&title_format);
         frame_counter = 0;
         runtime = Time::from(chrono::Utc::now());
@@ -341,6 +324,87 @@ impl Engine {
   }
 }
 
+/*
+///////////////////////////////////   Vulkan    ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+ */
+impl Engine<VkApp> {
+  pub fn on_new(&mut self) -> Result<(), EnumErrors> {
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
+    self.m_state = EnumState::Starting;
+    
+    #[cfg(feature = "Vulkan")]
+    unsafe { S_ENGINE = self; }
+    
+    unsafe { S_ACTIVE_WINDOW = &mut self.m_window; }
+    
+    match self.m_app.on_new() {
+      Ok(_) => {
+        log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
+      }
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[App] -->\t Started app unsuccessfully! Error => {:?}",
+  err);
+        match self.on_delete() {
+          Ok(_) => {}
+          Err(err) => {
+            log!("ERROR", "[Renderer] -->\t Error deleting renderer context! Exiting... Error code => \
+              {:?}", err);
+            return Err(EnumErrors::RendererError);
+          }
+        }
+        return Err(err);
+      }
+    }
+    return Ok(());
+  }
+}
+
+/*
+///////////////////////////////////   OpenGL    ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+ */
+impl Engine<GlApp> {
+  pub fn on_new(&mut self) -> Result<(), EnumErrors> {
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
+    self.m_state = EnumState::Starting;
+    
+    #[cfg(feature = "OpenGL")]
+    unsafe { S_ENGINE = self; }
+    
+    unsafe { S_ACTIVE_WINDOW = &mut self.m_window; }
+    
+    match self.m_app.on_new() {
+      Ok(_) => {
+        log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
+      }
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[App] -->\t Started app unsuccessfully! Error => {:?}",
+  err);
+        match self.on_delete() {
+          Ok(_) => {}
+          Err(err) => {
+            log!("ERROR", "[Renderer] -->\t Error deleting renderer context! Exiting... Error code => \
+              {:?}", err);
+            return Err(EnumErrors::RendererError);
+          }
+        }
+        return Err(err);
+      }
+    }
+    return Ok(());
+  }
+}
+
+
+
+/*
+///////////////////////////////////   App       ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+ */
 
 pub struct ExampleApp {
   m_shaders: Vec<GlslShader>,
@@ -422,8 +486,16 @@ impl TraitApp for ExampleApp {
   fn on_update(&mut self, _time_step: f64) -> () {}
   
   fn on_render(&mut self) -> () {
-    let result = renderer::draw();
-    match result {
+    #[cfg(feature = "Vulkan")]
+      let renderer = Renderer::<VkApp>::get();
+    
+    #[cfg(feature = "OpenGL")]
+      let renderer = Renderer::<GlApp>::get();
+    if renderer.is_null() {
+      return;
+    }
+    let draw_result = unsafe { (*renderer).m_api_data.draw() };
+    match draw_result {
       Ok(_) => {}
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot draw all assets! Error => {0:?}",

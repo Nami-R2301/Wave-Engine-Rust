@@ -449,7 +449,7 @@ pub mod logger {
   /// --> "[INFO]  [2023-07-17 23:26:45] | mod.rs::add()::47 | [Math] --> Addition of 6 AND 8 = 14"
   /// ```
   ///
-  #[cfg(feature = "debug")]
+  #[cfg(all(feature = "debug", feature = "Vulkan"))]
   #[macro_export]
   macro_rules! log {
     () => {
@@ -459,6 +459,7 @@ pub mod logger {
     ($log_type: literal, $($format_and_arguments:tt)*) => {{
       use std::io::Write;
       use crate::wave::Engine;
+      use crate::wave::graphics::renderer;
       use crate::{trace, file_name, function_name};
 
       let current_time = chrono::Local::now();
@@ -467,7 +468,7 @@ pub mod logger {
                                            $log_type, &current_time.to_string()[0..19], trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
-      let mut log_file_ptr = Engine::get_log_file();
+      let mut log_file_ptr = Engine::<renderer::VkApp>::get_log_file();
       writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
       writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).
@@ -477,6 +478,7 @@ pub mod logger {
     ($log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{
       use std::io::Write;
       use crate::wave::Engine;
+      use crate::wave::graphics::renderer;
       use crate::wave::utils;
       use crate::wave::utils::logger::EnumLogColor;
       use crate::{trace, file_name, function_name};
@@ -489,7 +491,57 @@ pub mod logger {
                                           trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
-      let mut log_file_ptr = Engine::get_log_file();
+      let mut log_file_ptr = Engine::<renderer::VkApp>::get_log_file();
+      writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
+                          expect("\x1b[31m[Logger] --> Unable to log statement!");
+      writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).
+                          expect("\x1b[31m[Logger] --> Unable to log statement!");
+    }};
+  }
+  
+  #[cfg(all(feature = "debug", feature = "OpenGL"))]
+  #[macro_export]
+  macro_rules! log {
+    () => {
+      print!("\n");
+    };
+
+    ($log_type: literal, $($format_and_arguments:tt)*) => {{
+      use std::io::Write;
+      use crate::wave::Engine;
+      use crate::wave::graphics::renderer;
+      use crate::{trace, file_name, function_name};
+
+      let current_time = chrono::Local::now();
+
+      let format_string: String = format!("\x1b[0m[{0}]\t[{1:19}] {2:<60}\t",
+                                           $log_type, &current_time.to_string()[0..19], trace!());
+
+      let log_message: String = format!($($format_and_arguments)*);
+      let mut log_file_ptr = Engine::<renderer::GlApp>::get_log_file();
+      writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
+                          expect("\x1b[31m[Logger] --> Unable to log statement!");
+      writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).
+                          expect("\x1b[31m[Logger] --> Unable to log statement!");
+    }};
+
+    ($log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{
+      use std::io::Write;
+      use crate::wave::Engine;
+      use crate::wave::graphics::renderer;
+      use crate::wave::utils;
+      use crate::wave::utils::logger::EnumLogColor;
+      use crate::{trace, file_name, function_name};
+
+      let current_time = chrono::Local::now();
+
+      let log_color: &str = utils::logger::color_to_str($log_color);
+      let format_string: String = format!("{0}[{1}]\t[{2:19}] {3:<60}\t",
+                                          log_color, $log_type, &current_time.to_string()[0..19],
+                                          trace!());
+
+      let log_message: String = format!($($format_and_arguments)*);
+      let mut log_file_ptr = Engine::<renderer::GlApp>::get_log_file();
       writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
       writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).

@@ -23,6 +23,7 @@
 */
 
 use wave::*;
+use crate::wave::graphics::renderer::{GlApp, VkApp};
 
 pub mod wave;
 
@@ -72,7 +73,11 @@ fn main() -> Result<(), EnumErrors> {
   let my_app: Box<ExampleApp> = Box::new(ExampleApp::new());
   
   // Allocated on the stack -- Use new_shared() to allocate on the heap.
-  let mut engine: Engine = Engine::new(my_app)?;
+  #[cfg(feature = "Vulkan")]
+    let mut engine: Engine<VkApp> = Engine::new(my_app)?;
+  
+  #[cfg(feature = "OpenGL")]
+    let mut engine: Engine<GlApp> = Engine::new(my_app)?;
   
   // Run `on_new()` for `my_app` prior to running.
   engine.on_new()?;

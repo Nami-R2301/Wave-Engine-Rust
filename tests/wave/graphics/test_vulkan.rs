@@ -85,7 +85,7 @@ fn test_instance_layers() {
     
     for layer in layers {
       assert!(vec.iter()
-        .any(|property| *property.layer_name.as_ptr() == *layer));
+        .any(|property| *property.layer_name.as_ptr() == *layer.as_ptr()));
     }
   }
 }
@@ -117,10 +117,14 @@ fn test_instance_creation() {
       .collect::<Vec<*const std::ffi::c_char>>();
     
     let layers = VkApp::load_layers(&entry);
+    let c_layers_ptr = layers
+      .iter()
+      .map(|c_layer| c_layer.as_ptr())
+      .collect::<Vec<*const std::ffi::c_char>>();
     
     let mut instance_create_info = vk::InstanceCreateInfo::default();
-    instance_create_info.enabled_layer_count = layers.len() as u32;
-    instance_create_info.pp_enabled_layer_names = layers.as_ptr();
+    instance_create_info.enabled_layer_count = c_layers_ptr.len() as u32;
+    instance_create_info.pp_enabled_layer_names = c_layers_ptr.as_ptr();
     instance_create_info.enabled_extension_count = c_extensions_ptr.len() as u32;
     instance_create_info.pp_enabled_extension_names = c_extensions_ptr.as_ptr();
     instance_create_info.p_application_info = &app_info;
@@ -136,10 +140,14 @@ fn test_instance_creation() {
         std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_xcb_surface\0").as_ptr()];
     
     let layers = VkApp::load_layers(&entry);
+    let c_layers_ptr = layers
+      .iter()
+      .map(|c_layer| c_layer.as_ptr())
+      .collect::<Vec<*const std::ffi::c_char>>();
     
     let mut instance_create_info = vk::InstanceCreateInfo::default();
-    instance_create_info.enabled_layer_count = layers.len() as u32;
-    instance_create_info.pp_enabled_layer_names = layers.as_ptr();
+    instance_create_info.enabled_layer_count = c_layers_ptr.len() as u32;
+    instance_create_info.pp_enabled_layer_names = c_layers_ptr.as_ptr();
     instance_create_info.enabled_extension_count = extensions_raw.len() as u32;
     instance_create_info.pp_enabled_extension_names = extensions_raw.as_ptr();
     instance_create_info.p_application_info = &app_info;
@@ -162,10 +170,14 @@ fn test_instance_creation() {
       .collect::<Vec<*const std::ffi::c_char>>();
     
     let layers = VkApp::load_layers(&entry);
+    let c_layers_ptr = layers
+      .iter()
+      .map(|c_layer| c_layer.as_ptr())
+      .collect::<Vec<*const std::ffi::c_char>>();
     
     let mut instance_create_info = vk::InstanceCreateInfo::default();
-    instance_create_info.enabled_layer_count = layers.len() as u32;
-    instance_create_info.pp_enabled_layer_names = layers.as_ptr();
+    instance_create_info.enabled_layer_count = c_layers_ptr.len() as u32;
+    instance_create_info.pp_enabled_layer_names = c_layers_ptr.as_ptr();
     instance_create_info.enabled_extension_count = c_extensions_ptr.len() as u32;
     instance_create_info.pp_enabled_extension_names = c_extensions_ptr.as_ptr();
     instance_create_info.p_application_info = &app_info;

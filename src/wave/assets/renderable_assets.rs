@@ -27,10 +27,9 @@ use std::fmt::{Debug, Display};
 use std::mem::size_of;
 
 use once_cell::sync::Lazy;
-use crate::wave::graphics::renderer;
 
 use crate::log;
-use crate::wave::graphics::renderer::{EnumErrors, TraitRenderableEntity};
+use crate::wave::graphics::renderer::{EnumErrors, Renderer, TraitRenderableEntity, TraitRenderer, GlApp, VkApp};
 use crate::wave::graphics::shader::GlslShader;
 use crate::wave::math::{Mat4, Vec3};
 
@@ -154,7 +153,16 @@ impl PartialEq for REntity {
 
 impl TraitRenderableEntity for REntity {
   fn send(&mut self, shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
-    return match renderer::send(self, shader_associated) {
+    #[cfg(feature = "Vulkan")]
+      let renderer = Renderer::<VkApp>::get();
+    
+    #[cfg(feature = "OpenGL")]
+      let renderer = Renderer::<GlApp>::get();
+    
+    if renderer.is_null() {
+      return Err(EnumErrors::NoApi);
+    }
+    return match unsafe { (*renderer).m_api_data.send(self, shader_associated) } {
       Ok(_) => {
         self.m_sent = true;
         Ok(())
@@ -172,7 +180,15 @@ impl TraitRenderableEntity for REntity {
   }
   
   fn free(&mut self, _shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
-    return match renderer::free(&self.m_renderer_id) {
+    #[cfg(feature = "Vulkan")]
+      let renderer = Renderer::<VkApp>::get();
+    
+    #[cfg(feature = "OpenGL")]
+      let renderer = Renderer::<GlApp>::get();
+    if renderer.is_null() {
+      return Err(EnumErrors::NoApi);
+    }
+    return match unsafe { (*renderer).m_api_data.free(&self.m_renderer_id) } {
       Ok(_) => {
         self.m_sent = false;
         Ok(())

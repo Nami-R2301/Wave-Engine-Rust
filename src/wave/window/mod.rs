@@ -77,10 +77,14 @@ impl GlfwWindow {
       context_ref.window_hint(glfw::WindowHint::Samples(Some(8)));
       context_ref.window_hint(glfw::WindowHint::RefreshRate(None));
       
-      #[cfg(feature = "debug")]
-      if !context_ref.vulkan_supported() {
+      // #[cfg(feature = "Vulkan")]
+      // {
+      //   context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
+      // }
+      
+      #[cfg(all(feature = "OpenGL", feature = "debug"))]
+      {
         context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
-        context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
       }
       
       // Create a windowed mode window and its OpenGL context
