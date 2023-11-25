@@ -22,9 +22,13 @@
  SOFTWARE.
 */
 
-use crate::{check_gl_call, log};
+#[cfg(feature = "OpenGL")]
+use crate::{check_gl_call};
 use crate::wave::graphics::buffer::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLuint};
+#[cfg(feature = "OpenGL")]
 use crate::wave::math::Mat4;
+
+use crate::log;
 
 #[derive(Debug, PartialEq)]
 pub enum EnumErrors {
@@ -40,7 +44,7 @@ pub enum EnumErrors {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct GlslShader {
+pub struct GlShader {
   pub m_program_id: GLuint,
   pub m_vertex_str: String,
   // For debug purposes.
@@ -49,7 +53,7 @@ pub struct GlslShader {
   m_uniform_cache: std::collections::HashMap<&'static str, GLint>,
 }
 
-impl GlslShader {
+impl GlShader {
   pub fn new(vertex_file_path: &'static str, fragment_file_path: &'static str) -> Result<Self, EnumErrors> {
     let vertex_file_str = std::fs::read_to_string(vertex_file_path);
     let fragment_file_str = std::fs::read_to_string(fragment_file_path);
@@ -58,7 +62,7 @@ impl GlslShader {
       return Err(EnumErrors::InvalidShaderFile);
     }
     
-    return Ok(GlslShader {
+    return Ok(GlShader {
       m_program_id: 0,
       m_vertex_str: vertex_file_str.unwrap_or("Empty".to_string()),
       m_fragment_str: fragment_file_str.unwrap_or("Empty".to_string()),
@@ -254,7 +258,7 @@ impl GlslShader {
 }
 
 // Free from the GPU when we are done with the shader program.
-impl Drop for GlslShader {
+impl Drop for GlShader {
   fn drop(&mut self) {
     #[cfg(feature = "OpenGL")]
     {

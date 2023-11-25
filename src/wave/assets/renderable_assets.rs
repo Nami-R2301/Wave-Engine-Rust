@@ -29,8 +29,14 @@ use std::mem::size_of;
 use once_cell::sync::Lazy;
 
 use crate::log;
-use crate::wave::graphics::renderer::{EnumErrors, Renderer, TraitRenderableEntity, TraitRenderer, GlApp, VkApp};
-use crate::wave::graphics::shader::GlslShader;
+use crate::wave::Engine;
+use crate::wave::graphics::renderer::{EnumErrors, TraitRenderableEntity, TraitRenderer};
+#[cfg(feature = "OpenGL")]
+use crate::wave::graphics::renderer::{GlApp};
+
+#[cfg(feature = "Vulkan")]
+use crate::wave::graphics::renderer::{VkApp};
+use crate::wave::graphics::shader::GlShader;
 use crate::wave::math::{Mat4, Vec3};
 
 /*
@@ -152,17 +158,17 @@ impl PartialEq for REntity {
 }
 
 impl TraitRenderableEntity for REntity {
-  fn send(&mut self, shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
+  fn send(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
     #[cfg(feature = "Vulkan")]
-      let renderer = Renderer::<VkApp>::get();
+      let engine = Engine::<VkApp>::get();
     
     #[cfg(feature = "OpenGL")]
-      let renderer = Renderer::<GlApp>::get();
+      let engine = Engine::<GlApp>::get();
     
-    if renderer.is_null() {
+    if engine.is_none() {
       return Err(EnumErrors::NoApi);
     }
-    return match unsafe { (*renderer).m_api_data.send(self, shader_associated) } {
+    return match unsafe { (*engine.unwrap()).m_renderer.m_api_data.send(self, shader_associated) } {
       Ok(_) => {
         self.m_sent = true;
         Ok(())
@@ -175,20 +181,20 @@ impl TraitRenderableEntity for REntity {
     };
   }
   
-  fn resend(&mut self, _shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
+  fn resend(&mut self, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
     todo!()
   }
   
-  fn free(&mut self, _shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
+  fn free(&mut self, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
     #[cfg(feature = "Vulkan")]
-      let renderer = Renderer::<VkApp>::get();
+      let engine = Engine::<VkApp>::get();
     
     #[cfg(feature = "OpenGL")]
-      let renderer = Renderer::<GlApp>::get();
-    if renderer.is_null() {
+      let engine = Engine::<GlApp>::get();
+    if engine.is_none() {
       return Err(EnumErrors::NoApi);
     }
-    return match unsafe { (*renderer).m_api_data.free(&self.m_renderer_id) } {
+    return match unsafe { (*engine.unwrap()).m_renderer.m_api_data.free(&self.m_renderer_id) } {
       Ok(_) => {
         self.m_sent = false;
         Ok(())

@@ -23,7 +23,11 @@
 */
 
 use wave::*;
-use crate::wave::graphics::renderer::{GlApp, VkApp};
+#[cfg(feature = "OpenGL")]
+use crate::wave::graphics::renderer::{GlApp};
+
+#[cfg(feature = "Vulkan")]
+use crate::wave::graphics::renderer::{VkApp};
 
 pub mod wave;
 

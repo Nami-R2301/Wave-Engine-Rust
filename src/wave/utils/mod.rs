@@ -412,7 +412,7 @@ pub mod logger {
   /// Macros for displaying string formatted messages (**message_format**) in a given file stream
   /// (**log_output**).
   ///
-  /// ## Parameters
+  /// ### Arguments:
   /// - *log_output*: File  --> Output stream for the log message.
   /// - *log_color*: utils:logger::EnumLogColor  --> Output color shown in terminal for the whole message.
   /// - *log_type*: &str  --> Alert type of the message, changing this will change the prefix of the log message.
@@ -426,10 +426,10 @@ pub mod logger {
   /// ```
   /// \
   /// \
-  /// **Returns** : `Nothing`
+  /// ### Returns: Nothing
   /// \
   /// \
-  /// **Example** :
+  /// ### Example:
   ///
   /// wave_engine/wave/math/mod.rs :
   ///
@@ -449,7 +449,7 @@ pub mod logger {
   /// --> "[INFO]  [2023-07-17 23:26:45] | mod.rs::add()::47 | [Math] --> Addition of 6 AND 8 = 14"
   /// ```
   ///
-  #[cfg(all(feature = "debug", feature = "Vulkan"))]
+  #[cfg(feature = "debug")]
   #[macro_export]
   macro_rules! log {
     () => {
@@ -459,8 +459,13 @@ pub mod logger {
     ($log_type: literal, $($format_and_arguments:tt)*) => {{
       use std::io::Write;
       use crate::wave::Engine;
-      use crate::wave::graphics::renderer;
       use crate::{trace, file_name, function_name};
+      
+      #[cfg(feature = "OpenGL")]
+      use crate::wave::graphics::renderer::{GlApp};
+      
+      #[cfg(feature = "Vulkan")]
+      use crate::wave::graphics::renderer::{VkApp};
 
       let current_time = chrono::Local::now();
 
@@ -468,7 +473,12 @@ pub mod logger {
                                            $log_type, &current_time.to_string()[0..19], trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
-      let mut log_file_ptr = Engine::<renderer::VkApp>::get_log_file();
+      #[cfg(feature = "OpenGL")]
+      let mut log_file_ptr = Engine::<GlApp>::get_log_file();
+      
+      #[cfg(feature = "Vulkan")]
+      let mut log_file_ptr = Engine::<VkApp>::get_log_file();
+      
       writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
       writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).
@@ -492,56 +502,6 @@ pub mod logger {
 
       let log_message: String = format!($($format_and_arguments)*);
       let mut log_file_ptr = Engine::<renderer::VkApp>::get_log_file();
-      writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
-                          expect("\x1b[31m[Logger] --> Unable to log statement!");
-      writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).
-                          expect("\x1b[31m[Logger] --> Unable to log statement!");
-    }};
-  }
-  
-  #[cfg(all(feature = "debug", feature = "OpenGL"))]
-  #[macro_export]
-  macro_rules! log {
-    () => {
-      print!("\n");
-    };
-
-    ($log_type: literal, $($format_and_arguments:tt)*) => {{
-      use std::io::Write;
-      use crate::wave::Engine;
-      use crate::wave::graphics::renderer;
-      use crate::{trace, file_name, function_name};
-
-      let current_time = chrono::Local::now();
-
-      let format_string: String = format!("\x1b[0m[{0}]\t[{1:19}] {2:<60}\t",
-                                           $log_type, &current_time.to_string()[0..19], trace!());
-
-      let log_message: String = format!($($format_and_arguments)*);
-      let mut log_file_ptr = Engine::<renderer::GlApp>::get_log_file();
-      writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
-                          expect("\x1b[31m[Logger] --> Unable to log statement!");
-      writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).
-                          expect("\x1b[31m[Logger] --> Unable to log statement!");
-    }};
-
-    ($log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{
-      use std::io::Write;
-      use crate::wave::Engine;
-      use crate::wave::graphics::renderer;
-      use crate::wave::utils;
-      use crate::wave::utils::logger::EnumLogColor;
-      use crate::{trace, file_name, function_name};
-
-      let current_time = chrono::Local::now();
-
-      let log_color: &str = utils::logger::color_to_str($log_color);
-      let format_string: String = format!("{0}[{1}]\t[{2:19}] {3:<60}\t",
-                                          log_color, $log_type, &current_time.to_string()[0..19],
-                                          trace!());
-
-      let log_message: String = format!($($format_and_arguments)*);
-      let mut log_file_ptr = Engine::<renderer::GlApp>::get_log_file();
       writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
       writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).

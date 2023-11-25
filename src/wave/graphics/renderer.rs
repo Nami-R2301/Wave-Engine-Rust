@@ -30,23 +30,16 @@ use std::ptr::{null_mut};
 
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
-use crate::wave::Engine;
-use crate::wave::graphics::shader::GlslShader;
-use crate::wave::window::GlfwWindow;
+use crate::wave::graphics::shader::GlShader;
 
 use super::buffer::*;
 
 use ash::vk::{self, TaggedStructure};
 use ash::extensions::{ext, khr};
+use crate::wave::window::GlfwWindow;
 
 #[cfg(feature = "OpenGL")]
 use crate::wave::graphics::buffer::{EnumAttributeType, GlVertexAttribute};
-
-#[cfg(feature = "Vulkan")]
-static mut S_RENDERER: *mut Renderer<VkApp> = null_mut();
-
-#[cfg(feature = "OpenGL")]
-static mut S_RENDERER: *mut Renderer<GlApp> = null_mut();
 
 #[macro_export]
 macro_rules! check_gl_call {
@@ -133,16 +126,18 @@ pub enum EnumErrors {
   WrongOffset,
   WrongSize,
   NoAttributes,
-  NoActiveWindow,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumVulkanErrors {
   NotSupported,
   EntryError,
+  LayerError,
+  ExtensionError,
   InstanceError,
   DebugError,
-  DeviceError,
+  PhysicalDeviceError,
+  SurfaceError,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -154,9 +149,9 @@ pub enum EnumState {
 }
 
 pub trait TraitRenderableEntity {
-  fn send(&mut self, shader_associated: &mut GlslShader) -> Result<(), EnumErrors>;
-  fn resend(&mut self, shader_associated: &mut GlslShader) -> Result<(), EnumErrors>;
-  fn free(&mut self, shader_associated: &mut GlslShader) -> Result<(), EnumErrors>;
+  fn send(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
+  fn resend(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
+  fn free(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
   fn is_sent(&self) -> bool;
 }
 
@@ -205,14 +200,14 @@ impl BatchPrimitives {
 }
 
 pub trait TraitRenderer {
-  fn new() -> Result<Self, EnumErrors> where Self: Sized;
+  fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> where Self: Sized;
   fn get_api_info(&self) -> String;
   fn toggle_feature(&mut self, feature: EnumFeature) -> Result<(), EnumErrors>;
   fn begin(&mut self);
   fn end(&mut self);
   fn batch(&mut self);
   fn flush(&mut self);
-  fn send(&mut self, sendable_entity: &REntity, shader_associated: &mut GlslShader) -> Result<(), EnumErrors>;
+  fn send(&mut self, sendable_entity: &REntity, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
   fn draw(&mut self) -> Result<(), EnumErrors>;
   fn free(&mut self, id: &u64) -> Result<(), EnumErrors>;
 }
@@ -230,8 +225,8 @@ pub struct Renderer<T: TraitRenderer> {
  */
 
 impl<T: TraitRenderer> Renderer<T> {
-  pub fn new() -> Result<Self, EnumErrors> {
-    let api = T::new()?;
+  pub fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
+    let api = T::new(window)?;
     
     return Ok(Renderer {
       m_state: EnumState::Ok,
@@ -247,16 +242,6 @@ impl<T: TraitRenderer> Renderer<T> {
     self.m_state = EnumState::Shutdown;
     return Ok(());
   }
-  
-  #[cfg(feature = "Vulkan")]
-  pub fn get() -> *mut Renderer<VkApp> {
-    return unsafe { S_RENDERER };
-  }
-  
-  #[cfg(feature = "OpenGL")]
-  pub fn get() -> *mut Renderer<GlApp> {
-    return unsafe { S_RENDERER };
-  }
 }
 
 pub struct VkApp {
@@ -268,25 +253,24 @@ pub struct VkApp {
 }
 
 impl VkApp {
-  pub fn new() -> Result<Self, EnumErrors> {
-    let window_context = GlfwWindow::get_active_context();
-    if window_context.is_none() {
-      return Err(EnumErrors::NoActiveWindow);
-    }
-    
-    return match VkApp::create_instance(window_context.as_ref().unwrap()) {
+  pub fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
+    return match VkApp::create_instance(window.get_api_ptr()) {
       Ok((vk_entry, vk_instance)) => {
-        let vk_surface = khr::Surface::new(&vk_entry, &vk_instance);
-        let khr_surface = vk::SurfaceKHR::default();
-        
         let mut debug_callback = None;
         
         #[cfg(feature = "debug")]
         {
+          // Set debugging.
           let (debug_utils, debug_messenger) =
             VkApp::set_debug(&vk_entry, &vk_instance)?;
           debug_callback = Some((debug_utils, debug_messenger));
         }
+        
+        // Create surface (graphic context).
+        let vk_surface = khr::Surface::new(&vk_entry, &vk_instance);
+        let mut khr_surface = vk::SurfaceKHR::default();
+        
+        window.init_vulkan_surface(&vk_instance, &mut khr_surface);
         
         let vulkan_instance = VkApp {
           m_entry: vk_entry,
@@ -319,13 +303,17 @@ impl VkApp {
     let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
     
     // Validate API calls and log output.
-    let layers = VkApp::load_layers(&entry);
+    let layers = VkApp::load_layers(None)?;
+    VkApp::check_layer_support(&entry, &layers)?;
+    
     let c_layers_ptr = layers
       .iter()
       .map(|c_layer| c_layer.as_ptr())
       .collect::<Vec<*const std::ffi::c_char>>();
     
-    let extensions = VkApp::load_extensions(window_context)?;
+    let extensions = VkApp::load_extensions(window_context, None)?;
+    VkApp::check_extension_support(&entry, &extensions)?;
+    
     let c_extensions_ptr = extensions
       .iter()
       .map(|c_extension| c_extension.as_ptr())
@@ -371,7 +359,19 @@ impl VkApp {
   }
   
   /// Load window extensions for the Vulkan surface.
-  pub fn load_extensions(window_context: &glfw::Glfw) -> Result<Vec<std::ffi::CString>, EnumErrors> {
+  ///
+  /// ### Arguments:
+  ///   * `window_context`: A reference to an existing Glfw context.
+  ///   * `additional_extensions`: Optional vector of strings specifying
+  /// the additional instance extension names requested to load in when creating the Vulkan instance.
+  ///
+  /// ### Returns:
+  ///   * `Result<Vec<std::ffi::CString>, EnumErrors>`:
+  /// A list of nul-terminated strings of extension names to enable during instance creation if
+  /// successful, otherwise an [EnumErrors] on any error encountered.
+  ///
+  pub fn load_extensions(window_context: &glfw::Glfw, additional_extensions: Option<Vec<&str>>) -> Result<Vec<std::ffi::CString>, EnumErrors> {
+    
     // Get required extensions.
     let window_extensions = window_context.get_required_instance_extensions();
     if window_extensions.is_some() {
@@ -393,32 +393,124 @@ impl VkApp {
         c_extensions.push(std::ffi::CString::from(vk::KhrGetPhysicalDeviceProperties2Fn::name()));
       }
       
+      // Get additional extensions requested.
+      if additional_extensions.is_none() {
+        return Ok(c_extensions);
+      }
+      
+      for extension_name in additional_extensions.unwrap() {
+        c_extensions.push(std::ffi::CString::new(extension_name)
+          .expect("Failed to create C string from extension in load_extensions()"));
+      }
+      
       return Ok(c_extensions);
     }
     return Err(EnumErrors::ContextError);
   }
   
   /// Load validation layers for the Vulkan instance.
-  pub fn load_layers(entry: &ash::Entry) -> Vec<std::ffi::CString> {
-    let layers = vec![std::ffi::CString::new("VK_LAYER_KHRONOS_validation")
+  ///
+  /// ### Arguments:
+  ///   * `requested_additional_extensions`: Optional vector of strings specifying
+  /// the additional instance extensions requested to load in when creating the Vulkan instance.
+  ///
+  /// ### Returns:
+  ///   * `Result<Vec<std::ffi::CString>, EnumErrors>`:
+  /// A list of nul-terminated strings of layer names to enable during instance creation if
+  /// successful, otherwise an [EnumErrors] on any error encountered.
+  ///
+  pub fn load_layers(additional_layers: Option<Vec<&str>>) -> Result<Vec<std::ffi::CString>, EnumErrors> {
+    // Get required layers.
+    let mut c_layers = vec![std::ffi::CString::new("VK_LAYER_KHRONOS_validation")
       .expect("Failed to create C string in load_layers()")];
     
-    // VkApp::check_validation_layer_support(entry);
+    // Get additional layers.
+    if additional_layers.is_none() {
+      return Ok(c_layers);
+    }
+    for layer in additional_layers.unwrap() {
+      c_layers.push(std::ffi::CString::new(layer)
+        .expect("Failed to create C string from extension in load_layers()"))
+    }
     
-    return layers;
+    return Ok(c_layers);
   }
   
-  /// Check if the required validation set in `REQUIRED_LAYERS`
-  /// are supported by the Vulkan instance.
+  /// Check if the requested Vulkan instance extensions are supported.
   ///
-  /// # Panics
+  /// ### Arguments:
+  ///   * `entry`: A reference to an existing Vulkan entry.
+  ///   * `extension_names`: Vector of C strings specifying the Vulkan instance extension names requested to
+  /// load in when creating the Vulkan instance.
   ///
-  /// Panic if at least one on the layer is not supported.
-  fn check_validation_layer_support(_entry: &ash::Entry) {
-    todo!()
+  /// ### Returns:
+  ///   * `Result<(), EnumErrors>`: Nothing if successful,
+  /// otherwise an [EnumErrors::VulkanError(EnumVulkanErrors::NotSupported)] if any of the supplied extension names is not supported.
+  ///
+  pub fn check_extension_support(entry: &ash::Entry, extension_names: &Vec<std::ffi::CString>) -> Result<(), EnumErrors> {
+    if entry.enumerate_instance_extension_properties(None).is_err() {
+      return Err(EnumErrors::VulkanError(EnumVulkanErrors::ExtensionError));
+    }
+    
+    let all_extensions = entry.enumerate_instance_extension_properties(None).unwrap();
+    let mut all_extensions_iter = all_extensions.iter();
+    
+    // Verify extension support.
+    for extension_name in extension_names {
+      if !all_extensions_iter.any(|extension| {
+        unsafe { return *extension.extension_name.as_ptr() == *extension_name.as_ptr(); };
+      }) {
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Vulkan extension {:#?} not supported!",
+          extension_name.to_str().expect("Failed to convert C String to &str in check_extension_support()"));
+        return Err(EnumErrors::VulkanError(EnumVulkanErrors::ExtensionError));
+      }
+    }
+    return Ok(());
+  }
+  
+  /// Check if the required Vulkan layers are supported by the Vulkan instance.
+  ///
+  /// ### Arguments:
+  ///   * `entry`: A reference to an existing Vulkan entry.
+  ///   * `layer_names`: Vector of strings specifying the Vulkan instance layer names requested to
+  /// load in when creating the Vulkan instance.
+  ///
+  /// ### Returns:
+  ///   * `Result<(), EnumErrors>`: Nothing if successful,
+  /// otherwise an [EnumErrors::VulkanError(EnumVulkanErrors::NotSupported)] if any of the supplied layer names is not supported.
+  ///
+  pub fn check_layer_support(entry: &ash::Entry, layer_names: &Vec<std::ffi::CString>) -> Result<(), EnumErrors> {
+    if entry.enumerate_instance_extension_properties(None).is_err() {
+      return Err(EnumErrors::VulkanError(EnumVulkanErrors::ExtensionError));
+    }
+    
+    let all_layers = entry.enumerate_instance_layer_properties().unwrap();
+    let mut all_layers_iter = all_layers.iter();
+    
+    // Verify extension support.
+    for layer_name in layer_names {
+      if !all_layers_iter.any(|layer| {
+        unsafe { return *layer.layer_name.as_ptr() == *layer_name.as_ptr(); };
+      }) {
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Vulkan layer {:#?} not supported!",
+          layer_name.to_str().expect("Failed to convert C String to &str in check_layer_support()"));
+        return Err(EnumErrors::VulkanError(EnumVulkanErrors::ExtensionError));
+      }
+    }
+    return Ok(());
   }
   
   /// Setup debug logging for API calls that redirect to custom debug callback.
+  ///
+  /// ### Arguments:
+  ///   * `entry`: A reference to an existing Vulkan entry.
+  ///   * `instance`: A reference to an existing Vulkan instance that is **yet to be created**.
+  ///
+  /// ### Returns:
+  ///   * `Result<(ext::DebugUtils, vk::DebugUtilsMessengerEXT), EnumErrors>`:
+  /// A tuple containing the created debug messenger and debug extension if
+  /// successful, otherwise an [EnumErrors] on any error encountered.
+  ///
   fn set_debug(entry: &ash::Entry, instance: &ash::Instance) -> Result<(ext::DebugUtils,
                                                                         vk::DebugUtilsMessengerEXT), EnumErrors> {
     // For debug callback function
@@ -446,8 +538,47 @@ impl VkApp {
     };
   }
   
-  fn pick_physical_device() {
-    todo!()
+  /// Pick the first suitable Vulkan physical device.
+  ///
+  /// ### Arguments:
+  ///   * `instance`: A reference to an existing Vulkan instance that is **yet to be created**.
+  ///   * `window`: A reference to a [Glfw] window context.
+  ///
+  /// ### Returns:
+  ///   * `Result<vk::PhysicalDevice, EnumErrors>`: A suitable Vulkan physical device if successful
+  /// , otherwise an [EnumErrors].
+  ///
+  fn pick_physical_device(instance: &ash::Instance, window: &glfw::Glfw) -> Result<vk::PhysicalDevice, EnumErrors> {
+    let devices = unsafe { instance.enumerate_physical_devices() };
+    if devices.is_err() {
+      log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error getting physical devices! \
+        Error => {:#?}", devices.unwrap());
+      return Err(EnumErrors::VulkanError(EnumVulkanErrors::PhysicalDeviceError));
+    }
+    
+    // Check if we have found at least one.
+    if devices.as_ref().unwrap().len() == 0 {
+      log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Not Vulkan physical devices found!");
+      return Err(EnumErrors::VulkanError(EnumVulkanErrors::PhysicalDeviceError));
+    }
+    
+    let device = devices.unwrap()
+      .into_iter()
+      .find(|&device| window.get_physical_device_presentation_support_raw(instance.handle(),
+        device, 0));
+    
+    // Check if device is suitable.
+    if device.is_none() {
+      log!(EnumLogColor::Red, "ERROR",
+        "[Renderer] -->\t Vulkan Physical device does not support graphics for queue family 0!");
+      return Err(EnumErrors::VulkanError(EnumVulkanErrors::PhysicalDeviceError));
+    }
+    
+    return Ok(device.unwrap());
+  }
+  
+  fn is_device_suitable() -> bool {
+    return true;
   }
 }
 
@@ -467,22 +598,20 @@ impl Drop for VkApp {
 }
 
 impl TraitRenderer for VkApp {
-  fn new() -> Result<Self, EnumErrors> {
-    let mut static_renderer = Renderer {
+  fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
+    let static_renderer = Renderer {
       m_state: EnumState::Ok,
       m_stats: Stats::new(),
-      m_api_data: VkApp::new()?,
+      m_api_data: VkApp::new(window)?,
     };
-    
-    #[cfg(feature = "Vulkan")]
-    unsafe { S_RENDERER = &mut static_renderer };
     
     return Ok(static_renderer.m_api_data);
   }
   
   fn get_api_info(&self) -> String {
-    let str = format!("Renderer Hardware => RTX 3060TI, Vendor => NVIDIA, Version => 1.3,\
-     Shading Language => GLSL 4.60");
+    let str: String = format!("Renderer Hardware => RTX 3060 TI,\n{0:<113}\
+    Vendor => NVIDIA Corporation,\n{1:<113}Version => 1.3,\n{2:<113}Shading Language => GLSL 4.60",
+      "", "", "");
     return str;
   }
   
@@ -506,7 +635,7 @@ impl TraitRenderer for VkApp {
     todo!()
   }
   
-  fn send(&mut self, _sendable_entity: &REntity, _shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
+  fn send(&mut self, _sendable_entity: &REntity, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
     return Ok(());
   }
   
@@ -527,8 +656,8 @@ unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSever
   
   let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
   match flag {
-    Flag::VERBOSE => log!("VERB", "{:?} -->\t {:#?}", type_, message),
-    Flag::INFO => log!(EnumLogColor::Blue, "INFO", "{:?} -->\t {:#?}", type_, message),
+    Flag::VERBOSE => {}
+    Flag::INFO => log!("INFO", "{:?} -->\t {:#?}", type_, message),
     Flag::WARNING => log!(EnumLogColor::Yellow, "WARN", "{:?} -->\t {:#?}", type_, message),
     _ => log!(EnumLogColor::Red, "ERROR", "{:?} -->\t {:#?}", type_, message),
   }
@@ -549,16 +678,13 @@ pub struct GlApp {
 }
 
 impl GlApp {
-  pub fn new() -> Result<Self, EnumErrors> {
-    gl::load_with(|f_name| GlfwWindow::get_active_context().expect("Not window context loaded!")
-      .get_proc_address_raw(f_name));
+  pub fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
+    // Init context.
+    window.init_opengl_surface();
     
-    let current_window = Engine::<GlApp>::get_active_window();
-    if current_window.is_none() {
-      return Err(EnumErrors::NoActiveWindow);
-    }
-    check_gl_call!("Renderer", gl::Viewport(0, 0, (*current_window.unwrap()).get_size().x,
-                              (*current_window.unwrap()).get_size().y));
+    gl::load_with(|f_name| window.get_api_ptr().get_proc_address_raw(f_name));
+    
+    check_gl_call!("Renderer", gl::Viewport(0, 0, window.get_size().x, window.get_size().y));
     check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
     
     check_gl_call!("Renderer", gl::FrontFace(gl::CW));
@@ -570,15 +696,12 @@ impl GlApp {
 }
 
 impl TraitRenderer for GlApp {
-  fn new() -> Result<Self, EnumErrors> {
-    let mut static_renderer = Renderer {
+  fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
+    let static_renderer = Renderer {
       m_state: EnumState::Ok,
       m_stats: Stats::new(),
-      m_api_data: GlApp::new()?,
+      m_api_data: GlApp::new(window)?,
     };
-    
-    #[cfg(feature = "OpenGL")]
-    unsafe { S_RENDERER = &mut static_renderer };
     
     return Ok(static_renderer.m_api_data);
   }
@@ -594,8 +717,9 @@ impl TraitRenderer for GlApp {
       let shading_info = std::ffi::CStr::from_ptr(gl::GetString(gl::SHADING_LANGUAGE_VERSION) as *const i8)
         .to_str().unwrap_or("Cannot retrieve shading language information!");
       
-      let str: String = format!("Renderer Hardware => {0}, Vendor => {1}, Version => {2}, \
-      Shading Language => {3}", renderer_info, api_vendor, api_version, shading_info);
+      let str: String = format!("Renderer Hardware => {0},\n{1:<113}Vendor => {2:<15},\n{3:<113}\
+      Version => {4:<15},\n{5:<113}Shading Language => {6:<15}",
+        renderer_info, "", api_vendor, "", api_version, "", shading_info);
       return str;
     }
   }
@@ -692,7 +816,7 @@ impl TraitRenderer for GlApp {
     todo!()
   }
   
-  fn send(&mut self, sendable_entity: &REntity, shader_associated: &mut GlslShader) -> Result<(), EnumErrors> {
+  fn send(&mut self, sendable_entity: &REntity, shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
     if sendable_entity.is_empty() {
       log!(EnumLogColor::Yellow, "WARN", "[Renderer] --> Entity {0} sent has no \
       vertices! Not sending it...", sendable_entity)
@@ -755,8 +879,6 @@ impl TraitRenderer for GlApp {
     // Enable vertex attributes.
     vao.enable_attributes(attributes)?;
     
-    let test = &self.m_batch.m_shaders;
-    
     self.m_batch.m_shaders.push(shader_associated.m_program_id);
     self.m_batch.m_vao_buffers.push(vao);
     self.m_batch.m_vbo_buffers.push(vbo);
@@ -765,9 +887,9 @@ impl TraitRenderer for GlApp {
   }
   
   fn draw(&mut self) -> Result<(), EnumErrors> {
-    for index in 0usize..unsafe { self.m_batch.m_shaders.len() } {
+    for index in 0usize..self.m_batch.m_shaders.len() {
       check_gl_call!("Renderer", gl::UseProgram(self.m_batch.m_shaders[index]));
-      unsafe { self.m_batch.m_vao_buffers[index].bind()?; }
+      self.m_batch.m_vao_buffers[index].bind()?;
       check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0,
           self.m_batch.m_vbo_buffers[index].m_count as GLsizei));
     }
@@ -775,7 +897,7 @@ impl TraitRenderer for GlApp {
   }
   
   fn free(&mut self, _id: &u64) -> Result<(), EnumErrors> {
-    todo!()
+    return Ok(());
   }
 }
 

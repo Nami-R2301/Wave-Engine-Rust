@@ -28,7 +28,7 @@ use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::camera::PerspectiveCamera;
 use crate::wave::graphics::renderer::{self, Renderer, TraitRenderableEntity, TraitRenderer, GlApp, VkApp};
-use crate::wave::graphics::shader::{GlslShader};
+use crate::wave::graphics::shader::{GlShader};
 use crate::wave::math::Vec3;
 use crate::wave::utils::asset_loader::ResLoader;
 use crate::wave::utils::Time;
@@ -46,8 +46,6 @@ static mut S_ENGINE: *mut Engine<VkApp> = std::ptr::null_mut();
 
 #[cfg(feature = "OpenGL")]
 static mut S_ENGINE: *mut Engine<GlApp> = std::ptr::null_mut();
-
-static mut S_ACTIVE_WINDOW: *mut GlfwWindow = std::ptr::null_mut();
 static S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::logger::init().unwrap());
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -91,11 +89,11 @@ impl<T: TraitRenderer> Engine<T> {
   /// `on_new()`, `on_delete()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
   /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
   ///
-  /// # Arguments
+  /// ### Arguments:
   ///
   /// * `app_provided`: A boxed generic app struct `T` which respects the trait [TraitApp].
   ///
-  /// # Returns:
+  /// ### Returns:
   ///   - `Result<GlREntity, EnumErrors>` : Will return a valid Engine if successful, otherwise an [EnumErrors]
   ///     on any error encountered. These include, but are not limited to :
   ///     + [EnumErrors::AppError] : If the app crashes for whatever reason the client may choose.
@@ -104,7 +102,7 @@ impl<T: TraitRenderer> Engine<T> {
   ///     + [EnumErrors::WindowError] : If the window context crashes due to invalid context creation,
   ///       deletion and/or command (GLX/X11 for Linux, WIN32 for Windows).
   ///
-  /// # Examples
+  /// ### Examples
   ///
   /// ```text
   /// use wave::{Engine, EnumErrors};
@@ -126,7 +124,7 @@ impl<T: TraitRenderer> Engine<T> {
     let mut window = GlfwWindow::new();
     
     match window {
-      Ok(_) => unsafe { S_ACTIVE_WINDOW = window.as_mut().unwrap(); }
+      Ok(_) => {}
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error creating GLFW window! Exiting... \
          Error code => {:?}", err);
@@ -134,7 +132,7 @@ impl<T: TraitRenderer> Engine<T> {
       }
     }
     
-    match Renderer::<T>::new() {
+    match Renderer::<T>::new(window.as_mut().unwrap()) {
       Ok(mut renderer) => {
         log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer.m_api_data.get_api_info());
         
@@ -232,15 +230,6 @@ impl<T: TraitRenderer> Engine<T> {
     }
   }
   
-  pub fn get_active_window() -> Option<*mut GlfwWindow> {
-    unsafe {
-      if S_ACTIVE_WINDOW == std::ptr::null_mut() {
-        return None;
-      }
-      return Some(S_ACTIVE_WINDOW);
-    }
-  }
-  
   pub fn on_delete(&mut self) -> Result<(), EnumErrors> {
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down app...");
     self.m_app.on_delete();
@@ -272,7 +261,7 @@ impl<T: TraitRenderer> Engine<T> {
     let mut frame_start: Time = Time::from(chrono::Utc::now());
     
     // For up time and fps.
-    let mut frame_counter: u16 = 0;
+    let mut frame_counter: u32 = 0;
     let mut runtime: Time = Time::new();
     
     // Loop until the user closes the window
@@ -337,8 +326,6 @@ impl Engine<VkApp> {
     #[cfg(feature = "Vulkan")]
     unsafe { S_ENGINE = self; }
     
-    unsafe { S_ACTIVE_WINDOW = &mut self.m_window; }
-    
     match self.m_app.on_new() {
       Ok(_) => {
         log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
@@ -374,8 +361,6 @@ impl Engine<GlApp> {
     #[cfg(feature = "OpenGL")]
     unsafe { S_ENGINE = self; }
     
-    unsafe { S_ACTIVE_WINDOW = &mut self.m_window; }
-    
     match self.m_app.on_new() {
       Ok(_) => {
         log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
@@ -407,7 +392,7 @@ impl Engine<GlApp> {
  */
 
 pub struct ExampleApp {
-  m_shaders: Vec<GlslShader>,
+  m_shaders: Vec<GlShader>,
   m_renderable_assets: Vec<REntity>,
 }
 
@@ -423,7 +408,7 @@ impl ExampleApp {
 impl TraitApp for ExampleApp {
   fn on_new(&mut self) -> Result<(), EnumErrors> {
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading GLSL shaders...");
-    let result = GlslShader::new("res/shaders/test_vert.glsl",
+    let result = GlShader::new("res/shaders/test_vert.glsl",
       "res/shaders/test_frag.glsl");
     match result {
       Ok(vk_shader) => { self.m_shaders.push(vk_shader); }
@@ -487,14 +472,14 @@ impl TraitApp for ExampleApp {
   
   fn on_render(&mut self) -> () {
     #[cfg(feature = "Vulkan")]
-      let renderer = Renderer::<VkApp>::get();
+      let engine = Engine::<VkApp>::get();
     
     #[cfg(feature = "OpenGL")]
-      let renderer = Renderer::<GlApp>::get();
-    if renderer.is_null() {
+      let engine = Engine::<GlApp>::get();
+    if engine.is_none() {
       return;
     }
-    let draw_result = unsafe { (*renderer).m_api_data.draw() };
+    let draw_result = unsafe { (*engine.unwrap()).m_renderer.m_api_data.draw() };
     match draw_result {
       Ok(_) => {}
       Err(err) => {

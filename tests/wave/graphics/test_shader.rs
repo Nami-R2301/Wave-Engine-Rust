@@ -22,31 +22,35 @@
  SOFTWARE.
 */
 
-use wave_engine::wave::graphics::renderer::init;
+use wave_engine::wave::graphics::renderer::{VkApp, GlApp, Renderer};
 use wave_engine::wave::graphics::shader;
-use wave_engine::wave::graphics::shader::GlslShader;
+use wave_engine::wave::graphics::shader::GlShader;
 use wave_engine::wave::math::Mat4;
 use wave_engine::wave::window;
 use wave_engine::wave::window::GlfwWindow;
 
 #[test]
-#[ignore]
 fn test_shader_send() {
   // Setup window context in order to use gl functions.
   let window = GlfwWindow::new();
   match window.as_ref() {
     Ok(_) => {}
-    Err(window::EnumErrors::AlreadyInitialized) => {}
+    Err(window::EnumErrors::AlreadyInitializedError) => {}
     Err(_) => { return assert!(false); }
   }
   
   // Setup renderer in order to use gl functions.
-  let renderer = init();
+  #[cfg(feature = "OpenGL")]
+  let renderer = Renderer::<GlApp>::new(&mut window.unwrap());
+  
+  #[cfg(feature = "Vulkan")]
+    let renderer = Renderer::<VkApp>::new(&mut window.unwrap());
+  
   assert!(renderer.is_ok());
   
-  let mut result = GlslShader::new("res/shaders/default_3D.vert",
+  let mut result = GlShader::new("res/shaders/default_3D.vert",
     "res/shaders/default_3D.frag");
-  let new_shader: &mut GlslShader;
+  let new_shader: &mut GlShader;
   
   match result {
     Ok(_) => {
@@ -63,12 +67,11 @@ fn test_shader_send() {
 }
 
 #[test]
-#[ignore]
 fn test_load_uniforms() {
   let window = GlfwWindow::new();
   match window.as_ref() {
     Ok(_) => {}
-    Err(window::EnumErrors::AlreadyInitialized) => {}
+    Err(window::EnumErrors::AlreadyInitializedError) => {}
     Err(err) => {
       println!("[Window] --> Cannot create window! Error => {:?}", err);
       return assert!(false);
@@ -76,10 +79,14 @@ fn test_load_uniforms() {
   }
   
   // Setup renderer in order to use gl functions.
-  let renderer = init();
+  #[cfg(feature = "OpenGL")]
+    let renderer = Renderer::<GlApp>::new(&mut window.unwrap());
+  
+  #[cfg(feature = "Vulkan")]
+    let renderer = Renderer::<VkApp>::new(&mut window.unwrap());
   assert!(renderer.is_ok());
   
-  let mut new_shader = GlslShader::new("res/shaders/test_vert.glsl",
+  let mut new_shader = GlShader::new("res/shaders/test_vert.glsl",
     "res/shaders/test_frag.glsl");
   
   assert!(new_shader.as_ref().is_ok());

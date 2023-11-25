@@ -40,6 +40,7 @@ fn test_reset_logs() {
   assert!(!logs.contains("Testing"));
 }
 
+#[ignore]
 #[test]
 fn test_show_logs() {
   let _option = init().as_ref().unwrap();

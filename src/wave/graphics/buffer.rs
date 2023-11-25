@@ -28,7 +28,8 @@ pub use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeip
 use gl::types::GLintptr;
 
 use crate::{check_gl_call, log};
-use crate::wave::graphics::renderer::EnumErrors;
+use crate::wave::Engine;
+use crate::wave::graphics::renderer::{EnumErrors, EnumState, GlApp};
 
 pub enum EnumAttributeType {
   UnsignedShort(i32),
@@ -190,7 +191,10 @@ impl GlVao {
 impl Drop for GlVao {
   fn drop(&mut self) {
     unsafe {
-      gl::DeleteVertexArrays(1, &self.m_renderer_id);
+      let renderer = &(*Engine::<GlApp>::get().unwrap()).m_renderer;
+      if renderer.m_state != EnumState::Shutdown {
+        gl::DeleteVertexArrays(1, &self.m_renderer_id);
+      }
     }
   }
 }
@@ -336,7 +340,10 @@ impl GlVbo {
 impl Drop for GlVbo {
   fn drop(&mut self) {
     unsafe {
-      gl::DeleteBuffers(1, &self.m_renderer_id);
+      let renderer = &(*Engine::<GlApp>::get().unwrap()).m_renderer;
+      if renderer.m_state != EnumState::Shutdown {
+        gl::DeleteBuffers(1, &self.m_renderer_id);
+      }
     }
   }
 }
