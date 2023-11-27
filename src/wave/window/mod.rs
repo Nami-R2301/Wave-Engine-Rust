@@ -31,6 +31,12 @@ use crate::wave::graphics::buffer::GLsizei;
 use crate::wave::math::Vec2;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+pub enum EnumState {
+  Open,
+  Closed,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumErrors {
   NoContextError,
   InitError,
@@ -46,6 +52,7 @@ fn glfw_error_callback(error: glfw::Error, message: String) {
 }
 
 pub struct GlfwWindow {
+  m_state: EnumState,
   m_api_window: glfw::PWindow,
   m_api_window_events: glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
   m_fullscreen: bool,
@@ -111,6 +118,7 @@ impl GlfwWindow {
         let bounds = Vec2::from(&[window.get_size().0, window.get_size().1]);
         
         Ok(GlfwWindow {
+          m_state: EnumState::Open,
           m_vulkan_compatible: window.glfw.vulkan_supported(),
           m_api_window: window,
           m_api_window_events: events,
@@ -238,6 +246,11 @@ impl GlfwWindow {
   
   pub fn close(&mut self) {
     self.m_api_window.set_should_close(true);
+    self.m_state = EnumState::Closed;
+  }
+  
+  pub fn get_state(&self) -> EnumState {
+    return self.m_state;
   }
   
   pub fn get_api_ptr(&self) -> &glfw::Glfw {

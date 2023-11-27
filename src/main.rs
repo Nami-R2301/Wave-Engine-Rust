@@ -24,10 +24,16 @@
 
 use wave::*;
 #[cfg(feature = "OpenGL")]
-use crate::wave::graphics::renderer::{GlApp};
+use crate::wave::graphics::renderer::{GlRenderer};
+
+#[cfg(feature = "OpenGL")]
+use crate::graphics::shader::{GlShader};
 
 #[cfg(feature = "Vulkan")]
-use crate::wave::graphics::renderer::{VkApp};
+use crate::wave::graphics::renderer::{VkRenderer};
+
+#[cfg(feature = "Vulkan")]
+use crate::wave::graphics::shader::{VkShader};
 
 pub mod wave;
 
@@ -74,14 +80,19 @@ pub mod wave;
 /// ```
 
 fn main() -> Result<(), EnumErrors> {
-  let my_app: Box<ExampleApp> = Box::new(ExampleApp::new());
   
   // Allocated on the stack -- Use new_shared() to allocate on the heap.
   #[cfg(feature = "Vulkan")]
-    let mut engine: Engine<VkApp> = Engine::new(my_app)?;
+    let my_app: Box<ExampleApp<VkShader>> = Box::new(ExampleApp::new());
   
   #[cfg(feature = "OpenGL")]
-    let mut engine: Engine<GlApp> = Engine::new(my_app)?;
+    let my_app: Box<ExampleApp<GlShader>> = Box::new(ExampleApp::new());
+  
+  #[cfg(feature = "Vulkan")]
+    let mut engine: Engine<VkRenderer> = Engine::<VkRenderer>::new(my_app)?;
+  
+  #[cfg(feature = "OpenGL")]
+    let mut engine: Engine<GlRenderer> = Engine::<GlRenderer>::new(my_app)?;
   
   // Run `on_new()` for `my_app` prior to running.
   engine.on_new()?;

@@ -26,20 +26,19 @@ extern crate ash;
 
 
 use std::fmt::Debug;
-use std::ptr::{null_mut};
+use std::ptr::null_mut;
+
+use ash::extensions::{ext, khr};
+use ash::vk::{self, TaggedStructure};
 
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
-use crate::wave::graphics::shader::GlShader;
-
-use super::buffer::*;
-
-use ash::vk::{self, TaggedStructure};
-use ash::extensions::{ext, khr};
-use crate::wave::window::GlfwWindow;
-
 #[cfg(feature = "OpenGL")]
 use crate::wave::graphics::buffer::{EnumAttributeType, GlVertexAttribute};
+use crate::wave::graphics::shader::{GlslShader, TraitShader};
+use crate::wave::window::GlfwWindow;
+
+use super::buffer::*;
 
 #[macro_export]
 macro_rules! check_gl_call {
@@ -94,7 +93,7 @@ macro_rules! check_gl_call {
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumApi {
   OpenGL,
   Vulkan,
@@ -149,9 +148,9 @@ pub enum EnumState {
 }
 
 pub trait TraitRenderableEntity {
-  fn send(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
-  fn resend(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
-  fn free(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
+  fn send<T: TraitShader>(&mut self, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors>;
+  fn resend<T: TraitShader>(&mut self, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors>;
+  fn free<T: TraitShader>(&mut self, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors>;
   fn is_sent(&self) -> bool;
 }
 
@@ -201,37 +200,34 @@ impl BatchPrimitives {
 
 pub trait TraitRenderer {
   fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> where Self: Sized;
+  fn get_type() -> EnumApi;
   fn get_api_info(&self) -> String;
   fn toggle_feature(&mut self, feature: EnumFeature) -> Result<(), EnumErrors>;
   fn begin(&mut self);
   fn end(&mut self);
   fn batch(&mut self);
   fn flush(&mut self);
-  fn send(&mut self, sendable_entity: &REntity, shader_associated: &mut GlShader) -> Result<(), EnumErrors>;
+  fn send<T: TraitShader>(&mut self, entity: &REntity, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors>;
   fn draw(&mut self) -> Result<(), EnumErrors>;
   fn free(&mut self, id: &u64) -> Result<(), EnumErrors>;
 }
 
 pub struct Renderer<T: TraitRenderer> {
+  pub m_type: EnumApi,
   pub m_state: EnumState,
   pub m_stats: Stats,
-  pub m_api_data: T,
+  pub m_api: T,
 }
-
-/*
-///////////////////////////////////   Vulkan    ///////////////////////////////////
-///////////////////////////////////             ///////////////////////////////////
-///////////////////////////////////             ///////////////////////////////////
- */
 
 impl<T: TraitRenderer> Renderer<T> {
   pub fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
-    let api = T::new(window)?;
+    let api: T = T::new(window)?;
     
     return Ok(Renderer {
+      m_type: T::get_type(),
       m_state: EnumState::Ok,
       m_stats: Stats::new(),
-      m_api_data: api,
+      m_api: api,
     });
   }
   
@@ -244,7 +240,13 @@ impl<T: TraitRenderer> Renderer<T> {
   }
 }
 
-pub struct VkApp {
+/*
+///////////////////////////////////   Vulkan    ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+ */
+
+pub struct VkRenderer {
   m_entry: ash::Entry,
   m_instance: ash::Instance,
   m_surface: khr::Surface,
@@ -252,42 +254,7 @@ pub struct VkApp {
   m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
 }
 
-impl VkApp {
-  pub fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
-    return match VkApp::create_instance(window.get_api_ptr()) {
-      Ok((vk_entry, vk_instance)) => {
-        let mut debug_callback = None;
-        
-        #[cfg(feature = "debug")]
-        {
-          // Set debugging.
-          let (debug_utils, debug_messenger) =
-            VkApp::set_debug(&vk_entry, &vk_instance)?;
-          debug_callback = Some((debug_utils, debug_messenger));
-        }
-        
-        // Create surface (graphic context).
-        let vk_surface = khr::Surface::new(&vk_entry, &vk_instance);
-        let mut khr_surface = vk::SurfaceKHR::default();
-        
-        window.init_vulkan_surface(&vk_instance, &mut khr_surface);
-        
-        let vulkan_instance = VkApp {
-          m_entry: vk_entry,
-          m_instance: vk_instance,
-          m_surface: vk_surface,
-          m_surface_khr: khr_surface,
-          m_debug_report_callback: debug_callback,
-        };
-        
-        Ok(vulkan_instance)
-      }
-      Err(err) => {
-        Err(err)
-      }
-    };
-  }
-  
+impl VkRenderer   {
   pub fn create_instance(window_context: &glfw::Glfw) -> Result<(ash::Entry, ash::Instance), EnumErrors> {
     let entry = ash::Entry::linked();
     
@@ -303,16 +270,16 @@ impl VkApp {
     let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
     
     // Validate API calls and log output.
-    let layers = VkApp::load_layers(None)?;
-    VkApp::check_layer_support(&entry, &layers)?;
+    let layers = VkRenderer::load_layers(None)?;
+    VkRenderer::check_layer_support(&entry, &layers)?;
     
     let c_layers_ptr = layers
       .iter()
       .map(|c_layer| c_layer.as_ptr())
       .collect::<Vec<*const std::ffi::c_char>>();
     
-    let extensions = VkApp::load_extensions(window_context, None)?;
-    VkApp::check_extension_support(&entry, &extensions)?;
+    let extensions = VkRenderer::load_extensions(window_context, None)?;
+    VkRenderer::check_extension_support(&entry, &extensions)?;
     
     let c_extensions_ptr = extensions
       .iter()
@@ -513,29 +480,34 @@ impl VkApp {
   ///
   fn set_debug(entry: &ash::Entry, instance: &ash::Instance) -> Result<(ext::DebugUtils,
                                                                         vk::DebugUtilsMessengerEXT), EnumErrors> {
-    // For debug callback function
-    let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
-    debug_create_info.s_type = vk::DebugUtilsMessengerCreateInfoEXT::STRUCTURE_TYPE;
-    debug_create_info.message_severity |= vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
-      vk::DebugUtilsMessageSeverityFlagsEXT::WARNING |
-      vk::DebugUtilsMessageSeverityFlagsEXT::ERROR |
-      vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE;
-    debug_create_info.message_type |= vk::DebugUtilsMessageTypeFlagsEXT::GENERAL |
-      vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION |
-      vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
-    debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
-    debug_create_info.p_user_data = null_mut(); // Optional
-    
-    let debug_utils = ext::DebugUtils::new(entry, instance);
-    return match unsafe { debug_utils.create_debug_utils_messenger(&debug_create_info, None) } {
-      Ok(messenger) => {
-        Ok((debug_utils, messenger))
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Vulkan error : {:#?}", err);
-        Err(EnumErrors::VulkanError(EnumVulkanErrors::DebugError))
-      }
-    };
+    #[cfg(feature = "debug")]
+    {
+      // For debug callback function
+      let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
+      debug_create_info.s_type = vk::DebugUtilsMessengerCreateInfoEXT::STRUCTURE_TYPE;
+      debug_create_info.message_severity |= vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
+        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING |
+        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR |
+        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE;
+      debug_create_info.message_type |= vk::DebugUtilsMessageTypeFlagsEXT::GENERAL |
+        vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION |
+        vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
+      debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
+      debug_create_info.p_user_data = null_mut(); // Optional
+      
+      let debug_utils = ext::DebugUtils::new(entry, instance);
+      return match unsafe { debug_utils.create_debug_utils_messenger(&debug_create_info, None) } {
+        Ok(messenger) => {
+          Ok((debug_utils, messenger))
+        }
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Vulkan error : {:#?}", err);
+          Err(EnumErrors::VulkanError(EnumVulkanErrors::DebugError))
+        }
+      };
+    }
+    #[cfg(not(feature = "debug"))]
+    return Err(EnumErrors::VulkanError(EnumVulkanErrors::DebugError));
   }
   
   /// Pick the first suitable Vulkan physical device.
@@ -582,7 +554,7 @@ impl VkApp {
   }
 }
 
-impl Drop for VkApp {
+impl Drop for VkRenderer {
   fn drop(&mut self) {
     unsafe {
       self.m_surface.destroy_surface(self.m_surface_khr, None);
@@ -597,15 +569,43 @@ impl Drop for VkApp {
   }
 }
 
-impl TraitRenderer for VkApp {
+impl TraitRenderer for VkRenderer {
   fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
-    let static_renderer = Renderer {
-      m_state: EnumState::Ok,
-      m_stats: Stats::new(),
-      m_api_data: VkApp::new(window)?,
+    return match VkRenderer::create_instance(window.get_api_ptr()) {
+      Ok((vk_entry, vk_instance)) => {
+        #[allow(unused)]
+          let debug_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)> = None;
+        
+        // Set debugging.
+        let (debug_utils, debug_messenger) = VkRenderer::set_debug(&vk_entry, &vk_instance)?;
+        
+        #[cfg(feature = "debug")]
+          let debug_callback = Some((debug_utils, debug_messenger));
+        
+        // Create surface (graphic context).
+        let vk_surface = khr::Surface::new(&vk_entry, &vk_instance);
+        let mut khr_surface = vk::SurfaceKHR::default();
+        
+        window.init_vulkan_surface(&vk_instance, &mut khr_surface);
+        
+        let vulkan_instance = VkRenderer {
+          m_entry: vk_entry,
+          m_instance: vk_instance,
+          m_surface: vk_surface,
+          m_surface_khr: khr_surface,
+          m_debug_report_callback: debug_callback,
+        };
+        
+        Ok(vulkan_instance)
+      }
+      Err(err) => {
+        Err(err)
+      }
     };
-    
-    return Ok(static_renderer.m_api_data);
+  }
+  
+  fn get_type() -> EnumApi {
+    return EnumApi::Vulkan;
   }
   
   fn get_api_info(&self) -> String {
@@ -635,7 +635,7 @@ impl TraitRenderer for VkApp {
     todo!()
   }
   
-  fn send(&mut self, _sendable_entity: &REntity, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
+  fn send<T: TraitShader>(&mut self, _sendable_entity: &REntity, _shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors> {
     return Ok(());
   }
   
@@ -657,7 +657,8 @@ unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSever
   let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
   match flag {
     Flag::VERBOSE => {}
-    Flag::INFO => log!("INFO", "{:?} -->\t {:#?}", type_, message),
+    Flag::INFO => {}
+    // Flag::INFO => log!("INFO", "{:?} -->\t {:#?}", type_, message),
     Flag::WARNING => log!(EnumLogColor::Yellow, "WARN", "{:?} -->\t {:#?}", type_, message),
     _ => log!(EnumLogColor::Red, "ERROR", "{:?} -->\t {:#?}", type_, message),
   }
@@ -672,13 +673,13 @@ unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSever
 ///////////////////////////////////             ///////////////////////////////////
  */
 
-pub struct GlApp {
+pub struct GlRenderer {
   m_batch: BatchPrimitives,
   m_debug_callback: gl::types::GLDEBUGPROC,
 }
 
-impl GlApp {
-  pub fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
+impl TraitRenderer for GlRenderer {
+  fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
     // Init context.
     window.init_opengl_surface();
     
@@ -688,22 +689,13 @@ impl GlApp {
     check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
     
     check_gl_call!("Renderer", gl::FrontFace(gl::CW));
-    return Ok(GlApp {
+    return Ok(GlRenderer {
       m_batch: BatchPrimitives::new(),
       m_debug_callback: Some(gl_error_callback),
     });
   }
-}
-
-impl TraitRenderer for GlApp {
-  fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
-    let static_renderer = Renderer {
-      m_state: EnumState::Ok,
-      m_stats: Stats::new(),
-      m_api_data: GlApp::new(window)?,
-    };
-    
-    return Ok(static_renderer.m_api_data);
+  fn get_type() -> EnumApi {
+    return EnumApi::OpenGL;
   }
   
   fn get_api_info(&self) -> String {
@@ -731,8 +723,8 @@ impl TraitRenderer for GlApp {
           check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT));
           check_gl_call!("Renderer", gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
           check_gl_call!("Renderer", gl::DebugMessageCallback(self.m_debug_callback, std::ptr::null()));
-          check_gl_call!("Renderer", gl::DebugMessageControl(gl::DONT_CARE, gl::DEBUG_TYPE_OTHER,
-            gl::DONT_CARE, 0, std::ptr::null(), gl::FALSE));
+          check_gl_call!("Renderer", gl::DebugMessageControl(gl::DONT_CARE, gl::DONT_CARE,
+            gl::DONT_CARE, 0, std::ptr::null(), gl::TRUE));
           log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode enabled")
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT));
@@ -816,7 +808,7 @@ impl TraitRenderer for GlApp {
     todo!()
   }
   
-  fn send(&mut self, sendable_entity: &REntity, shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
+  fn send<T: TraitShader>(&mut self, sendable_entity: &REntity, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors> {
     if sendable_entity.is_empty() {
       log!(EnumLogColor::Yellow, "WARN", "[Renderer] --> Entity {0} sent has no \
       vertices! Not sending it...", sendable_entity)
@@ -879,7 +871,7 @@ impl TraitRenderer for GlApp {
     // Enable vertex attributes.
     vao.enable_attributes(attributes)?;
     
-    self.m_batch.m_shaders.push(shader_associated.m_program_id);
+    self.m_batch.m_shaders.push(shader_associated.get_api_data().get_id());
     self.m_batch.m_vao_buffers.push(vao);
     self.m_batch.m_vbo_buffers.push(vbo);
     
@@ -890,8 +882,7 @@ impl TraitRenderer for GlApp {
     for index in 0usize..self.m_batch.m_shaders.len() {
       check_gl_call!("Renderer", gl::UseProgram(self.m_batch.m_shaders[index]));
       self.m_batch.m_vao_buffers[index].bind()?;
-      check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0,
-          self.m_batch.m_vbo_buffers[index].m_count as GLsizei));
+      check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0, self.m_batch.m_vbo_buffers[index].m_count as GLsizei));
     }
     return Ok(());
   }
@@ -924,18 +915,19 @@ extern "system" fn gl_error_callback(error_code: GLenum, e_type: GLenum, _id: GL
     }
     
     match severity {
-      gl::DEBUG_SEVERITY_HIGH => { final_error_msg += "Severity => Fatal (High); " }
-      gl::DEBUG_SEVERITY_MEDIUM => { final_error_msg += "Severity => Fatal (Medium); " }
-      gl::DEBUG_SEVERITY_LOW => { final_error_msg += "Severity => Warn (Low); " }
-      gl::DEBUG_SEVERITY_NOTIFICATION => { final_error_msg += "Severity => Warn (Info); " }
-      _ => { final_error_msg += "Severity => Fatal (Unknown); " }
+      gl::DEBUG_SEVERITY_HIGH => { final_error_msg += "Severity => Fatal (High);\n" }
+      gl::DEBUG_SEVERITY_MEDIUM => { final_error_msg += "Severity => Fatal (Medium);\n" }
+      gl::DEBUG_SEVERITY_LOW => { final_error_msg += "Severity => Warn (Low);\n" }
+      gl::DEBUG_SEVERITY_NOTIFICATION => { final_error_msg += "Severity => Warn (Info);\n" }
+      _ => { final_error_msg += "Severity => Fatal (Unknown);\n" }
     }
     
-    final_error_msg += unsafe {
-      &error_message.as_ref().into_iter()
-        .map(|&character| character.to_string())
-        .collect::<String>()
-    };
+    let test = unsafe { std::ffi::CStr::from_ptr(error_message.cast_mut()) };
+    let str = test.to_str()
+      .expect("[Renderer] -->\t Failed to convert C string to Rust String in gl_error_callback()");
+    
+    final_error_msg += str;
+    
     log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t {0}", final_error_msg);
   }
 }

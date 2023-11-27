@@ -32,11 +32,11 @@ use crate::log;
 use crate::wave::Engine;
 use crate::wave::graphics::renderer::{EnumErrors, TraitRenderableEntity, TraitRenderer};
 #[cfg(feature = "OpenGL")]
-use crate::wave::graphics::renderer::{GlApp};
+use crate::wave::graphics::renderer::{GlRenderer};
 
 #[cfg(feature = "Vulkan")]
-use crate::wave::graphics::renderer::{VkApp};
-use crate::wave::graphics::shader::GlShader;
+use crate::wave::graphics::renderer::{VkRenderer};
+use crate::wave::graphics::shader::{GlslShader, TraitShader};
 use crate::wave::math::{Mat4, Vec3};
 
 /*
@@ -158,17 +158,18 @@ impl PartialEq for REntity {
 }
 
 impl TraitRenderableEntity for REntity {
-  fn send(&mut self, shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
+  fn send<T: TraitShader>(&mut self, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors> {
     #[cfg(feature = "Vulkan")]
-      let engine = Engine::<VkApp>::get();
+      let engine = Engine::<VkRenderer>::get();
     
     #[cfg(feature = "OpenGL")]
-      let engine = Engine::<GlApp>::get();
+      let engine = Engine::<GlRenderer>::get();
     
-    if engine.is_none() {
+    if engine.is_null() {
+      log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot send asset: Engine is null!");
       return Err(EnumErrors::NoApi);
     }
-    return match unsafe { (*engine.unwrap()).m_renderer.m_api_data.send(self, shader_associated) } {
+    return match unsafe { (*engine).m_renderer.m_api.send(self, shader_associated) } {
       Ok(_) => {
         self.m_sent = true;
         Ok(())
@@ -181,20 +182,23 @@ impl TraitRenderableEntity for REntity {
     };
   }
   
-  fn resend(&mut self, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
+  fn resend<T: TraitShader>(&mut self, _shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors> {
     todo!()
   }
   
-  fn free(&mut self, _shader_associated: &mut GlShader) -> Result<(), EnumErrors> {
+  fn free<T: TraitShader>(&mut self, _shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors> {
     #[cfg(feature = "Vulkan")]
-      let engine = Engine::<VkApp>::get();
+      let engine = Engine::<VkRenderer>::get();
     
     #[cfg(feature = "OpenGL")]
-      let engine = Engine::<GlApp>::get();
-    if engine.is_none() {
+      let engine = Engine::<GlRenderer>::get();
+    
+    if engine.is_null() {
+      log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot send asset: Engine is null!");
       return Err(EnumErrors::NoApi);
     }
-    return match unsafe { (*engine.unwrap()).m_renderer.m_api_data.free(&self.m_renderer_id) } {
+    
+    return match unsafe { (*engine).m_renderer.m_api.free(&self.m_renderer_id) } {
       Ok(_) => {
         self.m_sent = false;
         Ok(())

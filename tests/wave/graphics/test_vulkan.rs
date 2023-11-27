@@ -23,7 +23,7 @@
 */
 
 use ash::vk;
-use wave_engine::wave::graphics::renderer::VkApp;
+use wave_engine::wave::graphics::renderer::VkRenderer;
 
 #[test]
 fn test_instance_extensions() {
@@ -35,7 +35,7 @@ fn test_instance_extensions() {
   
   // Test with dynamic extension loading function and layers.
   unsafe {
-    let extensions_func = VkApp::load_extensions(&window, None);
+    let extensions_func = VkRenderer::load_extensions(&window, None);
     for extension in extensions_func.unwrap() {
       assert!(vec.iter()
         .any(|property| *property.extension_name.as_ptr() == *extension.as_ptr()));
@@ -79,7 +79,7 @@ fn test_instance_layers() {
   
   // Validate API instance layers
   unsafe {
-    let layers = VkApp::load_layers(None);
+    let layers = VkRenderer::load_layers(None);
     let vec = entry.enumerate_instance_layer_properties()
       .expect("Cannot convert to c string!");
     
@@ -112,10 +112,10 @@ fn test_instance_creation() {
   
   // Test with dynamic extension loading function and layers.
   let extensions =
-    VkApp::load_extensions(&window, None)
+    VkRenderer::load_extensions(&window, None)
       .expect("Failed to load Vulkan instance extensions");
   
-  VkApp::check_extension_support(&entry, &extensions)
+  VkRenderer::check_extension_support(&entry, &extensions)
     .expect("Error validating extensions!");
   
   let c_extensions_ptr = extensions
@@ -123,10 +123,10 @@ fn test_instance_creation() {
     .map(|c_extension| c_extension.as_ptr())
     .collect::<Vec<*const std::ffi::c_char>>();
   
-  let layers = VkApp::load_layers(None)
+  let layers = VkRenderer::load_layers(None)
     .expect("Failed to load Vulkan instance layers");
   
-  VkApp::check_layer_support(&entry, &layers)
+  VkRenderer::check_layer_support(&entry, &layers)
     .expect("Error validating layers!");
   
   let c_layers_ptr = layers
@@ -156,13 +156,13 @@ fn test_instance_creation() {
     vec![std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_surface\0").as_ptr(),
       std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_xcb_surface\0").as_ptr()]
   };
-  VkApp::check_extension_support(&entry, &extensions)
+  VkRenderer::check_extension_support(&entry, &extensions)
     .expect("Error validating extensions!");
   
-  let layers = VkApp::load_layers(None)
+  let layers = VkRenderer::load_layers(None)
   .expect("Failed to load Vulkan instance layers");
   
-  VkApp::check_layer_support(&entry, &layers)
+  VkRenderer::check_layer_support(&entry, &layers)
     .expect("Error validating layers!");
   
   let c_layers_ptr = layers
@@ -194,17 +194,17 @@ fn test_instance_creation() {
       std::ffi::CString::new("VK_KHR_xcb_surface")
         .expect("Failed to convert to C string!")];
   
-  VkApp::check_extension_support(&entry, &extensions).expect("Error validating extensions!");
+  VkRenderer::check_extension_support(&entry, &extensions).expect("Error validating extensions!");
   
   let c_extensions_ptr = c_extensions
     .iter()
     .map(|c_extension| c_extension.as_ptr())
     .collect::<Vec<*const std::ffi::c_char>>();
   
-  let layers = VkApp::load_layers(None)
+  let layers = VkRenderer::load_layers(None)
     .expect("Failed to load Vulkan instance layers");
   
-  VkApp::check_layer_support(&entry, &layers)
+  VkRenderer::check_layer_support(&entry, &layers)
     .expect("Error validating layers!");
   
   let c_layers_ptr = layers

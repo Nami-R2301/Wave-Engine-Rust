@@ -29,7 +29,7 @@ use gl::types::GLintptr;
 
 use crate::{check_gl_call, log};
 use crate::wave::Engine;
-use crate::wave::graphics::renderer::{EnumErrors, EnumState, GlApp};
+use crate::wave::graphics::renderer::{EnumApi, EnumErrors, EnumState, GlRenderer};
 
 pub enum EnumAttributeType {
   UnsignedShort(i32),
@@ -191,8 +191,8 @@ impl GlVao {
 impl Drop for GlVao {
   fn drop(&mut self) {
     unsafe {
-      let renderer = &(*Engine::<GlApp>::get().unwrap()).m_renderer;
-      if renderer.m_state != EnumState::Shutdown {
+      let renderer = &(*Engine::<GlRenderer>::get()).m_renderer;
+      if renderer.m_type == EnumApi::OpenGL && renderer.m_state != EnumState::Shutdown {
         gl::DeleteVertexArrays(1, &self.m_renderer_id);
       }
     }
@@ -340,8 +340,8 @@ impl GlVbo {
 impl Drop for GlVbo {
   fn drop(&mut self) {
     unsafe {
-      let renderer = &(*Engine::<GlApp>::get().unwrap()).m_renderer;
-      if renderer.m_state != EnumState::Shutdown {
+      let renderer = &(*Engine::<GlRenderer>::get()).m_renderer;
+      if renderer.m_type == EnumApi::OpenGL && renderer.m_state != EnumState::Shutdown {
         gl::DeleteBuffers(1, &self.m_renderer_id);
       }
     }

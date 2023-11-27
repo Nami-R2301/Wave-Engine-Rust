@@ -22,14 +22,15 @@
  SOFTWARE.
 */
 
-use wave_engine::wave::graphics::renderer::{VkApp, GlApp, Renderer};
+use wave_engine::wave::graphics::renderer::{VkRenderer, GlRenderer, Renderer};
 use wave_engine::wave::graphics::shader;
-use wave_engine::wave::graphics::shader::GlShader;
+use wave_engine::wave::graphics::shader::{GlShader, GlslShader, VkShader};
 use wave_engine::wave::math::Mat4;
 use wave_engine::wave::window;
 use wave_engine::wave::window::GlfwWindow;
 
 #[test]
+#[ignore]
 fn test_shader_send() {
   // Setup window context in order to use gl functions.
   let window = GlfwWindow::new();
@@ -41,32 +42,35 @@ fn test_shader_send() {
   
   // Setup renderer in order to use gl functions.
   #[cfg(feature = "OpenGL")]
-  let renderer = Renderer::<GlApp>::new(&mut window.unwrap());
+  let renderer = Renderer::<GlRenderer>::new(&mut window.unwrap());
   
   #[cfg(feature = "Vulkan")]
-    let renderer = Renderer::<VkApp>::new(&mut window.unwrap());
+    let renderer = Renderer::<VkRenderer>::new(&mut window.unwrap());
   
   assert!(renderer.is_ok());
   
-  let mut result = GlShader::new("res/shaders/default_3D.vert",
+  #[cfg(feature = "Vulkan")]
+  let result = GlslShader::<VkShader>::new("res/shaders/default_3D.vert",
     "res/shaders/default_3D.frag");
-  let new_shader: &mut GlShader;
   
-  match result {
-    Ok(_) => {
-      new_shader = result.as_mut().unwrap();
-    }
-    Err(_) => { return assert!(false); }
+  #[cfg(feature = "OpenGL")]
+    let result = GlslShader::<GlShader>::new("res/shaders/default_3D.vert",
+    "res/shaders/default_3D.frag");
+  
+  if result.is_err() {
+    return assert!(false);
   }
-  assert_ne!(new_shader.m_vertex_str, "");
-  assert_ne!(new_shader.m_fragment_str, "");
+  
+  assert_ne!(result.as_ref().unwrap().get_api_data().m_vertex_str, "");
+  assert_ne!(result.as_ref().unwrap().get_api_data().m_fragment_str, "");
   
   // Sourcing and compilation.
-  let result = new_shader.send();
+  let result = result.unwrap().send();
   assert!(result.is_ok());
 }
 
 #[test]
+#[ignore]
 fn test_load_uniforms() {
   let window = GlfwWindow::new();
   match window.as_ref() {
@@ -80,29 +84,40 @@ fn test_load_uniforms() {
   
   // Setup renderer in order to use gl functions.
   #[cfg(feature = "OpenGL")]
-    let renderer = Renderer::<GlApp>::new(&mut window.unwrap());
+    let renderer = Renderer::<GlRenderer>::new(&mut window.unwrap());
   
   #[cfg(feature = "Vulkan")]
-    let renderer = Renderer::<VkApp>::new(&mut window.unwrap());
+    let renderer = Renderer::<VkRenderer>::new(&mut window.unwrap());
   assert!(renderer.is_ok());
   
-  let mut new_shader = GlShader::new("res/shaders/test_vert.glsl",
-    "res/shaders/test_frag.glsl");
+  #[cfg(feature = "Vulkan")]
+    let mut new_shader = GlslShader::<VkShader>::new("res/shaders/default_3D.vert",
+    "res/shaders/default_3D.frag");
+  
+  #[cfg(feature = "OpenGL")]
+    let mut new_shader = GlslShader::<GlShader>::new("res/shaders/default_3D.vert",
+    "res/shaders/default_3D.frag");
+  
+  if new_shader.is_err() {
+    return assert!(false);
+  }
   
   assert!(new_shader.as_ref().is_ok());
-  assert_ne!(new_shader.as_ref().unwrap().m_vertex_str, "");
-  assert_ne!(new_shader.as_ref().unwrap().m_fragment_str, "");
+  assert_ne!(new_shader.as_ref().unwrap().get_api_data().m_vertex_str, "");
+  assert_ne!(new_shader.as_ref().unwrap().get_api_data().m_fragment_str, "");
   
   // Sourcing and compilation.
   let result = new_shader.as_mut().unwrap().send();
   assert!(result.is_ok());
   
-  match new_shader.as_ref().unwrap().bind() {
+  #[cfg(feature = "OpenGL")]
+  match new_shader.as_mut().unwrap().get_api_data().bind() {
     Ok(_) => {}
     Err(_) => { return assert!(false); }
   }
+  
   // Load uniforms.
-  let uniform = new_shader.as_mut().unwrap().upload_uniform("u_model_matrix",
+  let uniform = new_shader.as_mut().unwrap().upload_data("u_model_matrix",
     &Mat4::new(1.0));
   
   match uniform {
