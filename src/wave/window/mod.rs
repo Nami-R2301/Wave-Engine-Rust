@@ -24,10 +24,17 @@
 
 extern crate glfw;
 
+#[cfg(feature = "Vulkan")]
 use ash::vk;
+
+#[cfg(feature = "OpenGL")]
 use glfw::{Context};
+
 use crate::log;
+
+#[cfg(feature = "OpenGL")]
 use crate::wave::graphics::buffer::GLsizei;
+
 use crate::wave::math::Vec2;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -49,10 +56,6 @@ pub enum EnumErrors {
 fn glfw_error_callback(error: glfw::Error, message: String) {
   log!(EnumLogColor::Red, "ERROR", "[Window] -->\t GLFW error raised! Error => {0}\n{1:100}Info => \
    {2}", error, "", message);
-}
-
-pub trait TraitWindow {
-
 }
 
 pub struct GlfwWindow {
@@ -134,6 +137,7 @@ impl GlfwWindow {
     }
   }
   
+  #[cfg(feature = "OpenGL")]
   pub fn init_opengl_surface(&mut self) {
     // Make the window's context current
     self.m_api_window.make_current();
@@ -142,6 +146,7 @@ impl GlfwWindow {
     self.m_api_window.glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
   }
   
+  #[cfg(feature = "Vulkan")]
   pub fn init_vulkan_surface(&mut self, vk_instance: &ash::Instance, vk_surface_khr: &mut vk::SurfaceKHR) {
     
     if !self.m_vulkan_compatible {
@@ -179,6 +184,7 @@ impl GlfwWindow {
                   0, 0, mode.width, mode.height, Some(mode.refresh_rate));
               }
               log!("INFO", "[Window] -->\t Fullscreen ON");
+              #[cfg(feature = "OpenGL")]
               unsafe {
                 gl::Viewport(0, 0, mode.width as GLsizei, mode.height as GLsizei);
               }
@@ -190,6 +196,7 @@ impl GlfwWindow {
                   Some(mode.refresh_rate));
               }
               log!("INFO", "[Window] -->\t Fullscreen OFF");
+              #[cfg(feature = "OpenGL")]
               unsafe {
                 gl::Viewport(0, 0, self.m_window_bounds.x as GLsizei,
                   self.m_window_bounds.y as GLsizei);

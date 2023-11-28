@@ -22,73 +22,10 @@
  SOFTWARE.
 */
 
-extern crate ash;
-
-
-use std::fmt::Debug;
-
-use ash::extensions::{ext, khr};
-use ash::vk::{self, TaggedStructure};
-
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::graphics::shader::TraitShader;
 use crate::wave::window::GlfwWindow;
-
-use super::buffer::*;
-
-#[macro_export]
-macro_rules! check_gl_call {
-    () => {};
-    ($name:literal, $gl_function:expr) => {
-      unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
-      unsafe {
-        $gl_function;
-        let error = gl::GetError();
-        if error != gl::NO_ERROR {
-          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-          Code => 0x{1:x}", $name, error);
-          return Err(EnumErrors::GlError(error));
-        }
-      }
-    };
-    ($name:literal, let mut $var:ident: $var_type:ty = $gl_function:expr) => {
-      unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
-      let mut $var:$var_type = unsafe { $gl_function };
-      unsafe {
-        let error = gl::GetError();
-        if error != gl::NO_ERROR {
-          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-               Code => 0x{1:x}", $name, error);
-          return Err(EnumErrors::GlError(error));
-        }
-      }
-    };
-    ($name:literal, let $var:ident: $var_type:ty = $gl_function:expr) => {
-      unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
-      let $var:$var_type = unsafe { $gl_function };
-      unsafe {
-        let error = gl::GetError();
-        if error != gl::NO_ERROR {
-          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-             Code => 0x{1:x}", $name, error);
-          return Err(EnumErrors::GlError(error));
-        }
-      }
-    };
-    ($name:literal, $var:ident = $gl_function:expr) => {
-      unsafe { while gl::GetError() != gl::NO_ERROR {} };
-      unsafe { $var = $gl_function; }
-      unsafe {
-        let error = gl::GetError();
-        if error != gl::NO_ERROR {
-          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
-           Code => 0x{1:x}", $name, error);
-          return Err(EnumErrors::GlError(error));
-        }
-      }
-    };
-}
 
 pub(crate) static mut S_RENDERER: Option<&mut Renderer> = None;
 
@@ -117,25 +54,15 @@ pub enum EnumErrors {
   ContextError,
   InvalidEntity,
   EntityNotFound,
+  #[cfg(feature = "OpenGL")]
   GlError(GLenum),
+  #[cfg(feature = "Vulkan")]
   VulkanError(EnumVulkanErrors),
   CError,
   ShaderError,
   WrongOffset,
   WrongSize,
   NoAttributes,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum EnumVulkanErrors {
-  NotSupported,
-  EntryError,
-  LayerError,
-  ExtensionError,
-  InstanceError,
-  DebugError,
-  PhysicalDeviceError,
-  SurfaceError,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -174,27 +101,11 @@ impl Stats {
   }
 }
 
-struct BatchPrimitives {
-  m_shaders: Vec<u32>,
-  m_vao_buffers: Vec<GlVao>,
-  m_vbo_buffers: Vec<GlVbo>,
-}
-
-impl BatchPrimitives {
-  pub fn new() -> Self {
-    return BatchPrimitives {
-      m_shaders: Vec::new(),
-      m_vao_buffers: Vec::new(),
-      m_vbo_buffers: Vec::new(),
-    };
-  }
-}
-
 pub trait TraitRenderer {
   fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> where Self: Sized;
   fn get_type(&self) -> EnumApi;
   fn get_state(&self) -> EnumState;
-  fn get_api_info(&self) -> String;
+  fn to_string(&self) -> String;
   fn toggle_feature(&mut self, feature: EnumFeature) -> Result<(), EnumErrors>;
   fn begin(&mut self);
   fn end(&mut self);
@@ -232,22 +143,68 @@ impl Renderer {
   }
 }
 
+impl Display for Renderer {
+  fn fmt(&self, format: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(format, "{0}", self.m_api.to_string())
+  }
+}
+
 /*
 ///////////////////////////////////   Vulkan    ///////////////////////////////////
 ///////////////////////////////////             ///////////////////////////////////
 ///////////////////////////////////             ///////////////////////////////////
  */
 
+#[cfg(feature = "Vulkan")]
+extern crate ash;
+
+use std::fmt::{Display, Formatter};
+#[cfg(feature = "Vulkan")]
+use ash::extensions::{ext, khr};
+#[cfg(feature = "Vulkan")]
+use ash::vk::{self, TaggedStructure, PhysicalDeviceType};
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg(feature = "Vulkan")]
+pub enum EnumVulkanErrors {
+  NotSupported,
+  EntryError,
+  LayerError,
+  ExtensionError,
+  InstanceError,
+  DebugError,
+  PhysicalDeviceError,
+  SurfaceError,
+}
+
+#[cfg(feature = "Vulkan")]
+struct VkQueueFamilyIndices {
+  m_graphics_family_index: Option<u8>,
+  // Add more family indices for desired queue pipeline features.
+}
+
+#[cfg(feature = "Vulkan")]
+impl VkQueueFamilyIndices {
+  pub fn default() -> Self {
+    return VkQueueFamilyIndices {
+      m_graphics_family_index: None,
+    };
+  }
+}
+
+#[cfg(feature = "Vulkan")]
 pub struct VkRenderer {
   m_type: EnumApi,
   m_state: EnumState,
   m_entry: ash::Entry,
   m_instance: ash::Instance,
+  m_device: vk::PhysicalDevice,
   m_surface: khr::Surface,
   m_surface_khr: vk::SurfaceKHR,
   m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
 }
 
+#[cfg(feature = "Vulkan")]
 impl VkRenderer {
   pub fn create_instance(window_context: &glfw::Glfw) -> Result<(ash::Entry, ash::Instance), EnumErrors> {
     let entry = ash::Entry::linked();
@@ -535,8 +492,8 @@ impl VkRenderer {
     // Check if device is suitable.
     let device = devices.unwrap()
       .into_iter()
-      .find(|&device| window.get_physical_device_presentation_support_raw(instance.handle(),
-        device, 0) && VkRenderer::is_device_suitable());
+      .find(|device| window.get_physical_device_presentation_support_raw(instance.handle(),
+        *device, 0) && VkRenderer::is_device_suitable(instance, device));
     
     
     if device.is_none() {
@@ -548,11 +505,49 @@ impl VkRenderer {
     return Ok(device.unwrap());
   }
   
-  fn is_device_suitable() -> bool {
+  fn find_queue_families(instance: &ash::Instance, physical_device: &vk::PhysicalDevice) -> Result<VkQueueFamilyIndices, EnumErrors> {
+    let queue_families = unsafe {
+      instance.get_physical_device_queue_family_properties(*physical_device)
+    };
+    
+    if queue_families.is_empty() {
+      log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot retrieve queue families for physical \
+      device {0:#?}!", physical_device);
+      return Err(EnumErrors::VulkanError(EnumVulkanErrors::PhysicalDeviceError));
+    }
+    
+    let mut queue_family_indices: VkQueueFamilyIndices = VkQueueFamilyIndices::default();
+    
+    // Find graphics queue family.
+    let mut graphic_family_index: u8 = 0;
+    
+    for queue_family in queue_families {
+      if queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+        queue_family_indices.m_graphics_family_index = Some(graphic_family_index)
+      }
+      graphic_family_index += 1;
+    }
+    return Ok(queue_family_indices);
+  }
+  
+  fn is_device_suitable(instance: &ash::Instance, physical_device: &vk::PhysicalDevice) -> bool {
+    // Check if graphics family queue exists.
+    let queue_families = VkRenderer::find_queue_families(instance, physical_device);
+    
+    if queue_families.is_err() {
+      return false;
+    }
+    
+    if queue_families.unwrap().m_graphics_family_index.is_none() {
+      log!(EnumLogColor::Red, "ERROR", "[Renderer] --.\t Physical device {0:#?} \
+      does not have a queue dedicated for graphics exchange!", physical_device);
+      return false;
+    }
     return true;
   }
 }
 
+#[cfg(feature = "Vulkan")]
 impl Drop for VkRenderer {
   fn drop(&mut self) {
     unsafe {
@@ -568,6 +563,7 @@ impl Drop for VkRenderer {
   }
 }
 
+#[cfg(feature = "Vulkan")]
 impl TraitRenderer for VkRenderer {
   fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
     return match VkRenderer::create_instance(window.get_api_ptr()) {
@@ -575,21 +571,20 @@ impl TraitRenderer for VkRenderer {
         #[allow(unused)]
           let debug_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)> = None;
         
-        #[cfg(feature = "debug")]
-          // Set debugging.
-          let debug_callback = Some(VkRenderer::set_debug(&vk_entry, &vk_instance)?);
-        
         // Create surface (graphic context).
         let vk_surface = khr::Surface::new(&vk_entry, &vk_instance);
         let mut khr_surface = vk::SurfaceKHR::default();
         
         window.init_vulkan_surface(&vk_instance, &mut khr_surface);
         
+        let vk_device = VkRenderer::pick_physical_device(&vk_instance, window.get_api_ptr())?;
+        
         Ok(VkRenderer {
           m_type: EnumApi::Vulkan,
           m_state: EnumState::Ok,
           m_entry: vk_entry,
           m_instance: vk_instance,
+          m_device: vk_device,
           m_surface: vk_surface,
           m_surface_khr: khr_surface,
           m_debug_report_callback: debug_callback,
@@ -609,14 +604,57 @@ impl TraitRenderer for VkRenderer {
     return self.m_state;
   }
   
-  fn get_api_info(&self) -> String {
-    let str: String = format!("Renderer Hardware => RTX 3060 TI,\n{0:<113}\
-    Vendor => NVIDIA Corporation,\n{1:<113}Version => 1.3,\n{2:<113}Shading Language => GLSL 4.60",
-      "", "", "");
+  fn to_string(&self) -> String {
+    let device_properties = unsafe {
+      self.m_instance.get_physical_device_properties(self.m_device)
+    };
+    let device_name_str = unsafe { std::ffi::CStr::from_ptr(device_properties.device_name.as_ptr()) }
+      .to_str()
+      .unwrap_or("[Renderer] -->\t Could not retrieve device name in get_api_info()!");
+    
+    let mut device_type_str: String = String::new();
+    match device_properties.device_type {
+      PhysicalDeviceType::DISCRETE_GPU => { device_type_str += "Discrete GPU" },
+      PhysicalDeviceType::INTEGRATED_GPU => { device_type_str += "Integrated GPU" },
+      PhysicalDeviceType::CPU => { device_type_str += "CPU" },
+      _ => { device_type_str += "Other" }
+    }
+    
+    let str: String = format!("Renderer Hardware => {0},\n{1:<113}Driver version => {2}\n{3:<113}\
+    Device type => {4}\n{5:<113}Api version => {6}.{7}.{8}", device_name_str, "",
+      device_properties.driver_version, "", device_type_str, "",
+      vk::api_version_major(device_properties.api_version),
+      vk::api_version_minor(device_properties.api_version),
+      vk::api_version_patch(device_properties.api_version));
     return str;
   }
   
-  fn toggle_feature(&mut self, _feature: EnumFeature) -> Result<(), EnumErrors> {
+  fn toggle_feature(&mut self, feature: EnumFeature) -> Result<(), EnumErrors> {
+    match feature {
+      EnumFeature::Debug(enabled) => {
+        if enabled {
+          // Toggle on debugging.
+          let debug_callback = Some(VkRenderer::set_debug(&self.m_entry, &self.m_instance)?);
+          self.m_debug_report_callback = debug_callback;
+        } else  {
+          // Toggle off debugging.
+          unsafe {
+            if let Some((debug_utils, messenger)) = self.m_debug_report_callback.take() {
+              debug_utils.destroy_debug_utils_messenger(messenger, None);
+            }
+          }
+          self.m_debug_report_callback = None;
+        }
+        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode {0}",
+          enabled.then(|| return "enabled").unwrap_or("disabled"));
+      }
+      EnumFeature::DepthTest(_) => {}
+      EnumFeature::CullFacing(_, _) => {}
+      EnumFeature::Wireframe(_) => {}
+      EnumFeature::MSAA(_) => {}
+      EnumFeature::SRGB(_) => {}
+      EnumFeature::Blending(_, _, _) => {}
+    }
     return Ok(());
   }
   
@@ -657,6 +695,7 @@ impl TraitRenderer for VkRenderer {
   }
 }
 
+#[cfg(feature = "Vulkan")]
 unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSeverityFlagsEXT,
                                                 type_: vk::DebugUtilsMessageTypeFlagsEXT,
                                                 p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
@@ -666,7 +705,7 @@ unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSever
   let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
   match flag {
     Flag::VERBOSE => {}
-    Flag::INFO => {}
+    Flag::INFO => {},
     // Flag::INFO => log!("INFO", "{:?} -->\t {:#?}", type_, message),
     Flag::WARNING => log!(EnumLogColor::Yellow, "WARN", "{:?} -->\t {:#?}", type_, message),
     _ => log!(EnumLogColor::Red, "ERROR", "{:?} -->\t {:#?}", type_, message),
@@ -682,6 +721,85 @@ unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSever
 ///////////////////////////////////             ///////////////////////////////////
  */
 
+use gl::types::GLenum;
+
+#[cfg(feature = "OpenGL")]
+use super::buffer::*;
+
+#[cfg(feature = "OpenGL")]
+#[macro_export]
+macro_rules! check_gl_call {
+    () => {};
+    ($name:literal, $gl_function:expr) => {
+      unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
+      unsafe {
+        $gl_function;
+        let error = gl::GetError();
+        if error != gl::NO_ERROR {
+          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
+          Code => 0x{1:x}", $name, error);
+          return Err(EnumErrors::GlError(error));
+        }
+      }
+    };
+    ($name:literal, let mut $var:ident: $var_type:ty = $gl_function:expr) => {
+      unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
+      let mut $var:$var_type = unsafe { $gl_function };
+      unsafe {
+        let error = gl::GetError();
+        if error != gl::NO_ERROR {
+          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
+               Code => 0x{1:x}", $name, error);
+          return Err(EnumErrors::GlError(error));
+        }
+      }
+    };
+    ($name:literal, let $var:ident: $var_type:ty = $gl_function:expr) => {
+      unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
+      let $var:$var_type = unsafe { $gl_function };
+      unsafe {
+        let error = gl::GetError();
+        if error != gl::NO_ERROR {
+          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
+             Code => 0x{1:x}", $name, error);
+          return Err(EnumErrors::GlError(error));
+        }
+      }
+    };
+    ($name:literal, $var:ident = $gl_function:expr) => {
+      unsafe { while gl::GetError() != gl::NO_ERROR {} };
+      unsafe { $var = $gl_function; }
+      unsafe {
+        let error = gl::GetError();
+        if error != gl::NO_ERROR {
+          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
+           Code => 0x{1:x}", $name, error);
+          return Err(EnumErrors::GlError(error));
+        }
+      }
+    };
+}
+
+#[cfg(feature = "OpenGL")]
+struct BatchPrimitives {
+  m_shaders: Vec<u32>,
+  m_vao_buffers: Vec<GlVao>,
+  m_vbo_buffers: Vec<GlVbo>,
+}
+
+#[cfg(feature = "OpenGL")]
+impl BatchPrimitives {
+  pub fn new() -> Self {
+    return BatchPrimitives {
+      m_shaders: Vec::new(),
+      m_vao_buffers: Vec::new(),
+      m_vbo_buffers: Vec::new(),
+    };
+  }
+}
+
+
+#[cfg(feature = "OpenGL")]
 pub struct GlRenderer {
   m_type: EnumApi,
   m_state: EnumState,
@@ -689,6 +807,7 @@ pub struct GlRenderer {
   m_debug_callback: gl::types::GLDEBUGPROC,
 }
 
+#[cfg(feature = "OpenGL")]
 impl TraitRenderer for GlRenderer {
   fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
     // Init context.
@@ -716,7 +835,7 @@ impl TraitRenderer for GlRenderer {
     return self.m_state;
   }
   
-  fn get_api_info(&self) -> String {
+  fn to_string(&self) -> String {
     unsafe {
       let api_vendor = std::ffi::CStr::from_ptr(gl::GetString(gl::VENDOR) as *const i8)
         .to_str().unwrap_or("Cannot retrieve api vendor information!");
@@ -743,68 +862,68 @@ impl TraitRenderer for GlRenderer {
           check_gl_call!("Renderer", gl::DebugMessageCallback(self.m_debug_callback, std::ptr::null()));
           check_gl_call!("Renderer", gl::DebugMessageControl(gl::DONT_CARE, gl::DONT_CARE,
             gl::DONT_CARE, 0, std::ptr::null(), gl::TRUE));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode enabled")
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT));
           check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug mode disabled")
         }
+        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug {0}",
+          flag.then(|| return "enabled").unwrap_or("disabled"));
       }
       EnumFeature::DepthTest(flag) => {
         if flag {
           check_gl_call!("Renderer", gl::Enable(gl::DEPTH_TEST));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Depth test enabled")
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::DEPTH_TEST));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Depth test disabled")
         }
+        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Depth test {0}",
+          flag.then(|| return "enabled").unwrap_or("disabled"));
       }
       EnumFeature::MSAA(flag) => {
         if flag {
           check_gl_call!("Renderer", gl::Enable(gl::MULTISAMPLE));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t MSAA enabled")
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::MULTISAMPLE));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t MSAA disabled")
         }
+        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t MSAA {0}",
+          flag.then(|| return "enabled").unwrap_or("disabled"));
       }
       EnumFeature::Blending(flag, s_factor, d_factor) => {
         if flag {
           check_gl_call!("Renderer", gl::Enable(gl::BLEND));
           check_gl_call!("Renderer", gl::BlendFunc(s_factor, d_factor));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Blending enabled")
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::BLEND));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Blending disabled")
         }
+        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Blending {0}",
+          flag.then(|| return "enabled").unwrap_or("disabled"));
       }
       EnumFeature::Wireframe(flag) => {
         if flag {
           check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Wireframe mode enabled")
         } else {
           check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Wireframe mode disabled")
         }
+        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Wireframe mode {0}",
+          flag.then(|| return "enabled").unwrap_or("disabled"));
       }
       EnumFeature::SRGB(flag) => {
         if flag {
           check_gl_call!("Renderer", gl::Enable(gl::FRAMEBUFFER_SRGB));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t SRGB framebuffer enabled")
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::FRAMEBUFFER_SRGB));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t SRGB framebuffer disabled")
         }
+        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t SRGB framebuffer {0}",
+          flag.then(|| return "enabled").unwrap_or("disabled"));
       }
       EnumFeature::CullFacing(flag, face) => {
         if flag {
           check_gl_call!("Renderer", gl::Enable(gl::CULL_FACE));
           check_gl_call!("Renderer", gl::CullFace(face));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Cull facing enabled")
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::CULL_FACE));
-          log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Cull facing disabled")
         }
+        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Cull facing {0}",
+          flag.then(|| return "enabled").unwrap_or("disabled"));
       }
     }
     return Ok(());
@@ -897,6 +1016,7 @@ impl TraitRenderer for GlRenderer {
   }
   
   fn draw(&mut self) -> Result<(), EnumErrors> {
+    unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); }
     for index in 0usize..self.m_batch.m_shaders.len() {
       check_gl_call!("Renderer", gl::UseProgram(self.m_batch.m_shaders[index]));
       self.m_batch.m_vao_buffers[index].bind()?;
@@ -918,6 +1038,7 @@ impl TraitRenderer for GlRenderer {
   }
 }
 
+#[cfg(feature = "OpenGL")]
 extern "system" fn gl_error_callback(error_code: GLenum, e_type: GLenum, _id: GLuint,
                                      severity: GLenum, _length: GLsizei, error_message: *const GLchar,
                                      _user_param: *mut std::ffi::c_void) {
@@ -954,7 +1075,15 @@ extern "system" fn gl_error_callback(error_code: GLenum, e_type: GLenum, _id: GL
     
     final_error_msg += str;
     
-    log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t {0}", final_error_msg);
+    match severity {
+      gl::DEBUG_SEVERITY_HIGH => { log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t {0}", final_error_msg); }
+      gl::DEBUG_SEVERITY_MEDIUM => { log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t {0}", final_error_msg); }
+      gl::DEBUG_SEVERITY_LOW => { log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t {0}", final_error_msg); }
+      gl::DEBUG_SEVERITY_NOTIFICATION => { log!("INFO", "[Renderer] -->\t {0}", final_error_msg); }
+      _ => {
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t {0}", final_error_msg);
+      }
+    }
   }
 }
 

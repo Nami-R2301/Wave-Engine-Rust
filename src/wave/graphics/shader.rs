@@ -22,11 +22,19 @@
  SOFTWARE.
 */
 
+#[cfg(feature = "OpenGL")]
 use crate::{check_gl_call};
+
+#[cfg(feature = "OpenGL")]
 use crate::wave::graphics::buffer::{GLboolean, GLfloat, GLchar, GLenum, GLint, GLuint};
+
+#[cfg(feature = "OpenGL")]
 use crate::wave::math::Mat4;
 
+#[cfg(feature = "OpenGL")]
 use crate::log;
+
+#[cfg(feature = "OpenGL")]
 use crate::wave::graphics::renderer::{EnumApi, EnumState, Renderer};
 
 #[derive(Debug, PartialEq)]
@@ -39,6 +47,7 @@ pub enum EnumErrors {
   ShaderCompilation,
   ShaderLinkage,
   UniformNotFound,
+  #[cfg(feature = "OpenGL")]
   GlError(GLenum),
   AnyConversionError,
 }
@@ -55,6 +64,7 @@ pub trait TraitShader {
 pub struct GlslShader<T: TraitShader> {
   m_api_data: T,
   // For debug purposes.
+  #[allow(unused)]
   m_uniform_cache: std::collections::HashMap<&'static str, i8>,
 }
 
@@ -94,14 +104,16 @@ impl<T: TraitShader> GlslShader<T> {
  */
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg(feature = "Vulkan")]
 pub struct VkShader {
   pub m_id: u32,
   pub m_vertex_str: String,
   // For debug purposes.
   pub m_fragment_str: String,
-  m_uniform_cache: std::collections::HashMap<&'static str, GLint>,
+  m_uniform_cache: std::collections::HashMap<&'static str, i32>,
 }
 
+#[cfg(feature = "Vulkan")]
 impl TraitShader for VkShader {
   fn new(_vertex_file_path: &'static str, _fragment_file_path: &'static str) -> Result<Self, EnumErrors> where Self: Sized {
     return Ok(VkShader {
@@ -140,6 +152,7 @@ impl TraitShader for VkShader {
 ///////////////////////////////////             ///////////////////////////////////
  */
 
+#[cfg(feature = "OpenGL")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GlShader {
   pub m_id: u32,
@@ -149,6 +162,7 @@ pub struct GlShader {
   m_uniform_cache: std::collections::HashMap<&'static str, GLint>,
 }
 
+#[cfg(feature = "OpenGL")]
 impl TraitShader for GlShader {
   fn new(vertex_file_path: &'static str, fragment_file_path: &'static str) -> Result<Self, EnumErrors> {
     let vertex_file_str = std::fs::read_to_string(vertex_file_path);
@@ -350,6 +364,7 @@ impl TraitShader for GlShader {
   }
 }
 
+#[cfg(feature = "OpenGL")]
 impl GlShader {
   pub fn bind(&self) -> Result<(), EnumErrors> {
     check_gl_call!("Shader", gl::UseProgram(self.m_id));
@@ -366,6 +381,7 @@ impl GlShader {
   }
 }
 
+#[cfg(feature = "OpenGL")]
 // Free from the GPU when we are done with the shader program.
 impl Drop for GlShader {
   fn drop(&mut self) {

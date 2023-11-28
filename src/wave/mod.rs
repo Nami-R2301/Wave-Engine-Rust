@@ -25,10 +25,10 @@
 use once_cell::sync::Lazy;
 
 use crate::log;
+use crate::wave::assets::renderable_assets::{REntity, TraitRenderableEntity};
 use crate::wave::camera::PerspectiveCamera;
 use crate::wave::graphics::renderer::{self, Renderer, S_RENDERER};
-use crate::wave::graphics::shader::{TraitShader};
-use crate::wave::assets::renderable_assets::{TraitRenderableEntity, REntity};
+use crate::wave::graphics::shader::TraitShader;
 use crate::wave::math::Vec3;
 use crate::wave::utils::asset_loader::ResLoader;
 use crate::wave::utils::Time;
@@ -131,10 +131,10 @@ impl Engine {
     
     match Renderer::new(window.as_mut().unwrap()) {
       Ok(mut renderer) => {
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer.m_api.get_api_info());
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer);
+        
         
         let api = renderer.m_api.as_mut();
-        
         let _ = api.toggle_feature(renderer::EnumFeature::DepthTest(true));
         let _ = api.toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));
         let _ = api.toggle_feature(renderer::EnumFeature::Debug(true));
@@ -325,7 +325,7 @@ impl Engine {
     return &self.m_window;
   }
   
-  pub fn set_singleton (engine: &mut Box<Engine>) -> () {
+  pub fn set_singleton(engine: &mut Box<Engine>) -> () {
     unsafe {
       S_ENGINE = engine.as_mut();
       S_RENDERER = Some(&mut (*S_ENGINE).m_renderer);
@@ -422,9 +422,6 @@ impl<T: TraitShader> TraitApp for ExampleApp<T> {
   fn on_update(&mut self, _time_step: f64) -> () {}
   
   fn on_render(&mut self) -> () {
-    #[cfg(feature = "OpenGL")]
-    unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); }
-    
     let draw_result = unsafe { S_RENDERER.as_mut().unwrap().m_api.draw() };
     
     match draw_result {

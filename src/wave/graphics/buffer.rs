@@ -22,12 +22,22 @@
  SOFTWARE.
 */
 
+#[cfg(feature = "OpenGL")]
 extern crate gl;
 
+#[cfg(feature = "OpenGL")]
 pub use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
+
+#[cfg(feature = "OpenGL")]
 use gl::types::GLintptr;
 
-use crate::{check_gl_call, log};
+#[cfg(feature = "OpenGL")]
+use crate::{log};
+
+#[cfg(feature = "OpenGL")]
+use crate::{check_gl_call};
+
+#[cfg(feature = "OpenGL")]
 use crate::wave::graphics::renderer::{EnumApi, EnumErrors, EnumState, Renderer};
 
 pub enum EnumAttributeType {
@@ -43,6 +53,7 @@ pub enum EnumAttributeType {
   Mat4,
 }
 
+#[cfg(feature = "OpenGL")]
 pub struct GlVertexAttribute {
   pub m_gl_type: GLenum,
   pub m_count: i32,
@@ -50,6 +61,7 @@ pub struct GlVertexAttribute {
   pub m_normalized: u8,
 }
 
+#[cfg(feature = "OpenGL")]
 impl GlVertexAttribute {
   pub fn new(gl_type: EnumAttributeType, should_normalize: bool, buffer_offset: usize) -> Self {
     return match gl_type {
@@ -137,10 +149,12 @@ impl GlVertexAttribute {
   }
 }
 
+#[cfg(feature = "OpenGL")]
 pub struct GlVao {
   m_renderer_id: u32,
 }
 
+#[cfg(feature = "OpenGL")]
 impl GlVao {
   pub fn new() -> Result<Self, EnumErrors> {
     let mut new_vao: GLuint = 0;
@@ -187,6 +201,7 @@ impl GlVao {
   }
 }
 
+#[cfg(feature = "OpenGL")]
 impl Drop for GlVao {
   fn drop(&mut self) {
     unsafe {
@@ -199,6 +214,7 @@ impl Drop for GlVao {
   }
 }
 
+#[cfg(feature = "OpenGL")]
 pub struct GlVbo {
   pub m_renderer_id: u32,
   pub m_capacity: usize,
@@ -206,6 +222,7 @@ pub struct GlVbo {
   pub m_count: usize,
 }
 
+#[cfg(feature = "OpenGL")]
 impl GlVbo {
   pub fn new(alloc_size: usize, vertex_count: usize) -> Result<Self, EnumErrors> {
     let mut new_vbo: GLuint = 0;
@@ -337,6 +354,7 @@ impl GlVbo {
   }
 }
 
+#[cfg(feature = "OpenGL")]
 impl Drop for GlVbo {
   fn drop(&mut self) {
     unsafe {
