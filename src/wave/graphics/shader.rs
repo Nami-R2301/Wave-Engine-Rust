@@ -27,8 +27,7 @@ use crate::wave::graphics::buffer::{GLboolean, GLfloat, GLchar, GLenum, GLint, G
 use crate::wave::math::Mat4;
 
 use crate::log;
-use crate::wave::Engine;
-use crate::wave::graphics::renderer::{EnumApi, EnumState, GlRenderer};
+use crate::wave::graphics::renderer::{EnumApi, EnumState, Renderer};
 
 #[derive(Debug, PartialEq)]
 pub enum EnumErrors {
@@ -371,9 +370,10 @@ impl GlShader {
 impl Drop for GlShader {
   fn drop(&mut self) {
     unsafe {
-      let renderer = &(*Engine::<GlRenderer>::get()).m_renderer;
+      let renderer = Renderer::get().as_ref()
+        .expect("[Shader] -->\t Cannot drop GlShader, renderer is None! Exiting...");
       
-      if renderer.m_type == EnumApi::OpenGL && renderer.m_state != EnumState::Shutdown {
+      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.m_api.get_state() != EnumState::Shutdown {
         gl::UseProgram(0);
         gl::DeleteProgram(self.m_id);
       }

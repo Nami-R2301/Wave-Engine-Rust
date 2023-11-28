@@ -26,16 +26,13 @@ extern crate ash;
 
 
 use std::fmt::Debug;
-use std::ptr::null_mut;
 
 use ash::extensions::{ext, khr};
 use ash::vk::{self, TaggedStructure};
 
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
-#[cfg(feature = "OpenGL")]
-use crate::wave::graphics::buffer::{EnumAttributeType, GlVertexAttribute};
-use crate::wave::graphics::shader::{GlslShader, TraitShader};
+use crate::wave::graphics::shader::TraitShader;
 use crate::wave::window::GlfwWindow;
 
 use super::buffer::*;
@@ -93,6 +90,8 @@ macro_rules! check_gl_call {
     };
 }
 
+pub(crate) static mut S_RENDERER: Option<&mut Renderer> = None;
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumApi {
   OpenGL,
@@ -147,13 +146,6 @@ pub enum EnumState {
   Shutdown,
 }
 
-pub trait TraitRenderableEntity {
-  fn send<T: TraitShader>(&mut self, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors>;
-  fn resend<T: TraitShader>(&mut self, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors>;
-  fn free<T: TraitShader>(&mut self, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors>;
-  fn is_sent(&self) -> bool;
-}
-
 pub struct Stats {
   m_entities_sent_count: u32,
   m_shader_bound_count: u32,
@@ -200,43 +192,43 @@ impl BatchPrimitives {
 
 pub trait TraitRenderer {
   fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> where Self: Sized;
-  fn get_type() -> EnumApi;
+  fn get_type(&self) -> EnumApi;
+  fn get_state(&self) -> EnumState;
   fn get_api_info(&self) -> String;
   fn toggle_feature(&mut self, feature: EnumFeature) -> Result<(), EnumErrors>;
   fn begin(&mut self);
   fn end(&mut self);
   fn batch(&mut self);
   fn flush(&mut self);
-  fn send<T: TraitShader>(&mut self, entity: &REntity, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors>;
+  fn send(&mut self, entity: &REntity, shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors>;
   fn draw(&mut self) -> Result<(), EnumErrors>;
   fn free(&mut self, id: &u64) -> Result<(), EnumErrors>;
+  fn shutdown(&mut self) -> Result<(), EnumErrors>;
 }
 
-pub struct Renderer<T: TraitRenderer> {
-  pub m_type: EnumApi,
-  pub m_state: EnumState,
-  pub m_stats: Stats,
-  pub m_api: T,
+pub struct Renderer {
+  pub m_api: Box<dyn TraitRenderer>,
 }
 
-impl<T: TraitRenderer> Renderer<T> {
-  pub fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
-    let api: T = T::new(window)?;
-    
+impl Renderer {
+  pub fn new(window: &mut GlfwWindow) -> Result<Renderer, EnumErrors> {
+    #[cfg(feature = "Vulkan")]
     return Ok(Renderer {
-      m_type: T::get_type(),
-      m_state: EnumState::Ok,
-      m_stats: Stats::new(),
-      m_api: api,
+      m_api: Box::new(VkRenderer::new(window)?),
+    });
+    
+    #[cfg(feature = "OpenGL")]
+    return Ok(Renderer {
+      m_api: Box::new(GlRenderer::new(window)?),
     });
   }
   
   pub fn shutdown(&mut self) -> Result<(), EnumErrors> {
-    if self.m_state == EnumState::Error {
-      return Err(EnumErrors::NotImplemented);
-    }
-    self.m_state = EnumState::Shutdown;
-    return Ok(());
+    return self.m_api.shutdown();
+  }
+  
+  pub fn get() -> &'static mut Option<&'static mut Renderer> {
+    return unsafe { &mut S_RENDERER };
   }
 }
 
@@ -247,6 +239,8 @@ impl<T: TraitRenderer> Renderer<T> {
  */
 
 pub struct VkRenderer {
+  m_type: EnumApi,
+  m_state: EnumState,
   m_entry: ash::Entry,
   m_instance: ash::Instance,
   m_surface: khr::Surface,
@@ -254,7 +248,7 @@ pub struct VkRenderer {
   m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
 }
 
-impl VkRenderer   {
+impl VkRenderer {
   pub fn create_instance(window_context: &glfw::Glfw) -> Result<(ash::Entry, ash::Instance), EnumErrors> {
     let entry = ash::Entry::linked();
     
@@ -302,7 +296,8 @@ impl VkRenderer   {
         vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
       debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
       
-      instance_create_info = instance_create_info.enabled_layer_names(c_layers_ptr.as_slice())
+      instance_create_info = instance_create_info
+        .enabled_layer_names(c_layers_ptr.as_slice())
         .push_next(&mut debug_create_info);
     }
     
@@ -312,7 +307,7 @@ impl VkRenderer   {
     }
     
     unsafe {
-      return match entry.create_instance(&instance_create_info, None) {
+      return match entry.create_instance(&instance_create_info.build(), None) {
         Ok(vk_instance) => {
           Ok((entry, vk_instance))
         }
@@ -493,7 +488,7 @@ impl VkRenderer   {
         vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION |
         vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
       debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
-      debug_create_info.p_user_data = null_mut(); // Optional
+      debug_create_info.p_user_data = std::ptr::null_mut(); // Optional
       
       let debug_utils = ext::DebugUtils::new(entry, instance);
       return match unsafe { debug_utils.create_debug_utils_messenger(&debug_create_info, None) } {
@@ -507,7 +502,10 @@ impl VkRenderer   {
       };
     }
     #[cfg(not(feature = "debug"))]
-    return Err(EnumErrors::VulkanError(EnumVulkanErrors::DebugError));
+    {
+      log!(EnumLogColor::Red, "ERROR", "[Renderer] --> Cannot setup debug callback: Debug feature not enabled!");
+      return Err(EnumErrors::VulkanError(EnumVulkanErrors::DebugError));
+    }
   }
   
   /// Pick the first suitable Vulkan physical device.
@@ -534,12 +532,13 @@ impl VkRenderer   {
       return Err(EnumErrors::VulkanError(EnumVulkanErrors::PhysicalDeviceError));
     }
     
+    // Check if device is suitable.
     let device = devices.unwrap()
       .into_iter()
       .find(|&device| window.get_physical_device_presentation_support_raw(instance.handle(),
-        device, 0));
+        device, 0) && VkRenderer::is_device_suitable());
     
-    // Check if device is suitable.
+    
     if device.is_none() {
       log!(EnumLogColor::Red, "ERROR",
         "[Renderer] -->\t Vulkan Physical device does not support graphics for queue family 0!");
@@ -576,11 +575,9 @@ impl TraitRenderer for VkRenderer {
         #[allow(unused)]
           let debug_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)> = None;
         
-        // Set debugging.
-        let (debug_utils, debug_messenger) = VkRenderer::set_debug(&vk_entry, &vk_instance)?;
-        
         #[cfg(feature = "debug")]
-          let debug_callback = Some((debug_utils, debug_messenger));
+          // Set debugging.
+          let debug_callback = Some(VkRenderer::set_debug(&vk_entry, &vk_instance)?);
         
         // Create surface (graphic context).
         let vk_surface = khr::Surface::new(&vk_entry, &vk_instance);
@@ -588,15 +585,15 @@ impl TraitRenderer for VkRenderer {
         
         window.init_vulkan_surface(&vk_instance, &mut khr_surface);
         
-        let vulkan_instance = VkRenderer {
+        Ok(VkRenderer {
+          m_type: EnumApi::Vulkan,
+          m_state: EnumState::Ok,
           m_entry: vk_entry,
           m_instance: vk_instance,
           m_surface: vk_surface,
           m_surface_khr: khr_surface,
           m_debug_report_callback: debug_callback,
-        };
-        
-        Ok(vulkan_instance)
+        })
       }
       Err(err) => {
         Err(err)
@@ -604,8 +601,12 @@ impl TraitRenderer for VkRenderer {
     };
   }
   
-  fn get_type() -> EnumApi {
-    return EnumApi::Vulkan;
+  fn get_type(&self) -> EnumApi {
+    return self.m_type;
+  }
+  
+  fn get_state(&self) -> EnumState {
+    return self.m_state;
   }
   
   fn get_api_info(&self) -> String {
@@ -635,7 +636,7 @@ impl TraitRenderer for VkRenderer {
     todo!()
   }
   
-  fn send<T: TraitShader>(&mut self, _sendable_entity: &REntity, _shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors> {
+  fn send(&mut self, _sendable_entity: &REntity, _shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors> {
     return Ok(());
   }
   
@@ -645,6 +646,14 @@ impl TraitRenderer for VkRenderer {
   
   fn free(&mut self, _id: &u64) -> Result<(), EnumErrors> {
     todo!()
+  }
+  
+  fn shutdown(&mut self) -> Result<(), EnumErrors> {
+    if self.m_state == EnumState::Error {
+      return Err(EnumErrors::NotImplemented);
+    }
+    self.m_state = EnumState::Shutdown;
+    return Ok(());
   }
 }
 
@@ -674,6 +683,8 @@ unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSever
  */
 
 pub struct GlRenderer {
+  m_type: EnumApi,
+  m_state: EnumState,
   m_batch: BatchPrimitives,
   m_debug_callback: gl::types::GLDEBUGPROC,
 }
@@ -689,13 +700,20 @@ impl TraitRenderer for GlRenderer {
     check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
     
     check_gl_call!("Renderer", gl::FrontFace(gl::CW));
+    
     return Ok(GlRenderer {
+      m_type: EnumApi::OpenGL,
+      m_state: EnumState::Ok,
       m_batch: BatchPrimitives::new(),
       m_debug_callback: Some(gl_error_callback),
     });
   }
-  fn get_type() -> EnumApi {
-    return EnumApi::OpenGL;
+  fn get_type(&self) -> EnumApi {
+    return self.m_type;
+  }
+  
+  fn get_state(&self) -> EnumState {
+    return self.m_state;
   }
   
   fn get_api_info(&self) -> String {
@@ -808,7 +826,7 @@ impl TraitRenderer for GlRenderer {
     todo!()
   }
   
-  fn send<T: TraitShader>(&mut self, sendable_entity: &REntity, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors> {
+  fn send(&mut self, sendable_entity: &REntity, shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors> {
     if sendable_entity.is_empty() {
       log!(EnumLogColor::Yellow, "WARN", "[Renderer] --> Entity {0} sent has no \
       vertices! Not sending it...", sendable_entity)
@@ -871,7 +889,7 @@ impl TraitRenderer for GlRenderer {
     // Enable vertex attributes.
     vao.enable_attributes(attributes)?;
     
-    self.m_batch.m_shaders.push(shader_associated.get_api_data().get_id());
+    self.m_batch.m_shaders.push(shader_associated.get_id());
     self.m_batch.m_vao_buffers.push(vao);
     self.m_batch.m_vbo_buffers.push(vbo);
     
@@ -888,6 +906,14 @@ impl TraitRenderer for GlRenderer {
   }
   
   fn free(&mut self, _id: &u64) -> Result<(), EnumErrors> {
+    return Ok(());
+  }
+  
+  fn shutdown(&mut self) -> Result<(), EnumErrors> {
+    if self.m_state == EnumState::Error {
+      return Err(EnumErrors::NotImplemented);
+    }
+    self.m_state = EnumState::Shutdown;
     return Ok(());
   }
 }

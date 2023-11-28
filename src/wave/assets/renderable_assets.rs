@@ -27,16 +27,10 @@ use std::fmt::{Debug, Display};
 use std::mem::size_of;
 
 use once_cell::sync::Lazy;
-
 use crate::log;
-use crate::wave::Engine;
-use crate::wave::graphics::renderer::{EnumErrors, TraitRenderableEntity, TraitRenderer};
-#[cfg(feature = "OpenGL")]
-use crate::wave::graphics::renderer::{GlRenderer};
 
-#[cfg(feature = "Vulkan")]
-use crate::wave::graphics::renderer::{VkRenderer};
-use crate::wave::graphics::shader::{GlslShader, TraitShader};
+use crate::wave::graphics::renderer::{EnumErrors, Renderer};
+use crate::wave::graphics::shader::{TraitShader};
 use crate::wave::math::{Mat4, Vec3};
 
 /*
@@ -46,6 +40,13 @@ use crate::wave::math::{Mat4, Vec3};
  */
 
 static mut S_ENTITIES_ID_CACHE: Lazy<HashSet<u32>> = Lazy::new(|| HashSet::new());
+
+pub trait TraitRenderableEntity {
+  fn send(&mut self, shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors>;
+  fn resend(&mut self, shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors>;
+  fn free(&mut self, shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors>;
+  fn is_sent(&self) -> bool;
+}
 
 #[derive(Debug, Clone)]
 pub struct REntity {
@@ -158,18 +159,11 @@ impl PartialEq for REntity {
 }
 
 impl TraitRenderableEntity for REntity {
-  fn send<T: TraitShader>(&mut self, shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors> {
-    #[cfg(feature = "Vulkan")]
-      let engine = Engine::<VkRenderer>::get();
+  fn send(&mut self, shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors> {
+    let renderer = Renderer::get().as_mut()
+      .expect("[REntity] -->\t Cannot send REntity, renderer is null! Exiting...");
     
-    #[cfg(feature = "OpenGL")]
-      let engine = Engine::<GlRenderer>::get();
-    
-    if engine.is_null() {
-      log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot send asset: Engine is null!");
-      return Err(EnumErrors::NoApi);
-    }
-    return match unsafe { (*engine).m_renderer.m_api.send(self, shader_associated) } {
+    return match renderer.m_api.send(self, shader_associated) {
       Ok(_) => {
         self.m_sent = true;
         Ok(())
@@ -182,23 +176,15 @@ impl TraitRenderableEntity for REntity {
     };
   }
   
-  fn resend<T: TraitShader>(&mut self, _shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors> {
+  fn resend(&mut self, _shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors> {
     todo!()
   }
   
-  fn free<T: TraitShader>(&mut self, _shader_associated: &mut GlslShader<T>) -> Result<(), EnumErrors> {
-    #[cfg(feature = "Vulkan")]
-      let engine = Engine::<VkRenderer>::get();
+  fn free(&mut self, _shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors> {
+    let renderer = Renderer::get().as_mut()
+      .expect("[REntity] -->\t Cannot free REntity, renderer is null! Exiting...");
     
-    #[cfg(feature = "OpenGL")]
-      let engine = Engine::<GlRenderer>::get();
-    
-    if engine.is_null() {
-      log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot send asset: Engine is null!");
-      return Err(EnumErrors::NoApi);
-    }
-    
-    return match unsafe { (*engine).m_renderer.m_api.free(&self.m_renderer_id) } {
+    return match renderer.m_api.free(&self.m_renderer_id) {
       Ok(_) => {
         self.m_sent = false;
         Ok(())

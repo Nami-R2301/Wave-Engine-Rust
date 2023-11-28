@@ -460,12 +460,6 @@ pub mod logger {
       use std::io::Write;
       use crate::wave::Engine;
       use crate::{trace, file_name, function_name};
-      
-      #[cfg(feature = "OpenGL")]
-      use crate::wave::graphics::renderer::{GlRenderer};
-      
-      #[cfg(feature = "Vulkan")]
-      use crate::wave::graphics::renderer::{VkRenderer};
 
       let current_time = chrono::Local::now();
 
@@ -474,10 +468,10 @@ pub mod logger {
 
       let log_message: String = format!($($format_and_arguments)*);
       #[cfg(feature = "OpenGL")]
-      let mut log_file_ptr = Engine::<GlRenderer>::get_log_file();
+      let mut log_file_ptr = Engine::get_log_file();
       
       #[cfg(feature = "Vulkan")]
-      let mut log_file_ptr = Engine::<VkRenderer>::get_log_file();
+      let mut log_file_ptr = Engine::get_log_file();
       
       writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
@@ -488,7 +482,6 @@ pub mod logger {
     ($log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{
       use std::io::Write;
       use crate::wave::Engine;
-      use crate::wave::graphics::renderer;
       use crate::wave::utils;
       use crate::wave::utils::logger::EnumLogColor;
       use crate::{trace, file_name, function_name};
@@ -501,7 +494,7 @@ pub mod logger {
                                           trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
-      let mut log_file_ptr = Engine::<renderer::VkRenderer>::get_log_file();
+      let mut log_file_ptr = Engine::get_log_file();
       writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
                           expect("\x1b[31m[Logger] --> Unable to log statement!");
       writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).

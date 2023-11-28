@@ -28,8 +28,7 @@ pub use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeip
 use gl::types::GLintptr;
 
 use crate::{check_gl_call, log};
-use crate::wave::Engine;
-use crate::wave::graphics::renderer::{EnumApi, EnumErrors, EnumState, GlRenderer};
+use crate::wave::graphics::renderer::{EnumApi, EnumErrors, EnumState, Renderer};
 
 pub enum EnumAttributeType {
   UnsignedShort(i32),
@@ -191,8 +190,9 @@ impl GlVao {
 impl Drop for GlVao {
   fn drop(&mut self) {
     unsafe {
-      let renderer = &(*Engine::<GlRenderer>::get()).m_renderer;
-      if renderer.m_type == EnumApi::OpenGL && renderer.m_state != EnumState::Shutdown {
+      let renderer = Renderer::get().as_ref()
+        .expect("[Buffer] -->\t Cannot drop Vao, renderer is null! Exiting...");
+      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.m_api.get_state() != EnumState::Shutdown {
         gl::DeleteVertexArrays(1, &self.m_renderer_id);
       }
     }
@@ -340,8 +340,9 @@ impl GlVbo {
 impl Drop for GlVbo {
   fn drop(&mut self) {
     unsafe {
-      let renderer = &(*Engine::<GlRenderer>::get()).m_renderer;
-      if renderer.m_type == EnumApi::OpenGL && renderer.m_state != EnumState::Shutdown {
+      let renderer = Renderer::get().as_ref()
+        .expect("[Buffer] -->\t Cannot drop Vbo, renderer is null! Exiting...");
+      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.m_api.get_state() != EnumState::Shutdown {
         gl::DeleteBuffers(1, &self.m_renderer_id);
       }
     }

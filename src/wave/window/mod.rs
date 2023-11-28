@@ -51,6 +51,10 @@ fn glfw_error_callback(error: glfw::Error, message: String) {
    {2}", error, "", message);
 }
 
+pub trait TraitWindow {
+
+}
+
 pub struct GlfwWindow {
   m_state: EnumState,
   m_api_window: glfw::PWindow,

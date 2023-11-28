@@ -25,11 +25,10 @@
 use once_cell::sync::Lazy;
 
 use crate::log;
-use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::camera::PerspectiveCamera;
-use crate::wave::graphics::renderer::{self, Renderer, TraitRenderableEntity, TraitRenderer, GlRenderer, VkRenderer};
-
-use crate::wave::graphics::shader::{GlslShader, TraitShader};
+use crate::wave::graphics::renderer::{self, Renderer, S_RENDERER};
+use crate::wave::graphics::shader::{TraitShader};
+use crate::wave::assets::renderable_assets::{TraitRenderableEntity, REntity};
 use crate::wave::math::Vec3;
 use crate::wave::utils::asset_loader::ResLoader;
 use crate::wave::utils::Time;
@@ -42,11 +41,7 @@ pub mod utils;
 pub mod assets;
 pub mod camera;
 
-#[cfg(feature = "Vulkan")]
-static mut S_ENGINE: *mut Engine<VkRenderer> = std::ptr::null_mut();
-
-#[cfg(feature = "OpenGL")]
-static mut S_ENGINE: *mut Engine<GlRenderer> = std::ptr::null_mut();
+static mut S_ENGINE: *mut Engine = std::ptr::null_mut();
 
 static S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::logger::init().unwrap());
 
@@ -77,16 +72,94 @@ pub trait TraitApp {
   fn on_render(&mut self);
 }
 
-pub struct Engine<T: TraitRenderer> {
+pub struct Engine {
   m_app: Box<dyn TraitApp>,
   m_window: GlfwWindow,
-  m_renderer: Renderer<T>,
+  m_renderer: Renderer,
   m_time_step: f64,
   m_tick_rate: f64,
   m_state: EnumState,
 }
 
-impl<T: TraitRenderer> Engine<T> {
+impl Engine {
+  /// Setup new engine struct containing an app with the [TraitApp] behavior in order to call
+  /// `on_new()`, `on_delete()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
+  /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
+  ///
+  /// ### Arguments:
+  ///
+  /// * `app_provided`: A boxed generic app struct `T` which respects the trait [TraitApp].
+  ///
+  /// ### Returns:
+  ///   - `Result<GlREntity, EnumErrors>` : Will return a valid Engine if successful, otherwise an [EnumErrors]
+  ///     on any error encountered. These include, but are not limited to :
+  ///     + [EnumErrors::AppError] : If the app crashes for whatever reason the client may choose.
+  ///     + [EnumErrors::RendererError] : If the renderer crashes due to an invalid process loading,
+  ///       missing extensions, unsupported version and/or invalid GPU command.
+  ///     + [EnumErrors::WindowError] : If the window context crashes due to invalid context creation,
+  ///       deletion and/or command (GLX/X11 for Linux, WIN32 for Windows).
+  ///
+  /// ### Examples
+  ///
+  /// ```text
+  /// use wave::{Engine, EnumErrors};
+  ///
+  /// let my_app: Box<ExampleApp> = Box::new(ExampleApp::new());
+  /// // Allocated on the stack -- Use new_shared() to allocate on the heap.
+  /// let mut engine = Engine::new(my_app)?;
+  ///
+  /// // Run `on_new()` for `my_app` prior to running.
+  /// engine.on_new()?;
+  /// engine.run();
+  /// engine.on_delete();
+  /// return Ok(());
+  /// ```
+  pub fn new<S: TraitApp + 'static>(app_provided: Box<S>) -> Result<Self, EnumErrors> {
+    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
+    
+    // Setup and launch engine.
+    let mut window = GlfwWindow::new();
+    
+    match window {
+      Ok(_) => {}
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error creating GLFW window! Exiting... \
+         Error code => {:?}", err);
+        return Err(EnumErrors::WindowError);
+      }
+    }
+    
+    match Renderer::new(window.as_mut().unwrap()) {
+      Ok(mut renderer) => {
+        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer.m_api.get_api_info());
+        
+        let api = renderer.m_api.as_mut();
+        
+        let _ = api.toggle_feature(renderer::EnumFeature::DepthTest(true));
+        let _ = api.toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));
+        let _ = api.toggle_feature(renderer::EnumFeature::Debug(true));
+        let _ = api.toggle_feature(renderer::EnumFeature::Wireframe(true));
+        let _ = api.toggle_feature(renderer::EnumFeature::MSAA(true));
+        
+        Ok({
+          log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
+          Engine {
+            m_app: app_provided,
+            m_window: window.unwrap(),
+            m_renderer: renderer,
+            m_time_step: 0.0,
+            m_tick_rate: 0.0,
+            m_state: EnumState::NotStarted,
+          }
+        })
+      }
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error creating context! Error => {:?}", err);
+        return Err(EnumErrors::RendererError);
+      }
+    }
+  }
+  
   /// Teardown engine. This effectively first shuts down the renderer and then flags the window to
   /// be closed on drop.
   ///
@@ -133,6 +206,31 @@ impl<T: TraitRenderer> Engine<T> {
     }
     self.m_window.close();
     self.m_state = EnumState::ShutDown;
+    return Ok(());
+  }
+  
+  pub fn on_new(&mut self) -> Result<(), EnumErrors> {
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
+    self.m_state = EnumState::Starting;
+    
+    match self.m_app.on_new() {
+      Ok(_) => {
+        log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
+      }
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[App] -->\t Started app unsuccessfully! Error => {:?}",
+  err);
+        match self.on_delete() {
+          Ok(_) => {}
+          Err(err) => {
+            log!("ERROR", "[Renderer] -->\t Error deleting renderer context! Exiting... Error code => \
+              {:?}", err);
+            return Err(EnumErrors::RendererError);
+          }
+        }
+        return Err(err);
+      }
+    }
     return Ok(());
   }
   
@@ -219,240 +317,19 @@ impl<T: TraitRenderer> Engine<T> {
   }
   
   
-  #[cfg(feature = "Vulkan")]
-  pub fn get() -> *mut Engine<VkRenderer> {
-    unsafe { return S_ENGINE; }
-  }
-  
-  #[cfg(feature = "OpenGL")]
-  pub fn get() -> *mut Engine<GlRenderer> {
+  pub fn get() -> *mut Engine {
     unsafe { return S_ENGINE; }
   }
   
   pub fn get_window(&self) -> &GlfwWindow {
     return &self.m_window;
   }
-}
-
-/*
-///////////////////////////////////   Vulkan    ///////////////////////////////////
-///////////////////////////////////             ///////////////////////////////////
-///////////////////////////////////             ///////////////////////////////////
- */
-impl Engine<VkRenderer> {
-  /// Setup new engine struct containing an app with the [TraitApp] behavior in order to call
-  /// `on_new()`, `on_delete()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
-  /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
-  ///
-  /// ### Arguments:
-  ///
-  /// * `app_provided`: A boxed generic app struct `T` which respects the trait [TraitApp].
-  ///
-  /// ### Returns:
-  ///   - `Result<GlREntity, EnumErrors>` : Will return a valid Engine if successful, otherwise an [EnumErrors]
-  ///     on any error encountered. These include, but are not limited to :
-  ///     + [EnumErrors::AppError] : If the app crashes for whatever reason the client may choose.
-  ///     + [EnumErrors::RendererError] : If the renderer crashes due to an invalid process loading,
-  ///       missing extensions, unsupported version and/or invalid GPU command.
-  ///     + [EnumErrors::WindowError] : If the window context crashes due to invalid context creation,
-  ///       deletion and/or command (GLX/X11 for Linux, WIN32 for Windows).
-  ///
-  /// ### Examples
-  ///
-  /// ```text
-  /// use wave::{Engine, EnumErrors};
-  ///
-  /// let my_app: Box<ExampleApp> = Box::new(ExampleApp::new());
-  /// // Allocated on the stack -- Use new_shared() to allocate on the heap.
-  /// let mut engine = Engine::new(my_app)?;
-  ///
-  /// // Run `on_new()` for `my_app` prior to running.
-  /// engine.on_new()?;
-  /// engine.run();
-  /// engine.on_delete();
-  /// return Ok(());
-  /// ```
-  pub fn new<T: TraitApp + 'static>(app_provided: Box<T>) -> Result<Self, EnumErrors> {
-    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
-    
-    // Setup and launch engine.
-    let mut window = GlfwWindow::new();
-    
-    match window {
-      Ok(_) => {}
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error creating GLFW window! Exiting... \
-         Error code => {:?}", err);
-        return Err(EnumErrors::WindowError);
-      }
-    }
-    
-    match Renderer::<VkRenderer>::new(window.as_mut().unwrap()) {
-      Ok(mut renderer) => {
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer.m_api.get_api_info());
-        
-        let _ = renderer.m_api.toggle_feature(renderer::EnumFeature::DepthTest(true));
-        let _ = renderer.m_api.toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));
-        let _ = renderer.m_api.toggle_feature(renderer::EnumFeature::Debug(true));
-        let _ = renderer.m_api.toggle_feature(renderer::EnumFeature::Wireframe(true));
-        let _ = renderer.m_api.toggle_feature(renderer::EnumFeature::MSAA(true));
-        
-        Ok({
-          log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
-          Engine {
-            m_app: app_provided,
-            m_window: window.unwrap(),
-            m_renderer: renderer,
-            m_time_step: 0.0,
-            m_tick_rate: 0.0,
-            m_state: EnumState::NotStarted,
-          }
-        })
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error creating context! Error => {:?}", err);
-        return Err(EnumErrors::RendererError);
-      }
-    }
-  }
   
-  pub fn on_new(&mut self) -> Result<(), EnumErrors> {
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
-    self.m_state = EnumState::Starting;
-    
-    #[cfg(feature = "Vulkan")]
-    unsafe { S_ENGINE = self; }
-    
-    match self.m_app.on_new() {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[App] -->\t Started app unsuccessfully! Error => {:?}",
-  err);
-        match self.on_delete() {
-          Ok(_) => {}
-          Err(err) => {
-            log!("ERROR", "[Renderer] -->\t Error deleting renderer context! Exiting... Error code => \
-              {:?}", err);
-            return Err(EnumErrors::RendererError);
-          }
-        }
-        return Err(err);
-      }
+  pub fn set_singleton (engine: &mut Box<Engine>) -> () {
+    unsafe {
+      S_ENGINE = engine.as_mut();
+      S_RENDERER = Some(&mut (*S_ENGINE).m_renderer);
     }
-    return Ok(());
-  }
-}
-
-/*
-///////////////////////////////////   OpenGL    ///////////////////////////////////
-///////////////////////////////////             ///////////////////////////////////
-///////////////////////////////////             ///////////////////////////////////
- */
-impl Engine<GlRenderer> {
-  /// Setup new engine struct containing an app with the [TraitApp] behavior in order to call
-  /// `on_new()`, `on_delete()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
-  /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
-  ///
-  /// ### Arguments:
-  ///
-  /// * `app_provided`: A boxed generic app struct `T` which respects the trait [TraitApp].
-  ///
-  /// ### Returns:
-  ///   - `Result<GlREntity, EnumErrors>` : Will return a valid Engine if successful, otherwise an [EnumErrors]
-  ///     on any error encountered. These include, but are not limited to :
-  ///     + [EnumErrors::AppError] : If the app crashes for whatever reason the client may choose.
-  ///     + [EnumErrors::RendererError] : If the renderer crashes due to an invalid process loading,
-  ///       missing extensions, unsupported version and/or invalid GPU command.
-  ///     + [EnumErrors::WindowError] : If the window context crashes due to invalid context creation,
-  ///       deletion and/or command (GLX/X11 for Linux, WIN32 for Windows).
-  ///
-  /// ### Examples
-  ///
-  /// ```text
-  /// use wave::{Engine, EnumErrors};
-  ///
-  /// let my_app: Box<ExampleApp> = Box::new(ExampleApp::new());
-  /// // Allocated on the stack -- Use new_shared() to allocate on the heap.
-  /// let mut engine = Engine::new(my_app)?;
-  ///
-  /// // Run `on_new()` for `my_app` prior to running.
-  /// engine.on_new()?;
-  /// engine.run();
-  /// engine.on_delete();
-  /// return Ok(());
-  /// ```
-  pub fn new<T: TraitApp + 'static>(app_provided: Box<T>) -> Result<Self, EnumErrors> {
-    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
-    
-    // Setup and launch engine.
-    let mut window = GlfwWindow::new();
-    
-    match window {
-      Ok(_) => {}
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error creating GLFW window! Exiting... \
-         Error code => {:?}", err);
-        return Err(EnumErrors::WindowError);
-      }
-    }
-    
-    match Renderer::<GlRenderer>::new(window.as_mut().unwrap()) {
-      Ok(mut renderer) => {
-        log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer.m_api.get_api_info());
-        
-        let _ = renderer.m_api.toggle_feature(renderer::EnumFeature::DepthTest(true));
-        let _ = renderer.m_api.toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));
-        let _ = renderer.m_api.toggle_feature(renderer::EnumFeature::Debug(true));
-        let _ = renderer.m_api.toggle_feature(renderer::EnumFeature::Wireframe(true));
-        let _ = renderer.m_api.toggle_feature(renderer::EnumFeature::MSAA(true));
-        
-        Ok({
-          log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
-          Engine {
-            m_app: app_provided,
-            m_window: window.unwrap(),
-            m_renderer: renderer,
-            m_time_step: 0.0,
-            m_tick_rate: 0.0,
-            m_state: EnumState::NotStarted,
-          }
-        })
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error creating context! Error => {:?}", err);
-        return Err(EnumErrors::RendererError);
-      }
-    }
-  }
-  
-  pub fn on_new(&mut self) -> Result<(), EnumErrors> {
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
-    self.m_state = EnumState::Starting;
-    
-    #[cfg(feature = "OpenGL")]
-    unsafe { S_ENGINE = self; }
-    
-    match self.m_app.on_new() {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[App] -->\t Started app unsuccessfully! Error => {:?}",
-  err);
-        match self.on_delete() {
-          Ok(_) => {}
-          Err(err) => {
-            log!("ERROR", "[Renderer] -->\t Error deleting renderer context! Exiting... Error code => \
-              {:?}", err);
-            return Err(EnumErrors::RendererError);
-          }
-        }
-        return Err(err);
-      }
-    }
-    return Ok(());
   }
 }
 
@@ -464,7 +341,7 @@ impl Engine<GlRenderer> {
  */
 
 pub struct ExampleApp<T: TraitShader> {
-  m_shaders: Vec<GlslShader<T>>,
+  m_shaders: Vec<T>,
   m_renderable_assets: Vec<REntity>,
 }
 
@@ -480,7 +357,8 @@ impl<T: TraitShader> ExampleApp<T> {
 impl<T: TraitShader> TraitApp for ExampleApp<T> {
   fn on_new(&mut self) -> Result<(), EnumErrors> {
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading GLSL shaders...");
-    let result = GlslShader::<T>::new("res/shaders/test_vert.glsl",
+    
+    let result = T::new("res/shaders/test_vert.glsl",
       "res/shaders/test_frag.glsl");
     
     match result {
@@ -547,7 +425,7 @@ impl<T: TraitShader> TraitApp for ExampleApp<T> {
     #[cfg(feature = "OpenGL")]
     unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); }
     
-    let draw_result = unsafe { (*S_ENGINE).m_renderer.m_api.draw() };
+    let draw_result = unsafe { S_RENDERER.as_mut().unwrap().m_api.draw() };
     
     match draw_result {
       Ok(_) => {}
