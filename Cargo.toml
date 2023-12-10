@@ -13,7 +13,7 @@ glfw = {version = "0.54.0", features = ["vulkan"]}
 once_cell = "1.18.0"
 
 [features]
-default = ["Vulkan"]
+default = ["OpenGL"]
 debug = []
 profiler = []
 Vulkan = []

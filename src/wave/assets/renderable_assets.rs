@@ -27,10 +27,10 @@ use std::fmt::{Debug, Display};
 use std::mem::size_of;
 
 use once_cell::sync::Lazy;
-use crate::log;
 
+use crate::log;
 use crate::wave::graphics::renderer::{EnumErrors, Renderer};
-use crate::wave::graphics::shader::{TraitShader};
+use crate::wave::graphics::shader::TraitShader;
 use crate::wave::math::{Mat4, Vec3};
 
 /*
@@ -104,13 +104,13 @@ impl REntity {
     }
     
     if self.m_vertices.len() % 3 == 0 {
-      for _index in 0..self.m_vertices.len() / 3 {
-        self.m_entity_id.push(new_id);
-      }
+      self.m_entity_id = Vec::with_capacity(self.m_vertices.len() / 3);
     } else {
-      for _index in 0..self.m_vertices.len() / 2 {
-        self.m_entity_id.push(new_id);
-      }
+      self.m_entity_id = Vec::with_capacity(self.m_vertices.len() / 2);
+    }
+    
+    for _index in 0..self.m_entity_id.capacity() {
+      self.m_entity_id.push(new_id);
     }
   }
   

@@ -22,47 +22,38 @@
  SOFTWARE.
 */
 
-use wave_engine::wave::graphics::renderer::{VkRenderer, GlRenderer, Renderer};
-use wave_engine::wave::graphics::shader;
-use wave_engine::wave::graphics::shader::{GlShader, GlslShader, VkShader};
+use wave_engine::wave::graphics::renderer::Renderer;
+use wave_engine::wave::graphics::shader::{GlslShader, VkShader};
 use wave_engine::wave::math::Mat4;
-use wave_engine::wave::window;
 use wave_engine::wave::window::GlfwWindow;
 
 #[test]
 #[ignore]
 fn test_shader_send() {
-  // Setup window context in order to use gl functions.
+  // Setup window context in order to use api functions.
   let window = GlfwWindow::new();
   match window.as_ref() {
     Ok(_) => {}
-    Err(window::EnumErrors::AlreadyInitializedError) => {}
-    Err(_) => { return assert!(false); }
+    Err(err) => {
+      println!("[Window] --> Cannot create window! Error => {:?}", err);
+      return assert!(false);
+    }
   }
   
-  // Setup renderer in order to use gl functions.
-  #[cfg(feature = "OpenGL")]
-  let renderer = Renderer::<GlRenderer>::new(&mut window.unwrap());
-  
-  #[cfg(feature = "Vulkan")]
-    let renderer = Renderer::<VkRenderer>::new(&mut window.unwrap());
+  // Setup renderer in order to use api functions.
+  let renderer = Renderer::new(&mut window.unwrap());
   
   assert!(renderer.is_ok());
   
-  #[cfg(feature = "Vulkan")]
-  let result = GlslShader::<VkShader>::new("res/shaders/default_3D.vert",
-    "res/shaders/default_3D.frag");
-  
-  #[cfg(feature = "OpenGL")]
-    let result = GlslShader::<GlShader>::new("res/shaders/default_3D.vert",
+  let result = GlslShader::new("res/shaders/default_3D.vert",
     "res/shaders/default_3D.frag");
   
   if result.is_err() {
     return assert!(false);
   }
   
-  assert_ne!(result.as_ref().unwrap().get_api_data().m_vertex_str, "");
-  assert_ne!(result.as_ref().unwrap().get_api_data().m_fragment_str, "");
+  // Check if shader str is empty.
+  assert_ne!(result.as_ref().unwrap().to_string(), "Vertex shader :\n\nFragment shader : \n");
   
   // Sourcing and compilation.
   let result = result.unwrap().send();
@@ -75,43 +66,30 @@ fn test_load_uniforms() {
   let window = GlfwWindow::new();
   match window.as_ref() {
     Ok(_) => {}
-    Err(window::EnumErrors::AlreadyInitializedError) => {}
     Err(err) => {
       println!("[Window] --> Cannot create window! Error => {:?}", err);
       return assert!(false);
     }
   }
   
-  // Setup renderer in order to use gl functions.
-  #[cfg(feature = "OpenGL")]
-    let renderer = Renderer::<GlRenderer>::new(&mut window.unwrap());
-  
-  #[cfg(feature = "Vulkan")]
-    let renderer = Renderer::<VkRenderer>::new(&mut window.unwrap());
+  // Setup renderer in order to use api functions.
+  let renderer = Renderer::new(&mut window.unwrap());
   assert!(renderer.is_ok());
   
-  #[cfg(feature = "Vulkan")]
-    let mut new_shader = GlslShader::<VkShader>::new("res/shaders/default_3D.vert",
+  let mut new_shader = GlslShader::new("res/shaders/default_3D.vert",
     "res/shaders/default_3D.frag");
+  assert!(new_shader.is_ok());
   
-  #[cfg(feature = "OpenGL")]
-    let mut new_shader = GlslShader::<GlShader>::new("res/shaders/default_3D.vert",
-    "res/shaders/default_3D.frag");
-  
-  if new_shader.is_err() {
-    return assert!(false);
-  }
-  
-  assert!(new_shader.as_ref().is_ok());
-  assert_ne!(new_shader.as_ref().unwrap().get_api_data().m_vertex_str, "");
-  assert_ne!(new_shader.as_ref().unwrap().get_api_data().m_fragment_str, "");
+  // Check if shader str is empty.
+  assert_ne!(new_shader.as_ref().unwrap().to_string(), "[Shader] -->\t\nVertex shader :\n\
+  \nFragment shader : \n");
   
   // Sourcing and compilation.
   let result = new_shader.as_mut().unwrap().send();
   assert!(result.is_ok());
   
   #[cfg(feature = "OpenGL")]
-  match new_shader.as_mut().unwrap().get_api_data().bind() {
+  match new_shader.as_mut().unwrap().get_api().bind() {
     Ok(_) => {}
     Err(_) => { return assert!(false); }
   }
@@ -120,12 +98,19 @@ fn test_load_uniforms() {
   let uniform = new_shader.as_mut().unwrap().upload_data("u_model_matrix",
     &Mat4::new(1.0));
   
+  
   match uniform {
     Ok(_) => {}
+    
+    #[cfg(feature = "OpenGL")]
     Err(shader::EnumErrors::GlError(err)) => {
       println!("[Window] --> Cannot load uniform {0}! Error => 0x{1:x}", "u_has_texture", err);
       return assert!(false);
     }
-    _ => {}
+    
+    Err(err) => {
+      println!("[Window] --> Cannot load uniform {0}! Error => 0x{1:#?}", "u_has_texture", err);
+      return assert!(false);
+    }
   }
 }

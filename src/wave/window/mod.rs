@@ -53,6 +53,7 @@ pub enum EnumErrors {
   VulkanSurfaceCreationError,
 }
 
+#[cfg(feature = "debug")]
 fn glfw_error_callback(error: glfw::Error, message: String) {
   log!(EnumLogColor::Red, "ERROR", "[Window] -->\t GLFW error raised! Error => {0}\n{1:100}Info => \
    {2}", error, "", message);
@@ -121,7 +122,9 @@ impl GlfwWindow {
         window.set_framebuffer_size_polling(true);
         
         // Set GLFW error callback.
+        #[cfg(feature = "debug")]
         window.glfw.set_error_callback(glfw_error_callback);
+        
         let bounds = Vec2::from(&[window.get_size().0, window.get_size().1]);
         
         Ok(GlfwWindow {

@@ -207,7 +207,7 @@ impl Drop for GlVao {
     unsafe {
       let renderer = Renderer::get().as_ref()
         .expect("[Buffer] -->\t Cannot drop Vao, renderer is null! Exiting...");
-      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.m_api.get_state() != EnumState::Shutdown {
+      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.get_state() != EnumState::Shutdown {
         gl::DeleteVertexArrays(1, &self.m_renderer_id);
       }
     }
@@ -228,12 +228,12 @@ impl GlVbo {
     let mut new_vbo: GLuint = 0;
     check_gl_call!("Vbo", gl::CreateBuffers(1, &mut new_vbo));
     check_gl_call!("Vbo", gl::BindBuffer(gl::ARRAY_BUFFER, new_vbo));
-    check_gl_call!("Vbo", gl::BufferData(gl::ARRAY_BUFFER, (alloc_size * 2) as GLsizeiptr,
+    check_gl_call!("Vbo", gl::BufferData(gl::ARRAY_BUFFER, (alloc_size) as GLsizeiptr,
       std::ptr::null(), gl::DYNAMIC_DRAW));
     
     return Ok(GlVbo {
       m_renderer_id: new_vbo,
-      m_capacity: alloc_size * 2,
+      m_capacity: alloc_size,
       m_size: alloc_size,
       m_count: vertex_count,
     });
@@ -360,7 +360,7 @@ impl Drop for GlVbo {
     unsafe {
       let renderer = Renderer::get().as_ref()
         .expect("[Buffer] -->\t Cannot drop Vbo, renderer is null! Exiting...");
-      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.m_api.get_state() != EnumState::Shutdown {
+      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.get_state() != EnumState::Shutdown {
         gl::DeleteBuffers(1, &self.m_renderer_id);
       }
     }

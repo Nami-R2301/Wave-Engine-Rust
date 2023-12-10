@@ -133,7 +133,6 @@ impl Engine {
       Ok(mut renderer) => {
         log!(EnumLogColor::Yellow, "INFO", "[Renderer] -->\t {0}", renderer);
         
-        
         let api = renderer.m_api.as_mut();
         let _ = api.toggle_feature(renderer::EnumFeature::DepthTest(true));
         let _ = api.toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));

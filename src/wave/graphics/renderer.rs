@@ -24,10 +24,10 @@
 
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
-use crate::wave::graphics::shader::TraitShader;
+use crate::wave::graphics::shader::{TraitShader};
 use crate::wave::window::GlfwWindow;
 
-pub(crate) static mut S_RENDERER: Option<&mut Renderer> = None;
+pub static mut S_RENDERER: Option<&mut Renderer> = None;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumApi {
@@ -101,10 +101,9 @@ impl Stats {
   }
 }
 
-pub trait TraitRenderer {
+pub trait TraitContext {
   fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> where Self: Sized;
   fn get_type(&self) -> EnumApi;
-  fn get_state(&self) -> EnumState;
   fn to_string(&self) -> String;
   fn toggle_feature(&mut self, feature: EnumFeature) -> Result<(), EnumErrors>;
   fn begin(&mut self);
@@ -118,24 +117,36 @@ pub trait TraitRenderer {
 }
 
 pub struct Renderer {
-  pub m_api: Box<dyn TraitRenderer>,
+  m_state: EnumState,
+  pub m_api: Box<dyn TraitContext>,
 }
 
 impl Renderer {
   pub fn new(window: &mut GlfwWindow) -> Result<Renderer, EnumErrors> {
     #[cfg(feature = "Vulkan")]
     return Ok(Renderer {
-      m_api: Box::new(VkRenderer::new(window)?),
+      m_state: EnumState::Ok,
+      m_api: Box::new(VkContext::new(window)?),
     });
     
     #[cfg(feature = "OpenGL")]
     return Ok(Renderer {
-      m_api: Box::new(GlRenderer::new(window)?),
+      m_state: EnumState::Ok,
+      m_api: Box::new(GlContext::new(window)?),
     });
   }
   
   pub fn shutdown(&mut self) -> Result<(), EnumErrors> {
+    if self.m_state == EnumState::Error {
+      return Err(EnumErrors::NotImplemented);
+    }
+    self.m_state = EnumState::Shutdown;
+    
     return self.m_api.shutdown();
+  }
+  
+  pub fn get_state(&self) -> EnumState {
+    return self.m_state;
   }
   
   pub fn get() -> &'static mut Option<&'static mut Renderer> {
@@ -145,7 +156,8 @@ impl Renderer {
 
 impl Display for Renderer {
   fn fmt(&self, format: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(format, "{0}", self.m_api.to_string())
+    write!(format, "State => {0:#?}\n{1:113}Api => {2:#?}\n{1:113}{3}", self.m_state, "", self.m_api.get_type(),
+      self.m_api.to_string())
   }
 }
 
@@ -159,6 +171,10 @@ impl Display for Renderer {
 extern crate ash;
 
 use std::fmt::{Display, Formatter};
+
+#[cfg(feature = "Vulkan")]
+use std::ops::BitOr;
+
 #[cfg(feature = "Vulkan")]
 use ash::extensions::{ext, khr};
 #[cfg(feature = "Vulkan")]
@@ -174,12 +190,13 @@ pub enum EnumVulkanErrors {
   InstanceError,
   DebugError,
   PhysicalDeviceError,
+  LogicalDeviceError,
   SurfaceError,
 }
 
 #[cfg(feature = "Vulkan")]
 struct VkQueueFamilyIndices {
-  m_graphics_family_index: Option<u8>,
+  m_graphics_family_index: Option<u32>,
   // Add more family indices for desired queue pipeline features.
 }
 
@@ -193,20 +210,21 @@ impl VkQueueFamilyIndices {
 }
 
 #[cfg(feature = "Vulkan")]
-pub struct VkRenderer {
+pub struct VkContext {
   m_type: EnumApi,
-  m_state: EnumState,
   m_entry: ash::Entry,
   m_instance: ash::Instance,
-  m_device: vk::PhysicalDevice,
+  m_physical_device: vk::PhysicalDevice,
+  m_logical_device: ash::Device,
   m_surface: khr::Surface,
   m_surface_khr: vk::SurfaceKHR,
   m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
 }
 
 #[cfg(feature = "Vulkan")]
-impl VkRenderer {
-  pub fn create_instance(window_context: &glfw::Glfw) -> Result<(ash::Entry, ash::Instance), EnumErrors> {
+impl VkContext {
+  pub fn create_instance(window_context: &glfw::Glfw, additional_extensions: Option<Vec<&str>>,
+                         additional_layers: Option<Vec<&str>>) -> Result<(ash::Entry, ash::Instance), EnumErrors> {
     let entry = ash::Entry::linked();
     
     let app_name = std::ffi::CString::new("Wave Engine Rust").unwrap();
@@ -221,21 +239,21 @@ impl VkRenderer {
     let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
     
     // Validate API calls and log output.
-    let layers = VkRenderer::load_layers(None)?;
-    VkRenderer::check_layer_support(&entry, &layers)?;
+    let layers = VkContext::load_layers(additional_layers)?;
+    VkContext::check_layer_support(&entry, &layers)?;
     
-    let c_layers_ptr = layers
+    let c_layers_ptr: Vec<*const std::ffi::c_char> = layers
       .iter()
       .map(|c_layer| c_layer.as_ptr())
-      .collect::<Vec<*const std::ffi::c_char>>();
+      .collect();
     
-    let extensions = VkRenderer::load_extensions(window_context, None)?;
-    VkRenderer::check_extension_support(&entry, &extensions)?;
+    let extensions = VkContext::load_extensions(window_context, additional_extensions)?;
+    VkContext::check_extension_support(&entry, &extensions)?;
     
-    let c_extensions_ptr = extensions
+    let c_extensions_ptr: Vec<*const std::ffi::c_char> = extensions
       .iter()
       .map(|c_extension| c_extension.as_ptr())
-      .collect::<Vec<*const std::ffi::c_char>>();
+      .collect();
     
     let mut instance_create_info = vk::InstanceCreateInfo::builder()
       .enabled_extension_names(c_extensions_ptr.as_slice())
@@ -244,13 +262,15 @@ impl VkRenderer {
     #[cfg(feature = "debug")]
     {
       debug_create_info.s_type = vk::DebugUtilsMessengerCreateInfoEXT::STRUCTURE_TYPE;
-      debug_create_info.message_severity |= vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
-        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING |
-        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR |
-        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE;
-      debug_create_info.message_type |= vk::DebugUtilsMessageTypeFlagsEXT::GENERAL |
-        vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION |
-        vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
+      debug_create_info.message_severity = vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+        .bitor(vk::DebugUtilsMessageSeverityFlagsEXT::WARNING)
+        .bitor(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR)
+        .bitor(vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE);
+      
+      debug_create_info.message_type = vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+        .bitor(vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION)
+        .bitor(vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE);
+      
       debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
       
       instance_create_info = instance_create_info
@@ -355,6 +375,58 @@ impl VkRenderer {
     return Ok(c_layers);
   }
   
+  pub fn load_logical_device(ash_instance: &ash::Instance, vk_physical_device: &vk::PhysicalDevice,
+                             additional_extensions: Option<Vec<&str>>) -> Result<ash::Device, EnumErrors> {
+    let physical_device_features = unsafe {
+      ash_instance.get_physical_device_features(*vk_physical_device)
+    };
+    let queue_family_indices = VkContext::find_queue_families(ash_instance, vk_physical_device)?;
+    
+    // Get SwapChain extension.
+    let mut required_device_extensions: Vec<std::ffi::CString> =
+      vec![std::ffi::CString::new(khr::Swapchain::name().to_bytes())
+        .expect("Failed to convert swap chain name to CString in VKRenderer::new()!")];
+    
+    // Get additional extensions.
+    if additional_extensions.is_some() {
+      for extension in additional_extensions.unwrap() {
+        required_device_extensions.push(std::ffi::CString::new(extension.as_bytes())
+          .expect("Failed to convert device extension name into CString in load_logical_device()!"));
+      }
+    }
+    
+    VkContext::check_device_extension_support(&ash_instance, &vk_physical_device,
+      &required_device_extensions)?;
+    
+    let required_device_extensions_ptr: Vec<*const std::ffi::c_char> = required_device_extensions
+      .iter()
+      .map(|extension_name| {
+        return extension_name.as_ptr();
+      })
+      .collect();
+    
+    let device_queue_create_info = vk::DeviceQueueCreateInfo::builder()
+      .flags(vk::DeviceQueueCreateFlags::default())
+      .queue_family_index(queue_family_indices.m_graphics_family_index.unwrap())
+      .queue_priorities(&[1.0])
+      .build();
+    
+    let device_create_info = vk::DeviceCreateInfo::builder()
+      .queue_create_infos(&[device_queue_create_info])
+      .enabled_extension_names(&required_device_extensions_ptr)
+      .enabled_features(&physical_device_features)
+      .build();
+    
+    let vk_device = unsafe {
+      ash_instance.create_device(*vk_physical_device, &device_create_info, None)
+    };
+    if vk_device.is_err() {
+      return Err(EnumErrors::VulkanError(EnumVulkanErrors::LogicalDeviceError));
+    }
+    
+    return Ok(vk_device.unwrap());
+  }
+  
   /// Check if the requested Vulkan instance extensions are supported.
   ///
   /// ### Arguments:
@@ -419,6 +491,34 @@ impl VkRenderer {
     return Ok(());
   }
   
+  pub fn check_device_extension_support(ash_instance: &ash::Instance,
+                                        vk_physical_device: &vk::PhysicalDevice,
+                                        extension_names: &Vec<std::ffi::CString>) -> Result<(), EnumErrors> {
+    let extension_properties = unsafe {
+      ash_instance.enumerate_device_extension_properties(*vk_physical_device)
+    };
+    if extension_properties.is_err() {
+      log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot retrieve device extensions: None available!");
+      return Err(EnumErrors::VulkanError(EnumVulkanErrors::ExtensionError));
+    }
+    
+    let available_device_extensions = extension_properties.unwrap();
+    let mut device_extension_properties_iter = available_device_extensions.iter();
+    
+    // Verify extension support.
+    for extension_name in extension_names {
+      if !device_extension_properties_iter.any(|device_extension| {
+        unsafe { return *device_extension.extension_name.as_ptr() == *extension_name.as_ptr(); };
+      }) {
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Vulkan device extension {:#?} not supported!",
+          extension_name.to_str().expect("Failed to convert C String to &str in check_device_extension_support()"));
+        return Err(EnumErrors::VulkanError(EnumVulkanErrors::ExtensionError));
+      }
+    }
+    
+    return Ok(());
+  }
+  
   /// Setup debug logging for API calls that redirect to custom debug callback.
   ///
   /// ### Arguments:
@@ -475,8 +575,8 @@ impl VkRenderer {
   ///   * `Result<vk::PhysicalDevice, EnumErrors>`: A suitable Vulkan physical device if successful
   /// , otherwise an [EnumErrors].
   ///
-  fn pick_physical_device(instance: &ash::Instance, window: &glfw::Glfw) -> Result<vk::PhysicalDevice, EnumErrors> {
-    let devices = unsafe { instance.enumerate_physical_devices() };
+  fn pick_physical_device(ash_instance: &ash::Instance, window: &glfw::Glfw) -> Result<vk::PhysicalDevice, EnumErrors> {
+    let devices = unsafe { ash_instance.enumerate_physical_devices() };
     if devices.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error getting physical devices! \
         Error => {:#?}", devices.unwrap());
@@ -492,8 +592,8 @@ impl VkRenderer {
     // Check if device is suitable.
     let device = devices.unwrap()
       .into_iter()
-      .find(|device| window.get_physical_device_presentation_support_raw(instance.handle(),
-        *device, 0) && VkRenderer::is_device_suitable(instance, device));
+      .find(|device| window.get_physical_device_presentation_support_raw(ash_instance.handle(),
+        *device, 0) && VkContext::is_device_suitable(ash_instance, device));
     
     
     if device.is_none() {
@@ -505,21 +605,21 @@ impl VkRenderer {
     return Ok(device.unwrap());
   }
   
-  fn find_queue_families(instance: &ash::Instance, physical_device: &vk::PhysicalDevice) -> Result<VkQueueFamilyIndices, EnumErrors> {
+  fn find_queue_families(ash_instance: &ash::Instance, vk_physical_device: &vk::PhysicalDevice) -> Result<VkQueueFamilyIndices, EnumErrors> {
     let queue_families = unsafe {
-      instance.get_physical_device_queue_family_properties(*physical_device)
+      ash_instance.get_physical_device_queue_family_properties(*vk_physical_device)
     };
     
     if queue_families.is_empty() {
       log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot retrieve queue families for physical \
-      device {0:#?}!", physical_device);
+      device {0:#?}!", vk_physical_device);
       return Err(EnumErrors::VulkanError(EnumVulkanErrors::PhysicalDeviceError));
     }
     
     let mut queue_family_indices: VkQueueFamilyIndices = VkQueueFamilyIndices::default();
     
     // Find graphics queue family.
-    let mut graphic_family_index: u8 = 0;
+    let mut graphic_family_index: u32 = 0;
     
     for queue_family in queue_families {
       if queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
@@ -530,9 +630,9 @@ impl VkRenderer {
     return Ok(queue_family_indices);
   }
   
-  fn is_device_suitable(instance: &ash::Instance, physical_device: &vk::PhysicalDevice) -> bool {
+  fn is_device_suitable(ash_instance: &ash::Instance, vk_physical_device: &vk::PhysicalDevice) -> bool {
     // Check if graphics family queue exists.
-    let queue_families = VkRenderer::find_queue_families(instance, physical_device);
+    let queue_families = VkContext::find_queue_families(ash_instance, vk_physical_device);
     
     if queue_families.is_err() {
       return false;
@@ -540,7 +640,7 @@ impl VkRenderer {
     
     if queue_families.unwrap().m_graphics_family_index.is_none() {
       log!(EnumLogColor::Red, "ERROR", "[Renderer] --.\t Physical device {0:#?} \
-      does not have a queue dedicated for graphics exchange!", physical_device);
+      does not have a queue dedicated for graphics exchange!", vk_physical_device);
       return false;
     }
     return true;
@@ -548,9 +648,10 @@ impl VkRenderer {
 }
 
 #[cfg(feature = "Vulkan")]
-impl Drop for VkRenderer {
+impl Drop for VkContext {
   fn drop(&mut self) {
     unsafe {
+      self.m_logical_device.destroy_device(None);
       self.m_surface.destroy_surface(self.m_surface_khr, None);
       #[cfg(feature = "debug")]
       {
@@ -564,27 +665,28 @@ impl Drop for VkRenderer {
 }
 
 #[cfg(feature = "Vulkan")]
-impl TraitRenderer for VkRenderer {
+impl TraitContext for VkContext {
   fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
-    return match VkRenderer::create_instance(window.get_api_ptr()) {
-      Ok((vk_entry, vk_instance)) => {
+    return match VkContext::create_instance(window.get_api_ptr(), None, None) {
+      Ok((ash_entry, ash_instance)) => {
         #[allow(unused)]
           let debug_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)> = None;
         
         // Create surface (graphic context).
-        let vk_surface = khr::Surface::new(&vk_entry, &vk_instance);
+        let vk_surface = khr::Surface::new(&ash_entry, &ash_instance);
         let mut khr_surface = vk::SurfaceKHR::default();
         
-        window.init_vulkan_surface(&vk_instance, &mut khr_surface);
+        let vk_physical_device = VkContext::pick_physical_device(&ash_instance, window.get_api_ptr())?;
+        let ash_logical_device = VkContext::load_logical_device(&ash_instance, &vk_physical_device, None)?;
         
-        let vk_device = VkRenderer::pick_physical_device(&vk_instance, window.get_api_ptr())?;
+        window.init_vulkan_surface(&ash_instance, &mut khr_surface);
         
-        Ok(VkRenderer {
+        Ok(VkContext {
           m_type: EnumApi::Vulkan,
-          m_state: EnumState::Ok,
-          m_entry: vk_entry,
-          m_instance: vk_instance,
-          m_device: vk_device,
+          m_entry: ash_entry,
+          m_instance: ash_instance,
+          m_physical_device: vk_physical_device,
+          m_logical_device: ash_logical_device,
           m_surface: vk_surface,
           m_surface_khr: khr_surface,
           m_debug_report_callback: debug_callback,
@@ -600,13 +702,9 @@ impl TraitRenderer for VkRenderer {
     return self.m_type;
   }
   
-  fn get_state(&self) -> EnumState {
-    return self.m_state;
-  }
-  
   fn to_string(&self) -> String {
     let device_properties = unsafe {
-      self.m_instance.get_physical_device_properties(self.m_device)
+      self.m_instance.get_physical_device_properties(self.m_physical_device)
     };
     let device_name_str = unsafe { std::ffi::CStr::from_ptr(device_properties.device_name.as_ptr()) }
       .to_str()
@@ -634,7 +732,7 @@ impl TraitRenderer for VkRenderer {
       EnumFeature::Debug(enabled) => {
         if enabled {
           // Toggle on debugging.
-          let debug_callback = Some(VkRenderer::set_debug(&self.m_entry, &self.m_instance)?);
+          let debug_callback = Some(VkContext::set_debug(&self.m_entry, &self.m_instance)?);
           self.m_debug_report_callback = debug_callback;
         } else  {
           // Toggle off debugging.
@@ -687,15 +785,11 @@ impl TraitRenderer for VkRenderer {
   }
   
   fn shutdown(&mut self) -> Result<(), EnumErrors> {
-    if self.m_state == EnumState::Error {
-      return Err(EnumErrors::NotImplemented);
-    }
-    self.m_state = EnumState::Shutdown;
     return Ok(());
   }
 }
 
-#[cfg(feature = "Vulkan")]
+#[cfg(all(feature = "Vulkan", feature = "debug"))]
 unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSeverityFlagsEXT,
                                                 type_: vk::DebugUtilsMessageTypeFlagsEXT,
                                                 p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
@@ -800,15 +894,14 @@ impl BatchPrimitives {
 
 
 #[cfg(feature = "OpenGL")]
-pub struct GlRenderer {
+pub struct GlContext {
   m_type: EnumApi,
-  m_state: EnumState,
   m_batch: BatchPrimitives,
   m_debug_callback: gl::types::GLDEBUGPROC,
 }
 
 #[cfg(feature = "OpenGL")]
-impl TraitRenderer for GlRenderer {
+impl TraitContext for GlContext {
   fn new(window: &mut GlfwWindow) -> Result<Self, EnumErrors> {
     // Init context.
     window.init_opengl_surface();
@@ -820,19 +913,15 @@ impl TraitRenderer for GlRenderer {
     
     check_gl_call!("Renderer", gl::FrontFace(gl::CW));
     
-    return Ok(GlRenderer {
+    return Ok(GlContext {
       m_type: EnumApi::OpenGL,
-      m_state: EnumState::Ok,
       m_batch: BatchPrimitives::new(),
       m_debug_callback: Some(gl_error_callback),
     });
   }
+  
   fn get_type(&self) -> EnumApi {
     return self.m_type;
-  }
-  
-  fn get_state(&self) -> EnumState {
-    return self.m_state;
   }
   
   fn to_string(&self) -> String {
@@ -1030,10 +1119,6 @@ impl TraitRenderer for GlRenderer {
   }
   
   fn shutdown(&mut self) -> Result<(), EnumErrors> {
-    if self.m_state == EnumState::Error {
-      return Err(EnumErrors::NotImplemented);
-    }
-    self.m_state = EnumState::Shutdown;
     return Ok(());
   }
 }

@@ -59,21 +59,26 @@ pub trait TraitShader {
   fn send(&mut self) -> Result<(), EnumErrors>;
   fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumErrors>;
   fn get_id(&self) -> u32;
+  fn to_string(&self) -> String;
 }
 
-pub struct GlslShader<T: TraitShader> {
-  m_api_data: T,
+pub struct GlslShader {
+  m_api_data: Box<dyn TraitShader>,
   // For debug purposes.
   #[allow(unused)]
   m_uniform_cache: std::collections::HashMap<&'static str, i8>,
 }
 
-impl<T: TraitShader> GlslShader<T> {
+impl GlslShader {
   pub fn new(vertex_file_path: &'static str, fragment_file_path: &'static str) -> Result<Self, EnumErrors> {
-    let shader = T::new(vertex_file_path, fragment_file_path)?;
+    #[cfg(feature = "OpenGL")]
+    let shader = GlShader::new(vertex_file_path, fragment_file_path)?;
+    
+    #[cfg(feature = "Vulkan")]
+      let shader = VkShader::new(vertex_file_path, fragment_file_path)?;
     
     return Ok(GlslShader {
-      m_api_data: shader,
+      m_api_data: Box::new(shader),
       m_uniform_cache: std::collections::HashMap::new(),
     });
   }
@@ -88,12 +93,16 @@ impl<T: TraitShader> GlslShader<T> {
     return self.m_api_data.upload_data(uniform_name, uniform);
   }
   
-  pub fn get_api_data(&self) -> &T {
-    return &self.m_api_data;
+  pub fn get_api(&self) -> &dyn TraitShader {
+    return self.m_api_data.as_ref();
   }
   
   pub fn get_id(&self) -> u32 {
     return self.m_api_data.get_id();
+  }
+  
+  pub fn to_string(&self) -> String {
+    return format!("{0}", self.m_api_data.to_string())
   }
 }
 
@@ -142,6 +151,11 @@ impl TraitShader for VkShader {
   
   fn get_id(&self) -> u32 {
     return self.m_id;
+  }
+  
+  fn to_string(&self) -> String {
+    return format!("Vertex shader => {0}\n{1:113}Fragment shader : \n{2}", self.m_vertex_str,
+      "", self.m_fragment_str);
   }
 }
 
@@ -362,6 +376,10 @@ impl TraitShader for GlShader {
   fn get_id(&self) -> u32 {
     return self.m_id;
   }
+  
+  fn to_string(&self) -> String {
+    return format!("Vertex shader :\n{0}\nFragment shader : \n{1}", self.m_vertex_str, self.m_fragment_str);
+  }
 }
 
 #[cfg(feature = "OpenGL")]
@@ -389,7 +407,7 @@ impl Drop for GlShader {
       let renderer = Renderer::get().as_ref()
         .expect("[Shader] -->\t Cannot drop GlShader, renderer is None! Exiting...");
       
-      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.m_api.get_state() != EnumState::Shutdown {
+      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.get_state() != EnumState::Shutdown {
         gl::UseProgram(0);
         gl::DeleteProgram(self.m_id);
       }
