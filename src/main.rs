@@ -85,7 +85,7 @@ fn main() -> Result<(), EnumErrors> {
   
   // Run `on_new()` for `my_app` prior to running.
   engine.on_new()?;
-  engine.run();
+  engine.run()?;
   engine.on_delete()?;  // Run `on_delete()` for `my_app` prior to dropping.
   return Ok(());
 }

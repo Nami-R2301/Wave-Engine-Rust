@@ -304,16 +304,16 @@ impl Mat4 {
     return (translation_mat * (rotation_mat * scale_mat)).transpose();
   }
   
-  pub fn apply_perspective(fov: f32, z_near: f32, z_far: f32) -> Self {
-    let tan_half_fov: f32 = (fov.to_radians() / 2.0).tan();
+  pub fn apply_perspective(fov: f32, aspect_ratio: f32, z_near: f32, z_far: f32) -> Self {
+    let tan_half_fov: f32 = 1.0 / ((fov.to_radians() / 2.0).tan());
     let z_range: f32 = z_near - z_far;
     let mut result = Mat4::new(0.0);
     
-    result[0][0] = 1.0 / (tan_half_fov * 2.0);
-    result[1][1] = 1.0 / tan_half_fov;
-    result[2][2] = (-z_near - z_far) / z_range;
-    result[2][3] = 2.0 * z_far * z_near / z_range;
-    result[3][2] = result[2][2];
+    result[0][0] = tan_half_fov;
+    result[1][1] = tan_half_fov * aspect_ratio;
+    result[2][2] = (z_far + z_near) / z_range;
+    result[2][3] = (2.0 * z_far * z_near) / z_range;
+    result[3][2] = -1.0;
     result[3][3] = 0.0;  // Discard w.
     
     return result;

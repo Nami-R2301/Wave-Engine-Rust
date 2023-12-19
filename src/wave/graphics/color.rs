@@ -22,11 +22,46 @@
  SOFTWARE.
 */
 
-pub mod shader;
-pub mod texture;
-pub mod framebuffer;
-pub mod renderer;
-pub mod text;
-pub mod imgui;
-pub mod buffer;
-pub mod color;
+
+use std::fmt::{Debug, Formatter};
+
+#[derive(Copy, Clone)]
+pub struct Color {
+  pub r: f32,
+  pub g: f32,
+  pub b: f32,
+  pub a: f32
+}
+
+impl Debug for Color {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "[Color] --> r: {0}, g: {1}, b: {2}, a: {3}", self.r, self.g, self.b, self.a)
+  }
+}
+
+impl Color {
+  pub fn default() -> Self {
+    return Color {
+      r: 0.0,
+      g: 1.0,
+      b: 0.0,
+      a: 1.0,
+    }
+  }
+  
+  pub fn new(rgba: [f32; 4]) -> Self {
+    return Color {
+      r: rgba[0],
+      g: rgba[1],
+      b: rgba[2],
+      a: rgba[3],
+    }
+  }
+  
+  pub fn reset(&mut self) {
+    self.r = 0.0;
+    self.g = 1.0;
+    self.b = 0.0;
+    self.a = 1.0;
+  }
+}

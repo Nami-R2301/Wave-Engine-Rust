@@ -23,15 +23,16 @@
 */
 
 use wave_engine::wave::graphics::renderer::Renderer;
-use wave_engine::wave::graphics::shader::{GlslShader, VkShader};
+use wave_engine::wave::graphics::shader::{self, GlslShader};
 use wave_engine::wave::math::Mat4;
-use wave_engine::wave::window::GlfwWindow;
+use wave_engine::wave::window::{GlfwWindow, EnumWindowMode};
 
 #[test]
 #[ignore]
 fn test_shader_send() {
   // Setup window context in order to use api functions.
-  let window = GlfwWindow::new();
+  let window = GlfwWindow::new(Some(640), Some(480),
+    None, None, EnumWindowMode::Windowed);
   match window.as_ref() {
     Ok(_) => {}
     Err(err) => {
@@ -63,7 +64,8 @@ fn test_shader_send() {
 #[test]
 #[ignore]
 fn test_load_uniforms() {
-  let window = GlfwWindow::new();
+  let window = GlfwWindow::new(Some(640), Some(480),
+    None, None, EnumWindowMode::Windowed);
   match window.as_ref() {
     Ok(_) => {}
     Err(err) => {
@@ -87,12 +89,6 @@ fn test_load_uniforms() {
   // Sourcing and compilation.
   let result = new_shader.as_mut().unwrap().send();
   assert!(result.is_ok());
-  
-  #[cfg(feature = "OpenGL")]
-  match new_shader.as_mut().unwrap().get_api().bind() {
-    Ok(_) => {}
-    Err(_) => { return assert!(false); }
-  }
   
   // Load uniforms.
   let uniform = new_shader.as_mut().unwrap().upload_data("u_model_matrix",

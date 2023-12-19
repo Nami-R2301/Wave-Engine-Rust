@@ -60,9 +60,9 @@ pub enum EnumErrors {
   VulkanError(EnumVulkanErrors),
   CError,
   ShaderError,
-  WrongOffset,
-  WrongSize,
-  NoAttributes,
+  InvalidBufferSize,
+  InvalidVertexAttribute,
+  InvalidAttributeDivisor
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -818,6 +818,9 @@ unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSever
 use gl::types::GLenum;
 
 #[cfg(feature = "OpenGL")]
+use crate::wave::graphics::color::Color;
+
+#[cfg(feature = "OpenGL")]
 use super::buffer::*;
 
 #[cfg(feature = "OpenGL")]
@@ -955,8 +958,8 @@ impl TraitContext for GlContext {
           check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT));
           check_gl_call!("Renderer", gl::Disable(gl::DEBUG_OUTPUT_SYNCHRONOUS));
         }
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Debug {0}",
-          flag.then(|| return "enabled").unwrap_or("disabled"));
+        log!(EnumLogColor::White, "INFO", "[Renderer] -->\t Debug mode {0}",
+          flag.then(|| return "ON").unwrap_or("OFF"));
       }
       EnumFeature::DepthTest(flag) => {
         if flag {
@@ -964,8 +967,8 @@ impl TraitContext for GlContext {
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::DEPTH_TEST));
         }
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Depth test {0}",
-          flag.then(|| return "enabled").unwrap_or("disabled"));
+        log!(EnumLogColor::White, "INFO", "[Renderer] -->\t Depth test {0}",
+          flag.then(|| return "ON").unwrap_or("OFF"));
       }
       EnumFeature::MSAA(flag) => {
         if flag {
@@ -973,8 +976,8 @@ impl TraitContext for GlContext {
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::MULTISAMPLE));
         }
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t MSAA {0}",
-          flag.then(|| return "enabled").unwrap_or("disabled"));
+        log!(EnumLogColor::White, "INFO", "[Renderer] -->\t MSAA {0}",
+          flag.then(|| return "ON").unwrap_or("OFF"));
       }
       EnumFeature::Blending(flag, s_factor, d_factor) => {
         if flag {
@@ -983,8 +986,8 @@ impl TraitContext for GlContext {
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::BLEND));
         }
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Blending {0}",
-          flag.then(|| return "enabled").unwrap_or("disabled"));
+        log!(EnumLogColor::White, "INFO", "[Renderer] -->\t Blending {0}",
+          flag.then(|| return "ON").unwrap_or("OFF"));
       }
       EnumFeature::Wireframe(flag) => {
         if flag {
@@ -992,8 +995,8 @@ impl TraitContext for GlContext {
         } else {
           check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL));
         }
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Wireframe mode {0}",
-          flag.then(|| return "enabled").unwrap_or("disabled"));
+        log!(EnumLogColor::White, "INFO", "[Renderer] -->\t Wireframe mode {0}",
+          flag.then(|| return "ON").unwrap_or("OFF"));
       }
       EnumFeature::SRGB(flag) => {
         if flag {
@@ -1001,8 +1004,8 @@ impl TraitContext for GlContext {
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::FRAMEBUFFER_SRGB));
         }
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t SRGB framebuffer {0}",
-          flag.then(|| return "enabled").unwrap_or("disabled"));
+        log!(EnumLogColor::White, "INFO", "[Renderer] -->\t SRGB framebuffer {0}",
+          flag.then(|| return "ON").unwrap_or("OFF"));
       }
       EnumFeature::CullFacing(flag, face) => {
         if flag {
@@ -1011,8 +1014,8 @@ impl TraitContext for GlContext {
         } else {
           check_gl_call!("Renderer", gl::Disable(gl::CULL_FACE));
         }
-        log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Cull facing {0}",
-          flag.then(|| return "enabled").unwrap_or("disabled"));
+        log!(EnumLogColor::White, "INFO", "[Renderer] -->\t Cull facing {0}",
+          flag.then(|| return "ON").unwrap_or("OFF"));
       }
     }
     return Ok(());
@@ -1043,30 +1046,30 @@ impl TraitContext for GlContext {
     let mut offset: usize = 0;
     
     // Allocate main dynamic vbo to hold all the data provided.
-    let mut vbo: GlVbo = GlVbo::new(sendable_entity.size(), sendable_entity.count())?;
-    let mut vao: GlVao = GlVao::new()?;
+    let mut vbo = GlVbo::new(sendable_entity.size(), sendable_entity.count())?;
+    let mut vao = GlVao::new()?;
     
-    // IDs (Vec3).
+    // IDs layout : (u32 for each vertex).
     vbo.set_data(sendable_entity.m_entity_id.as_ptr() as *const GLvoid,
       std::mem::size_of::<u32>() * sendable_entity.m_entity_id.len(), offset)?;
     offset += std::mem::size_of::<u32>() * sendable_entity.m_entity_id.len();
     
-    // Positions (Vec3s).
+    // Positions layout : (x,y,z || x,y).
     vbo.set_data(sendable_entity.m_vertices.as_ptr() as *const GLvoid,
       std::mem::size_of::<f32>() * sendable_entity.m_vertices.len(), offset)?;
     offset += std::mem::size_of::<f32>() * sendable_entity.m_vertices.len();
     
-    // Normals (Vec3s).
+    // Normals layout : (x,y,z || x,y).
     vbo.set_data(sendable_entity.m_normals.as_ptr() as *const GLvoid,
       std::mem::size_of::<f32>() * sendable_entity.m_normals.len(), offset)?;
     offset += std::mem::size_of::<f32>() * sendable_entity.m_normals.len();
     
-    // Colors (Colors).
+    // Colors layout : (r,g,b,a).
     vbo.set_data(sendable_entity.m_colors.as_ptr() as *const GLvoid,
-      std::mem::size_of::<f32>() * sendable_entity.m_colors.len(), offset)?;
-    offset += std::mem::size_of::<f32>() * sendable_entity.m_colors.len();
+      std::mem::size_of::<Color>() * sendable_entity.m_colors.len(), offset)?;
+    offset += std::mem::size_of::<Color>() * sendable_entity.m_colors.len();
     
-    // Texture coordinates (Vec2s).
+    // Texture coordinates layout : (x,y).
     vbo.set_data(sendable_entity.m_texture_coords.as_ptr() as *const GLvoid,
       std::mem::size_of::<f32>() * sendable_entity.m_texture_coords.len(), offset)?;
     
@@ -1075,26 +1078,36 @@ impl TraitContext for GlContext {
     // Establish vao attributes.
     let mut attributes: Vec<GlVertexAttribute> = Vec::with_capacity(5);
     
+    // IDs.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1),
-      false, offset));
+      false, offset, 0)?);
     offset += std::mem::size_of::<u32>() * sendable_entity.m_entity_id.len();
     
+    // Positions.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
-      false, offset));
+      false, offset, 0)?);
     offset += std::mem::size_of::<f32>() * sendable_entity.m_vertices.len();
     
-    attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
-      false, offset));
+    // Normals.
+    if sendable_entity.is_flat_shaded() {
+      attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
+        false, offset, 1)?);
+    } else {
+      attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
+        false, offset, 0)?);
+    }
     offset += std::mem::size_of::<f32>() * sendable_entity.m_normals.len();
     
+    // Colors.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec4,
-      false, offset));
-    offset += std::mem::size_of::<f32>() * sendable_entity.m_colors.len();
+      false, offset, 0)?);
+    offset += std::mem::size_of::<Color>() * sendable_entity.m_colors.len();
     
+    // Texture coordinates.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec2,
-      false, offset));
+      false, offset, 0)?);
     
-    // Enable vertex attributes.
+    // Enable all added attributes.
     vao.enable_attributes(attributes)?;
     
     self.m_batch.m_shaders.push(shader_associated.get_id());
@@ -1164,11 +1177,10 @@ extern "system" fn gl_error_callback(error_code: GLenum, e_type: GLenum, _id: GL
       gl::DEBUG_SEVERITY_HIGH => { log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t {0}", final_error_msg); }
       gl::DEBUG_SEVERITY_MEDIUM => { log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t {0}", final_error_msg); }
       gl::DEBUG_SEVERITY_LOW => { log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t {0}", final_error_msg); }
-      gl::DEBUG_SEVERITY_NOTIFICATION => { log!("INFO", "[Renderer] -->\t {0}", final_error_msg); }
+      gl::DEBUG_SEVERITY_NOTIFICATION => { log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t {0}", final_error_msg); }
       _ => {
         log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t {0}", final_error_msg);
       }
     }
   }
 }
-

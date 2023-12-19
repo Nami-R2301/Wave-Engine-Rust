@@ -52,6 +52,7 @@ pub enum EnumErrors {
 
 pub struct PerspectiveCamera {
   m_fov: f32,
+  m_aspect_ratio: f32,
   m_z_near: f32,
   m_z_far: f32,
   m_matrix: Mat4,
@@ -61,6 +62,7 @@ impl PerspectiveCamera {
   pub fn new() -> Self {
     return PerspectiveCamera {
       m_fov: 0.0,
+      m_aspect_ratio: 4.0/3.0,
       m_z_near: 0.0,
       m_z_far: 0.0,
       // View + projection matrix.
@@ -68,9 +70,10 @@ impl PerspectiveCamera {
     }
   }
   
-  pub fn from(fov: f32, z_near: f32, z_far: f32) -> Self {
+  pub fn from(fov: f32, aspect_ratio: f32, z_near: f32, z_far: f32) -> Self {
     return PerspectiveCamera {
       m_fov: fov,
+      m_aspect_ratio: aspect_ratio,
       m_z_near: z_near,
       m_z_far: z_far,
       m_matrix: Mat4::new(1.0)
@@ -86,7 +89,7 @@ impl PerspectiveCamera {
     let direction: Vec3<f32> = Vec3::from(&[0.0, 0.0, 1.0]);
     let right: Vec3<f32> = up.cross(direction.clone());
     
-    let projection_matrix: Mat4 = Mat4::apply_perspective(self.m_fov, self.m_z_near, self.m_z_far);
+    let projection_matrix: Mat4 = Mat4::apply_perspective(self.m_fov, self.m_aspect_ratio, self.m_z_near, self.m_z_far);
     let view_matrix: Mat4 = Mat4::from(
       [
         [right.x,     right.y,     right.z,            self.m_matrix[0][3]],
@@ -97,5 +100,14 @@ impl PerspectiveCamera {
       ]);
     
     self.m_matrix = (projection_matrix * view_matrix).transpose();
+  }
+  
+  pub fn update_projection(&mut self, fov: f32, aspect_ratio: f32, z_near: f32, z_far: f32) {
+    self.m_fov = fov;
+    self.m_aspect_ratio = aspect_ratio;
+    self.m_z_near = z_near;
+    self.m_z_far = z_far;
+    
+    self.set_view_projection();
   }
 }

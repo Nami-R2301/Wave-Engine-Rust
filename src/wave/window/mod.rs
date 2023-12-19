@@ -24,23 +24,40 @@
 
 extern crate glfw;
 
+use std::fmt::{Display, Formatter};
+
 #[cfg(feature = "Vulkan")]
 use ash::vk;
-
 #[cfg(feature = "OpenGL")]
-use glfw::{Context};
+use glfw::Context;
 
 use crate::log;
-
-#[cfg(feature = "OpenGL")]
-use crate::wave::graphics::buffer::GLsizei;
-
 use crate::wave::math::Vec2;
+
+static mut S_ORIGINAL_WIDTH: u32 = 640;
+static mut S_ORIGINAL_HEIGHT: u32 = 480;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumState {
   Open,
   Closed,
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum EnumWindowMode {
+  Windowed,
+  Borderless,
+  Fullscreen,
+}
+
+impl Display for EnumWindowMode {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      EnumWindowMode::Windowed => { write!(f, "Windowed") }
+      EnumWindowMode::Borderless => { write!(f, "Borderless Window") }
+      EnumWindowMode::Fullscreen => { write!(f, "Fullscreen") }
+    }
+  }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -63,14 +80,17 @@ pub struct GlfwWindow {
   m_state: EnumState,
   m_api_window: glfw::PWindow,
   m_api_window_events: glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
-  m_fullscreen: bool,
+  m_window_mode: EnumWindowMode,
   pub m_vsync: bool,
   pub m_vulkan_compatible: bool,
   pub m_window_bounds: Vec2<i32>,
+  pub m_is_windowed: bool,
 }
 
 impl GlfwWindow {
-  pub fn new() -> Result<Self, EnumErrors> {
+  pub fn new(width_desired: Option<u32>, height_desired: Option<u32>,
+             refresh_count_desired: Option<u32>, sample_count_desired: Option<u32>,
+             window_mode: EnumWindowMode) -> Result<Self, EnumErrors> {
     let mut result = glfw::init(glfw::fail_on_errors);
     
     match result {
@@ -90,8 +110,9 @@ impl GlfwWindow {
     
     let context_ref = result.as_mut().unwrap();
     
-    context_ref.window_hint(glfw::WindowHint::Samples(Some(8)));
-    context_ref.window_hint(glfw::WindowHint::RefreshRate(None));
+    context_ref.window_hint(glfw::WindowHint::Samples(sample_count_desired));
+    context_ref.window_hint(glfw::WindowHint::RefreshRate(refresh_count_desired));
+    context_ref.window_hint(glfw::WindowHint::Resizable(true));
     
     #[cfg(feature = "Vulkan")]
     {
@@ -103,12 +124,14 @@ impl GlfwWindow {
       context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
     }
     
-    // Create a windowed mode window and its OpenGL context
-    match context_ref.create_window(1920, 1080,
-      "Wave Engine (Rust)", glfw::WindowMode::Windowed) {
+    match unsafe {
+      context_ref.create_window(width_desired.unwrap_or(S_ORIGINAL_WIDTH),
+        height_desired.unwrap_or(S_ORIGINAL_HEIGHT), "Wave Engine (Rust)",
+        glfw::WindowMode::Windowed)
+    } {
       None => {
         log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Unable to create GLFW window");
-        return Err(EnumErrors::InitError);
+        Err(EnumErrors::InitError)
       }
       Some((mut window, events)) => {
         
@@ -126,16 +149,49 @@ impl GlfwWindow {
         window.glfw.set_error_callback(glfw_error_callback);
         
         let bounds = Vec2::from(&[window.get_size().0, window.get_size().1]);
-        
-        Ok(GlfwWindow {
+        unsafe {
+          S_ORIGINAL_WIDTH = bounds.x as u32;
+          S_ORIGINAL_HEIGHT = bounds.y as u32;
+        }
+        let mut glfw_window = GlfwWindow {
           m_state: EnumState::Open,
           m_vulkan_compatible: window.glfw.vulkan_supported(),
           m_api_window: window,
           m_api_window_events: events,
-          m_fullscreen: false,
+          m_window_mode: window_mode,
           m_vsync: true,
           m_window_bounds: bounds,
-        })
+          m_is_windowed: window_mode == EnumWindowMode::Windowed,
+        };
+        
+        // Toggle on fullscreen if requested.
+        return if window_mode != EnumWindowMode::Windowed {
+          let result = context_ref.with_primary_monitor(|_, monitor| -> Result<Self, EnumErrors> {
+            if monitor.is_none() {
+              log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot identify primary monitor!");
+              return Err(EnumErrors::InitError);
+            }
+            
+            let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
+            
+            match window_mode {
+              EnumWindowMode::Windowed => {}
+              EnumWindowMode::Borderless => {
+                glfw_window.m_api_window.set_monitor(glfw::WindowMode::Windowed,
+                  0, 0, mode.width, mode.height, refresh_count_desired);
+              }
+              EnumWindowMode::Fullscreen => {
+                glfw_window.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
+                  0, 0, mode.width, mode.height, Some(mode.refresh_rate));
+              }
+            }
+            
+            return Ok(glfw_window);
+          });
+          result
+        } else {
+          Ok(glfw_window)
+        };
       }
     }
   }
@@ -151,7 +207,6 @@ impl GlfwWindow {
   
   #[cfg(feature = "Vulkan")]
   pub fn init_vulkan_surface(&mut self, vk_instance: &ash::Instance, vk_surface_khr: &mut vk::SurfaceKHR) {
-    
     if !self.m_vulkan_compatible {
       log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot create Vulkan surface,\
        Vulkan API is not supported! Make sure the Vulkan SDK and drivers \
@@ -181,30 +236,28 @@ impl GlfwWindow {
           let window: *mut glfw::PWindow = &mut self.m_api_window;
           self.m_api_window.glfw.with_primary_monitor(|_, monitor| {
             let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
-            if !self.m_fullscreen {
-              unsafe {
-                (*window).set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
-                  0, 0, mode.width, mode.height, Some(mode.refresh_rate));
-              }
-              log!("INFO", "[Window] -->\t Fullscreen ON");
-              #[cfg(feature = "OpenGL")]
-              unsafe {
-                gl::Viewport(0, 0, mode.width as GLsizei, mode.height as GLsizei);
-              }
-              self.m_fullscreen = true;
-            } else {
+            
+            if !self.m_is_windowed {
               unsafe {
                 (*window).set_monitor(glfw::WindowMode::Windowed,
-                  0, 0, self.m_window_bounds.x as u32, self.m_window_bounds.y as u32,
-                  Some(mode.refresh_rate));
+                  0, 0, S_ORIGINAL_WIDTH, S_ORIGINAL_HEIGHT, None);
               }
-              log!("INFO", "[Window] -->\t Fullscreen OFF");
-              #[cfg(feature = "OpenGL")]
-              unsafe {
-                gl::Viewport(0, 0, self.m_window_bounds.x as GLsizei,
-                  self.m_window_bounds.y as GLsizei);
+              self.m_is_windowed = true;
+              log!("INFO", "[Window] -->\t Window mode : Windowed");
+            } else {
+              match self.m_window_mode {
+                EnumWindowMode::Borderless => unsafe {
+                  (*window).set_monitor(glfw::WindowMode::Windowed,
+                    0, 0, mode.width, mode.height, None);
+                  log!("INFO", "[Window] -->\t Window mode : Borderless");
+                }
+                _ => unsafe {
+                  (*window).set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
+                    0, 0, mode.width, mode.height, Some(mode.refresh_rate));
+                  log!("INFO", "[Window] -->\t Window mode : Fullscreen");
+                }
               }
-              self.m_fullscreen = false;
+              self.m_is_windowed = false;
             }
           });
           true
@@ -240,6 +293,11 @@ impl GlfwWindow {
         }
         glfw::WindowEvent::FramebufferSize(width, height) => {
           log!("INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
+          #[cfg(feature = "OpenGL")]
+          unsafe {
+            gl::Viewport(0, 0, width, height);
+          }
+          self.m_window_bounds = Vec2::from(&[width, height]);
           false
         }
         _ => false
@@ -279,7 +337,13 @@ impl GlfwWindow {
     return self.m_api_window.set_title(title);
   }
   
-  pub fn get_size(&self) -> &Vec2<i32> {
-    return &self.m_window_bounds;
+  pub fn get_size(&mut self) -> Vec2<i32> {
+    if self.m_window_mode != EnumWindowMode::Windowed {
+      return self.m_api_window.glfw.with_primary_monitor(|_, primary_monitor| {
+        let mode: glfw::VidMode = primary_monitor.as_ref().unwrap().get_video_mode().unwrap();
+        return Vec2::from(&[mode.width as i32, mode.height as i32]);
+      });
+    }
+    return self.m_window_bounds.clone();
   }
 }

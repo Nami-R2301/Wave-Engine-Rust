@@ -23,9 +23,10 @@
 */
 
 use std::io::BufRead;
-use crate::wave::assets::renderable_assets::REntity;
 
 use crate::log;
+use crate::wave::assets::renderable_assets::REntity;
+use crate::wave::graphics::color::Color;
 
 /*
 ///////////////////////////////////   Asset Loader  ///////////////////////////////////
@@ -289,20 +290,16 @@ impl ResLoader {
   }
   
   ///
-  /// Reorganize vertices, normals, and texture coords to fit indices and to ultimately convert
+  /// Reorganize vertices, normals, and texture coords to fit indices, converting
   /// the resulting object into a struct of arrays, instead of arrays of struct, also known as
   /// a tightly packed dataset.
   ///
   /// # Arguments
   ///
-  /// * `vertices`: A [Vec<\[f32\]>] containing all vertex positions (x,y,z) of a primitive.
-  ///   **Consumed on use**.
-  /// * `indices`: A [Vec<\[u32\]>] of index 'triplets', each containing obj-style indices -> (v/vt/vn).
-  ///   **Consumed on use**.
-  /// * `normals`: A [Vec<\[f32\]>] containing all normal positions (x,y,z) of a primitive.
-  ///   **Consumed on use**.
-  /// * `texture_coords`: A [Vec<\[f32\]>] containing all texture coord positions (x,y) of a primitive.
-  ///   **Consumed on use**.
+  /// * `vertices`: A [Vec<\[f32\]>] reference containing all vertex positions (x,y,z) of a primitive.
+  /// * `indices`: A [Vec<\[u32\]>] reference of index 'triplets', each containing obj-style indices -> (v/vt/vn).
+  /// * `normals`: A [Vec<\[f32\]>] reference containing all normal positions (x,y,z) of a primitive.
+  /// * `texture_coords`: A [Vec<\[f32\]>] reference containing all texture coord positions (x,y) of a primitive.
   ///
   /// # Returns:
   /// - [REntity] : A new renderable entity containing all attributes relevant to the GPU.
@@ -314,16 +311,20 @@ impl ResLoader {
   /// ```
   fn reorganize_data(vertices: &Vec<f32>, indices: &Vec<usize>, normals: &Vec<f32>,
                      texture_coords: &Vec<f32>) -> REntity {
-    let mut object: REntity = REntity::new();
+    let mut object: REntity = REntity::default();
     
     for index in (0..indices.len()).step_by(3) {
+      object.m_entity_id.push(0);
+      
       object.m_vertices.push(vertices[indices[index] * 3]);
       object.m_vertices.push(vertices[(indices[index] * 3) + 1]);
       
+      // If our vertex is in 3D space.
       if vertices.len() % 3 == 0 {
         object.m_vertices.push(vertices[(indices[index] * 3) + 2]);
       }
       
+      // If we have texture coordinates, add them.
       if indices[index + 1] != usize::MAX - 1 {
         if texture_coords[indices[index + 1] * 2] != f32::MIN {
           object.m_texture_coords.push(texture_coords[indices[index + 1] * 2]);
@@ -331,18 +332,21 @@ impl ResLoader {
         }
       }
       
+      // If we have normals, add them.
       if indices[index + 2] != usize::MAX - 1 {
         if normals[indices[index + 2] * 3] != f32::MIN {
           object.m_normals.push(normals[indices[index + 2] * 3]);
           object.m_normals.push(normals[(indices[index + 2] * 3) + 1]);
-          object.m_normals.push(normals[(indices[index + 2] * 3) + 2]);
+          
+          // If our normal is in 3D space.
+          if normals[(indices[index + 2] * 3) + 2] != f32::MIN {
+            object.m_normals.push(normals[(indices[index + 2] * 3) + 2]);
+          }
         }
       }
       
-      // A color (RGBA) for each position (Vec3).
-      object.m_colors.append(&mut Vec::from([0.0, 1.0, 0.0, 1.0,
-        0.0, 1.0, 0.0, 1.0,
-        0.0, 1.0, 0.0, 1.0]));
+      // Assign a color (RGBA) for each vertex. Default color for vertices : Green.
+      object.m_colors.push(Color::default());
     }
     object.register();  // Assign a random entity ID common for all vertices.
     return object;

@@ -29,6 +29,7 @@ use std::mem::size_of;
 use once_cell::sync::Lazy;
 
 use crate::log;
+use crate::wave::graphics::color::Color;
 use crate::wave::graphics::renderer::{EnumErrors, Renderer};
 use crate::wave::graphics::shader::TraitShader;
 use crate::wave::math::{Mat4, Vec3};
@@ -54,7 +55,7 @@ pub struct REntity {
   pub m_entity_id: Vec<u32>,
   pub m_vertices: Vec<f32>,
   pub m_normals: Vec<f32>,
-  pub m_colors: Vec<f32>,
+  pub m_colors: Vec<Color>,
   pub m_texture_coords: Vec<f32>,
   // UUID given by the renderer to differentiate entities in batch rendering.
   m_renderer_id: u64,
@@ -62,10 +63,11 @@ pub struct REntity {
   // Transformations applied to the entity, to be eventually applied to the model matrix.
   m_transform: [Vec3<f32>; 3],
   m_sent: bool,
+  m_flat_shaded: bool
 }
 
 impl REntity {
-  pub fn new() -> Self {
+  pub fn default() -> Self {
     return REntity {
       m_renderer_id: u64::MAX,
       m_entity_id: Vec::new(),
@@ -76,6 +78,22 @@ impl REntity {
       m_model_matrix: Mat4::new(1.0),
       m_transform: [Vec3::new(), Vec3::new(), Vec3::from(&[1.0, 1.0, 1.0])],
       m_sent: false,
+      m_flat_shaded: false
+    };
+  }
+  
+  pub fn new(is_flat_shaded: bool) -> Self {
+    return REntity {
+      m_renderer_id: u64::MAX,
+      m_entity_id: Vec::new(),
+      m_vertices: Vec::new(),
+      m_normals: Vec::new(),
+      m_colors: Vec::new(),
+      m_texture_coords: Vec::new(),
+      m_model_matrix: Mat4::new(1.0),
+      m_transform: [Vec3::new(), Vec3::new(), Vec3::from(&[1.0, 1.0, 1.0])],
+      m_sent: false,
+      m_flat_shaded: is_flat_shaded
     };
   }
   
@@ -83,7 +101,7 @@ impl REntity {
     return (size_of::<u32>() * self.m_entity_id.len()) +
       (size_of::<f32>() * self.m_vertices.len()) +
       (size_of::<f32>() * self.m_normals.len()) +
-      (size_of::<f32>() * self.m_colors.len()) +
+      (size_of::<Color>() * self.m_colors.len()) +
       (size_of::<f32>() * self.m_texture_coords.len());
   }
   
@@ -95,6 +113,10 @@ impl REntity {
     return self.m_vertices.is_empty();
   }
   
+  pub fn is_flat_shaded(&self) -> bool {
+    return self.m_flat_shaded;
+  }
+  
   pub fn register(&mut self) {
     let mut new_id = rand::random::<u32>();
     unsafe {
@@ -102,27 +124,20 @@ impl REntity {
         new_id = rand::random::<u32>();
       }
     }
-    
-    if self.m_vertices.len() % 3 == 0 {
-      self.m_entity_id = Vec::with_capacity(self.m_vertices.len() / 3);
-    } else {
-      self.m_entity_id = Vec::with_capacity(self.m_vertices.len() / 2);
-    }
-    
-    for _index in 0..self.m_entity_id.capacity() {
-      self.m_entity_id.push(new_id);
+    for index in 0..self.m_entity_id.len() {
+      self.m_entity_id[index] = new_id;
     }
   }
   
   pub fn translate(&mut self, amount: Vec3<f32>) {
-    self.m_transform[0] = amount;
+    self.m_transform[0] = Vec3::from(&[amount.x, amount.y, -amount.z]);
   }
   
   pub fn rotate(&mut self, amount: Vec3<f32>) {
     // Inverse x and y to correspond to the right orientation.
     self.m_transform[1].x = amount.x;
     self.m_transform[1].y = amount.y;
-    self.m_transform[1].z = amount.z;
+    self.m_transform[1].z = -amount.z;
   }
   
   pub fn scale(&mut self, amount: Vec3<f32>) {

@@ -22,8 +22,28 @@
  SOFTWARE.
 */
 
+/*
+///////////////////////////////////   Vulkan    ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+ */
+
+
+
+/*
+///////////////////////////////////   OpenGL    ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+///////////////////////////////////             ///////////////////////////////////
+ */
+
 #[cfg(feature = "OpenGL")]
 extern crate gl;
+
+#[cfg(feature = "OpenGL")]
+use crate::{log, check_gl_call};
+
+#[cfg(feature = "OpenGL")]
+use crate::wave::graphics::renderer::{EnumApi, EnumState, EnumErrors, Renderer};
 
 #[cfg(feature = "OpenGL")]
 pub use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
@@ -32,14 +52,6 @@ pub use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeip
 use gl::types::GLintptr;
 
 #[cfg(feature = "OpenGL")]
-use crate::{log};
-
-#[cfg(feature = "OpenGL")]
-use crate::{check_gl_call};
-
-#[cfg(feature = "OpenGL")]
-use crate::wave::graphics::renderer::{EnumApi, EnumErrors, EnumState, Renderer};
-
 pub enum EnumAttributeType {
   UnsignedShort(i32),
   Short(i32),
@@ -59,18 +71,30 @@ pub struct GlVertexAttribute {
   pub m_count: i32,
   pub m_buffer_offset: usize,
   pub m_normalized: u8,
+  pub m_attribute_divisor: u8
 }
 
 #[cfg(feature = "OpenGL")]
 impl GlVertexAttribute {
-  pub fn new(gl_type: EnumAttributeType, should_normalize: bool, buffer_offset: usize) -> Self {
-    return match gl_type {
+  pub fn new(gl_type: EnumAttributeType, should_normalize: bool, buffer_offset: usize, attribute_divisor: u8) -> Result<Self, EnumErrors> {
+    
+    let mut max_attrib_div: i32 = 0;
+    check_gl_call!("Buffer (Attribute divisor)", gl::GetIntegerv(gl::MAX_VERTEX_ATTRIBS, &mut max_attrib_div));
+    
+    if attribute_divisor > max_attrib_div as u8 {
+      log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Cannot assign attribute divisor of {0} to \
+      vertex attribute, since it exceeds the maximum vertex attributes available!", attribute_divisor);
+      return Err(EnumErrors::InvalidAttributeDivisor);
+    }
+    
+    return Ok(match gl_type {
       EnumAttributeType::UnsignedShort(count) => {
         GlVertexAttribute {
           m_gl_type: gl::UNSIGNED_SHORT,
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
+          m_attribute_divisor: attribute_divisor
         }
       }
       EnumAttributeType::Short(count) => {
@@ -79,6 +103,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
+          m_attribute_divisor: attribute_divisor
         }
       }
       EnumAttributeType::UnsignedInt(count) => {
@@ -87,6 +112,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
+          m_attribute_divisor: attribute_divisor
         }
       }
       EnumAttributeType::Int(count) => {
@@ -95,6 +121,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
+          m_attribute_divisor: attribute_divisor
         }
       }
       EnumAttributeType::Float(count) => {
@@ -103,6 +130,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
+          m_attribute_divisor: attribute_divisor
         }
       }
       EnumAttributeType::Double(count) => {
@@ -111,6 +139,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
+          m_attribute_divisor: attribute_divisor
         }
       }
       EnumAttributeType::Vec2 => {
@@ -119,6 +148,7 @@ impl GlVertexAttribute {
           m_count: 2,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
+          m_attribute_divisor: attribute_divisor
         }
       }
       EnumAttributeType::Vec3 => {
@@ -127,6 +157,7 @@ impl GlVertexAttribute {
           m_count: 3,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
+          m_attribute_divisor: attribute_divisor
         }
       }
       EnumAttributeType::Vec4 => {
@@ -135,6 +166,7 @@ impl GlVertexAttribute {
           m_count: 4,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
+          m_attribute_divisor: attribute_divisor
         }
       }
       EnumAttributeType::Mat4 => {
@@ -143,9 +175,10 @@ impl GlVertexAttribute {
           m_count: 4 * 4,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
+          m_attribute_divisor: attribute_divisor
         }
       }
-    };
+    });
   }
 }
 
@@ -182,11 +215,20 @@ impl GlVao {
   
   pub fn enable_attributes(&mut self, attributes: Vec<GlVertexAttribute>) -> Result<(), EnumErrors> {
     if attributes.is_empty() {
-      return Err(EnumErrors::NoAttributes);
+      return Err(EnumErrors::InvalidVertexAttribute);
     }
+    
+    let mut max_attrib_div: i32 = 0;
+    check_gl_call!("Buffer (Attribute divisor)", gl::GetIntegerv(gl::MAX_VERTEX_ATTRIBS, &mut max_attrib_div));
     
     self.bind()?;
     for (index, attribute) in attributes.iter().enumerate() {
+      if index > max_attrib_div as usize {
+        log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Vertex attribute index exceeds maximum \
+        vertex attributes supported!");
+        return Err(EnumErrors::InvalidVertexAttribute);
+      }
+      
       if attribute.m_gl_type == gl::UNSIGNED_INT || attribute.m_gl_type == gl::INT {
         check_gl_call!("Renderer", gl::VertexAttribIPointer(index as u32, attribute.m_count,
           attribute.m_gl_type, 0, attribute.m_buffer_offset as *const GLvoid));
@@ -265,7 +307,7 @@ impl GlVbo {
   
   pub fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), EnumErrors> {
     if vertex_size == 0 || vertex_count == 0 {
-      return Err(EnumErrors::WrongSize);
+      return Err(EnumErrors::InvalidBufferSize);
     }
     let old_size: usize = self.m_size;
     
@@ -282,7 +324,7 @@ impl GlVbo {
   
   pub fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), EnumErrors> {
     if vertex_size * vertex_count == 0 || vertex_size * vertex_count > self.m_size {
-      return Err(EnumErrors::WrongSize);
+      return Err(EnumErrors::InvalidBufferSize);
     }
     self.bind()?;
     if vertex_size * vertex_count == self.m_size {
@@ -303,7 +345,7 @@ impl GlVbo {
   
   pub fn expand(&mut self, alloc_size: usize) -> Result<(), EnumErrors> {
     if alloc_size == 0 {
-      return Err(EnumErrors::WrongSize);
+      return Err(EnumErrors::InvalidBufferSize);
     }
     
     self.bind()?;
@@ -329,7 +371,7 @@ impl GlVbo {
   
   pub fn shrink(&mut self, dealloc_size: usize) -> Result<(), EnumErrors> {
     if dealloc_size == 0 {
-      return Err(EnumErrors::WrongSize);
+      return Err(EnumErrors::InvalidBufferSize);
     }
     
     self.bind()?;

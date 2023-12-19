@@ -22,11 +22,13 @@
  SOFTWARE.
 */
 
+#[cfg(feature = "Vulkan")]
 use ash::vk;
 
 #[cfg(feature = "Vulkan")]
 use wave_engine::wave::graphics::renderer::VkContext;
 
+#[cfg(feature = "Vulkan")]
 #[test]
 fn test_instance_extensions() {
   let entry = ash::Entry::linked();
@@ -75,6 +77,7 @@ fn test_instance_extensions() {
   }
 }
 
+#[cfg(feature = "Vulkan")]
 #[test]
 fn test_instance_layers() {
   let entry = ash::Entry::linked();
@@ -92,6 +95,7 @@ fn test_instance_layers() {
   }
 }
 
+#[cfg(feature = "Vulkan")]
 #[test]
 fn test_instance_creation() {
   let window = glfw::init_no_callbacks().expect("Failed to create GLFW window context!");
