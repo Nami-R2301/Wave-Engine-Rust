@@ -30,9 +30,9 @@
 
 use std::mem::size_of;
 
-use super::super::create_vec;
+use super::super::impl_struct;
 
-create_vec!(Vec2<T> { x, y, });
+impl_struct!(Vec2<T> { x, y, });
 
 impl Vec2<f32> {
   pub fn vec_len(&self) -> f32 {
@@ -69,7 +69,7 @@ impl<T> std::ops::IndexMut<usize> for Vec2<T> {
 ///////////////////////////////////         ///////////////////////////////////
  */
 
-create_vec!(Vec3<T> {x, y, z, });
+impl_struct!(Vec3<T> {x, y, z, });
 
 impl Vec3<f32> {
   pub fn cross(&self, other: Self) -> Self {
@@ -122,7 +122,7 @@ impl<T> std::ops::IndexMut<usize> for Vec3<T> {
 ///////////////////////////////////         ///////////////////////////////////
  */
 
-create_vec!(Vec4<T> { x, y, z, w, });
+impl_struct!(Vec4<T> { x, y, z, w, });
 
 ///////////////////// INDEXING ////////////////////////
 

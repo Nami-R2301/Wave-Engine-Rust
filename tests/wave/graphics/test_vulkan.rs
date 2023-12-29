@@ -23,10 +23,7 @@
 */
 
 #[cfg(feature = "Vulkan")]
-use ash::vk;
-
-#[cfg(feature = "Vulkan")]
-use wave_engine::wave::graphics::renderer::VkContext;
+use wave_engine::wave::graphics::vulkan::renderer::{ash::vk, VkContext};
 
 #[cfg(feature = "Vulkan")]
 #[test]

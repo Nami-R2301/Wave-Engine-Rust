@@ -28,11 +28,11 @@ use crate::log;
 use crate::wave::assets::renderable_assets::{REntity, TraitRenderableEntity};
 use crate::wave::camera::PerspectiveCamera;
 use crate::wave::graphics::renderer::{self, Renderer, S_RENDERER};
-use crate::wave::graphics::shader::TraitShader;
+use crate::wave::graphics::shader::{self, Shader};
 use crate::wave::math::Vec3;
 use crate::wave::utils::asset_loader::ResLoader;
 use crate::wave::utils::Time;
-use crate::wave::window::{GlfwWindow, EnumWindowMode};
+use crate::wave::window::{EnumWindowMode, S_WINDOW, Window};
 
 pub mod window;
 pub mod math;
@@ -40,32 +40,70 @@ pub mod graphics;
 pub mod utils;
 pub mod assets;
 pub mod camera;
+pub mod input;
+mod events;
 
 static mut S_ENGINE: *mut Engine = std::ptr::null_mut();
 
 static S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::logger::init().unwrap());
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+pub enum EnumApi {
+  OpenGL,
+  Vulkan,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum EnumState {
   NotStarted,
   Starting,
+  Started,
   Running,
-  ShuttingDown,
+  Deleting,
+  Deleted,
   ShutDown,
 }
 
 #[derive(Debug)]
 pub enum EnumErrors {
+  UndefinedError,
   AppError,
-  ShaderError,
-  RendererError,
-  WindowError,
+  ResourceError(utils::asset_loader::EnumErrors),
+  ShaderError(shader::EnumErrors),
+  RendererError(renderer::EnumErrors),
+  WindowError(window::EnumErrors),
+  InputError(input::EnumErrors)
 }
+
+macro_rules! impl_enum_error {
+  ($error_type: ty, $resulting_error: expr) => {
+    impl From<$error_type> for EnumErrors {
+      fn from(err: $error_type) -> EnumErrors {
+        log!(EnumLogColor::Red, "ERROR", "{0}", err);
+        return $resulting_error(err);
+      }
+    }
+  }
+}
+
+// Convert renderer error to wave::EnumErrors.
+impl_enum_error!(renderer::EnumErrors, EnumErrors::RendererError);
+
+// Convert resource loader error to wave::EnumErrors.
+impl_enum_error!(utils::asset_loader::EnumErrors, EnumErrors::ResourceError);
+
+// Convert shader error to wave::EnumErrors.
+impl_enum_error!(shader::EnumErrors, EnumErrors::ShaderError);
+
+// Convert window error to wave::EnumErrors.
+impl_enum_error!(window::EnumErrors, EnumErrors::WindowError);
+
+// Convert input error to wave::EnumErrors.
+impl_enum_error!(input::EnumErrors, EnumErrors::InputError);
 
 pub trait TraitApp {
   fn on_new(&mut self) -> Result<(), EnumErrors>;
-  fn on_delete(&mut self) -> ();
-  fn on_destroy(&mut self) -> () {}
+  fn on_delete(&mut self) -> Result<(), EnumErrors>;
   
   fn on_event(&mut self) -> bool;
   fn on_update(&mut self, time_step: f64);
@@ -74,7 +112,7 @@ pub trait TraitApp {
 
 pub struct Engine {
   m_app: Box<dyn TraitApp>,
-  m_window: GlfwWindow,
+  m_window: Window,
   m_renderer: Renderer,
   m_time_step: f64,
   m_tick_rate: f64,
@@ -104,9 +142,9 @@ impl Engine {
   /// ```text
   /// use wave::{Engine, EnumErrors};
   ///
-  /// let my_app: Box<ExampleApp> = Box::new(ExampleApp::new());
+  /// let my_app = Box::new(ExampleApp::new());
   /// // Allocated on the stack -- Use new_shared() to allocate on the heap.
-  /// let mut engine = Engine::new(my_app)?;
+  /// let mut engine = Box::new(Engine::new(my_app)?);
   ///
   /// // Run `on_new()` for `my_app` prior to running.
   /// engine.on_new()?;
@@ -114,148 +152,81 @@ impl Engine {
   /// engine.on_delete();
   /// return Ok(());
   /// ```
-  pub fn new<S: TraitApp + 'static>(app_provided: Box<S>) -> Result<Self, EnumErrors> {
+  pub fn new(api_preference: Option<EnumApi>, app_provided: Option<Box<dyn TraitApp>>) -> Result<Self, EnumErrors> {
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
     
-    // Setup and launch engine.
-    let mut window = GlfwWindow::new(Some(1920), Some(1080),
-    None, Some(4), EnumWindowMode::Windowed);
+    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Opening window...");
+    // Setup window context.
+    let mut window = Window::new(api_preference,
+      Some(1920), Some(1080),
+      None, Some(4),
+      EnumWindowMode::Windowed)?;
+    log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Opened window successfully");
     
-    match window {
-      Ok(_) => {}
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error creating GLFW window! Exiting... \
-         Error code => {:?}", err);
-        return Err(EnumErrors::WindowError);
-      }
-    }
+    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Starting renderer...");
+    // Create graphics context.
+    let renderer = Renderer::new(api_preference, &mut window)?;
+    log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Started renderer successfully");
     
-    match Renderer::new(window.as_mut().unwrap()) {
-      Ok(mut renderer) => {
-        log!(EnumLogColor::White, "INFO", "[Renderer] -->\t {0}", renderer);
-        
-        let api = renderer.m_api.as_mut();
-        let _ = api.toggle_feature(renderer::EnumFeature::DepthTest(true));
-        let _ = api.toggle_feature(renderer::EnumFeature::CullFacing(true, gl::BACK));
-        let _ = api.toggle_feature(renderer::EnumFeature::Debug(true));
-        let _ = api.toggle_feature(renderer::EnumFeature::Wireframe(true));
-        let _ = api.toggle_feature(renderer::EnumFeature::MSAA(false));
-        
-        Ok({
-          log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
-          Engine {
-            m_app: app_provided,
-            m_window: window.unwrap(),
-            m_renderer: renderer,
-            m_time_step: 0.0,
-            m_tick_rate: 0.0,
-            m_state: EnumState::NotStarted,
-          }
-        })
+    Ok({
+      log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
+      Engine {
+        m_app: app_provided.unwrap_or(Box::new(ExampleApp::default())),
+        m_window: window,
+        m_renderer: renderer,
+        m_time_step: 0.0,
+        m_tick_rate: 0.0,
+        m_state: EnumState::NotStarted,
       }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error creating context! Error => {:?}", err);
-        return Err(EnumErrors::RendererError);
-      }
-    }
-  }
-  
-  /// Teardown engine. This effectively first shuts down the renderer and then flags the window to
-  /// be closed on drop.
-  ///
-  ///
-  /// # Returns:
-  ///   - `Result<GlREntity, EnumErrors>` : Will return a valid Engine if successful, otherwise an [EnumErrors]
-  ///     on any error encountered. These include, but are not limited to :
-  ///     + [EnumErrors::AppError] : If the app crashes for whatever reason the client may choose.
-  ///     + [EnumErrors::RendererError] : If the renderer crashes due to an invalid process loading,
-  ///       missing extensions, unsupported version and/or invalid GPU command.
-  ///     + [EnumErrors::WindowError] : If the window context crashes due to invalid context creation,
-  ///       deletion and/or command (GLX/X11 for Linux, WIN32 for Windows).
-  ///
-  /// # Examples
-  ///
-  /// ```text
-  /// use wave::{Engine, EnumErrors};
-  ///
-  /// let my_app: Box<ExampleApp> = Box::new(ExampleApp::new());
-  /// // Allocated on the stack -- Use new_shared() to allocate on the heap.
-  /// let mut engine = Engine::new(my_app)?;
-  ///
-  /// // Run `on_new()` for `my_app` prior to running.
-  /// engine.on_new()?;
-  /// engine.run();
-  /// engine.on_delete();
-  /// return Ok(());
-  /// ```
-  pub fn shutdown(&mut self) -> Result<(), renderer::EnumErrors> {
-    if self.m_state == EnumState::ShutDown {
-      log!(EnumLogColor::Yellow, "WARN", "[Engine] -->\t Engine already shut down! Not shutting down twice...");
-      return Ok(());
-    }
-    
-    self.m_state = EnumState::ShuttingDown;
-    let result = self.m_renderer.shutdown();
-    match result {
-      Ok(_) => {}
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error when trying to shut down renderer! \
-         Error code => {:?}", err);
-        return Err(err);
-      }
-    }
-    self.m_window.close();
-    self.m_state = EnumState::ShutDown;
-    return Ok(());
+    })
   }
   
   pub fn on_new(&mut self) -> Result<(), EnumErrors> {
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
     self.m_state = EnumState::Starting;
     
-    match self.m_app.on_new() {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[App] -->\t Started app unsuccessfully! Error => {:?}",
-  err);
-        match self.on_delete() {
-          Ok(_) => {}
-          Err(err) => {
-            log!("ERROR", "[Renderer] -->\t Error deleting renderer context! Exiting... Error code => \
-              {:?}", err);
-            return Err(EnumErrors::RendererError);
-          }
-        }
-        return Err(err);
-      }
-    }
+    Engine::set_singleton(self);
+    
+    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Setting up renderer...");
+    // Enable features BEFORE finalizing context.
+    #[cfg(not(feature = "Vulkan"))]
+    self.m_renderer.renderer_hint(renderer::EnumFeature::CullFacing(Some(gl::BACK as i64)));
+    
+    self.m_renderer.renderer_hint(renderer::EnumFeature::DepthTest(true));
+    self.m_renderer.renderer_hint(renderer::EnumFeature::Debug(true));
+    self.m_renderer.renderer_hint(renderer::EnumFeature::Wireframe(true));
+    self.m_renderer.renderer_hint(renderer::EnumFeature::MSAA(None));
+    
+    // Finalize graphics context with all hinted features to prepare for frame presentation.
+    self.m_renderer.submit()?;
+    log!(EnumLogColor::White, "INFO", "[Renderer] -->\t {0}", self.m_renderer);
+    log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Setup renderer successfully");
+    
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
+    self.m_app.on_new()?;
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Started app successfully");
+    
+    self.m_state = EnumState::Started;
     return Ok(());
   }
   
   pub fn on_delete(&mut self) -> Result<(), EnumErrors> {
+    self.m_state = EnumState::Deleting;
+    
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down app...");
-    self.m_app.on_delete();
     // Destroy app first.
+    self.m_app.on_delete()?;
+    self.m_renderer.on_delete()?;
+    self.m_window.on_delete()?;
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Shut down app successfully");
     
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down engine...");
-    match self.shutdown() {
-      Ok(_) => {}
-      Err(err) => {
-        log!("ERROR", "[Renderer] -->\t Error deleting renderer context! Exiting... Error code => \
-              {:?}", err);
-        return Err(EnumErrors::RendererError);
-      }
-    }
-    // Then, destroy engine specific data.
-    log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Engine shut down successfully");
+    self.m_state = EnumState::Deleted;
     return Ok(());
   }
   
   pub fn run(&mut self) -> Result<(), EnumErrors> {
-    if self.m_state != EnumState::Starting {
+    self.on_new()?;
+    
+    if self.m_state != EnumState::Started {
       log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Engine has not started up correctly! Exiting...");
       return Err(EnumErrors::AppError);
     }
@@ -287,10 +258,8 @@ impl Engine {
       frame_counter += 1;
       
       if Time::get_delta(&runtime, &Time::from(chrono::Utc::now())).to_secs() >= 1.0 {
-        #[cfg(feature = "Vulkan")]
-          let title_format: String = format!("Wave Engine (Rust) | Vulkan | {0} FPS", &frame_counter);
-        #[cfg(feature = "OpenGL")]
-          let title_format: String = format!("Wave Engine (Rust) | OpenGL | {0} FPS", &frame_counter);
+        let title_format: String = format!("Wave Engine (Rust) | {0:?} | {1} FPS", self.m_renderer.get_type(),
+          &frame_counter);
         self.m_window.set_title(&title_format);
         
         #[cfg(feature = "debug")]
@@ -323,6 +292,10 @@ impl Engine {
     return self.m_app.on_render();
   }
   
+  pub fn get_window(&mut self) -> &mut Window {
+    return &mut self.m_window;
+  }
+  
   pub fn get_log_file() -> &'static std::fs::File {
     return &S_LOG_FILE_PTR;
   }
@@ -332,14 +305,29 @@ impl Engine {
     unsafe { return S_ENGINE; }
   }
   
-  pub fn get_window(&self) -> &GlfwWindow {
-    return &self.m_window;
-  }
-  
-  pub fn set_singleton(engine: &mut Box<Engine>) -> () {
+  pub fn set_singleton(engine: &mut Engine) -> () {
     unsafe {
-      S_ENGINE = engine.as_mut();
+      S_ENGINE = engine;
       S_RENDERER = Some(&mut (*S_ENGINE).m_renderer);
+      S_WINDOW = Some(&mut (*S_ENGINE).m_window);
+    }
+  }
+}
+
+impl Drop for Engine {
+  fn drop(&mut self) {
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Dropping engine...");
+    
+    match self.on_delete() {
+      Ok(_) => {
+        self.m_state = EnumState::ShutDown;
+        log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Dropped engine successfully");
+      }
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Error while dropping engine : Engine \
+        returned with error => {:?} while trying to delete app!", err);
+        return;
+      }
     }
   }
 }
@@ -351,82 +339,93 @@ impl Engine {
 ///////////////////////////////////             ///////////////////////////////////
  */
 
-pub struct ExampleApp<T: TraitShader> {
-  m_shaders: Vec<T>,
+pub struct ExampleApp {
+  m_shaders: Vec<Shader>,
   m_renderable_assets: Vec<REntity>,
-  m_cameras: Vec<PerspectiveCamera>
+  m_cameras: Vec<PerspectiveCamera>,
 }
 
-impl<T: TraitShader> ExampleApp<T> {
-  pub fn new() -> Self {
+impl ExampleApp {
+  pub fn default() -> Self {
     return ExampleApp {
       m_shaders: Vec::new(),
       m_renderable_assets: Vec::new(),
-      m_cameras: Vec::new()
+      m_cameras: Vec::new(),
     };
   }
 }
 
-impl<T: TraitShader> TraitApp for ExampleApp<T> {
+pub struct EmptyApp {}
+
+impl EmptyApp {
+  pub fn new() -> Self {
+    return EmptyApp {};
+  }
+}
+
+impl TraitApp for EmptyApp {
   fn on_new(&mut self) -> Result<(), EnumErrors> {
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading GLSL shaders...");
-    
-    let result = T::new("res/shaders/test_vert.glsl",
-      "res/shaders/test_frag.glsl");
-    
-    match result {
-      Ok(vk_shader) => { self.m_shaders.push(vk_shader); }
-      Err(_) => {
-        return Err(EnumErrors::ShaderError);
-      }
-    }
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded GLSL shaders successfully");
-    
-    // Sourcing and compilation.
-    let result = self.m_shaders[0].send();
-    match result {
-      Ok(_) => { log!("INFO", "[Shader] -->\t Shader sent to GPU successfully"); }
-      Err(_) => { return Err(EnumErrors::ShaderError); }
-    }
-    
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Uploading camera view and projection to the GPU...");
-    let aspect_ratio: f32 = unsafe { (*S_ENGINE).m_window.m_window_bounds.x as f32 / (*S_ENGINE).m_window.m_window_bounds.y as f32 };
-    self.m_cameras.push(PerspectiveCamera::from(75.0, aspect_ratio, 0.01, 1000.0));
-    self.m_cameras[0].set_view_projection();
-    if self.m_shaders[0].upload_data("u_view_projection", self.m_cameras[0].get_matrix()).is_err() {
-      return Err(EnumErrors::RendererError);
-    }
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Camera view and projection uploaded to GPU successfully");
-    
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
-    let result = ResLoader::new("awp.obj");
-    match result {
-      Ok(gl_vertices) => {
-        log!("INFO", "[ResLoader] -->\t Asset {0} loaded successfully", "awp.obj");
-        self.m_renderable_assets.push(REntity::from(gl_vertices));
-        self.m_renderable_assets[0].translate(Vec3::from(&[10.0, -10.0, 50.0]));
-        self.m_renderable_assets[0].rotate(Vec3::from(&[-90.0, 90.0, 0.0]));
-        match self.m_shaders[0].upload_data("u_model_matrix", self.m_renderable_assets[0].get_matrix()) {
-          Ok(_) => { log!("INFO", "[Shader] -->\t Uniform 'u_model_matrix' uploaded to GPU successfully"); }
-          Err(_) => {}
-        }
-        
-        let result = self.m_renderable_assets[0].send(&mut self.m_shaders[0]);
-        match result {
-          Ok(_) => { log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully"); }
-          Err(_) => { return Err(EnumErrors::RendererError); }
-        }
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[ResLoader] -->\t Asset {0} loaded unsuccessfully! \
-          Error => {1:?}", "cube.obj", err);
-      }
-    }
-    
     return Ok(());
   }
   
-  fn on_delete(&mut self) -> () {}
+  fn on_delete(&mut self) -> Result<(), EnumErrors> {
+    return Ok(());
+  }
+  
+  fn on_event(&mut self) -> bool {
+    return true;
+  }
+  
+  fn on_update(&mut self, _time_step: f64) {}
+  
+  fn on_render(&mut self) -> Result<(), EnumErrors> {
+    return Ok(());
+  }
+}
+
+impl TraitApp for ExampleApp {
+  fn on_new(&mut self) -> Result<(), EnumErrors> {
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading GLSL shaders...");
+    
+    let shader = Shader::new("res/shaders/test_vert.glsl",
+      "res/shaders/test_frag.glsl")?;
+    self.m_shaders.push(shader);
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded GLSL shaders successfully");
+    
+    // Sourcing and compilation.
+    self.m_shaders[0].send()?;
+    log!("INFO", "[Shader] -->\t Shader sent to GPU successfully");
+    
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Uploading camera view and projection to the GPU...");
+    let aspect_ratio: f32 = unsafe {
+      (*S_WINDOW.unwrap()).m_window_bounds.x as f32 /
+        (*S_WINDOW.unwrap()).m_window_bounds.y as f32
+    };
+    
+    self.m_cameras.push(PerspectiveCamera::from(75.0, aspect_ratio, 0.01, 1000.0));
+    self.m_cameras[0].set_view_projection();
+    self.m_shaders[0].upload_data("u_view_projection", self.m_cameras[0].get_matrix())?;
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Camera view and projection uploaded to GPU successfully");
+    
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
+    let r_obj = ResLoader::new("awp.obj")?;
+    self.m_renderable_assets.push(REntity::from(r_obj));
+    self.m_renderable_assets[0].translate(Vec3::from(&[10.0, -10.0, 50.0]));
+    self.m_renderable_assets[0].rotate(Vec3::from(&[-90.0, 90.0, 0.0]));
+    self.m_shaders[0].upload_data("u_model_matrix", self.m_renderable_assets[0].get_matrix())?;
+    log!("INFO", "[Shader] -->\t Uniform 'u_model_matrix' uploaded to GPU successfully");
+    
+    self.m_renderable_assets[0].send(&mut self.m_shaders[0])?;
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
+    
+    // Show our window when we are done.
+    unsafe { (*S_WINDOW.unwrap()).show() };
+    return Ok(());
+  }
+  
+  fn on_delete(&mut self) -> Result<(), EnumErrors> {
+    return Ok(());
+  }
   
   fn on_event(&mut self) -> bool {
     return false;
@@ -435,22 +434,15 @@ impl<T: TraitShader> TraitApp for ExampleApp<T> {
   fn on_update(&mut self, _time_step: f64) -> () {}
   
   fn on_render(&mut self) -> Result<(), EnumErrors> {
-    let aspect_ratio: f32 = unsafe { (*S_ENGINE).m_window.m_window_bounds.x as f32 / (*S_ENGINE).m_window.m_window_bounds.y as f32 };
+    let aspect_ratio: f32 = unsafe {
+      (*S_WINDOW.unwrap()).m_window_bounds.x as f32 /
+        (*S_WINDOW.unwrap()).m_window_bounds.y as f32
+    };
     self.m_cameras[0].update_projection(70.0, aspect_ratio, 0.01, 1000.0);
-    match self.m_shaders[0].upload_data("u_view_projection", self.m_cameras[0].get_matrix()) {
-      Ok(_) => {}
-      Err(_) => { return Err(EnumErrors::RendererError); }
-    }
+    self.m_shaders[0].upload_data("u_view_projection", self.m_cameras[0].get_matrix())?;
     
-    let draw_result = unsafe { S_RENDERER.as_mut().unwrap().m_api.draw() };
+    unsafe { S_RENDERER.as_mut().unwrap().m_api.draw() }?;
     
-    return match draw_result {
-      Ok(_) => { Ok(()) }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot draw all assets! Error => {0:?}",
-          err);
-        Err(EnumErrors::RendererError)
-      }
-    }
+    return Ok(());
   }
 }

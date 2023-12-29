@@ -22,14 +22,8 @@
  SOFTWARE.
 */
 
+pub mod renderer;
+pub mod buffer;
 pub mod shader;
 pub mod texture;
-pub mod renderer;
-pub mod text;
-pub mod imgui;
-pub mod color;
-
-#[cfg(feature = "Vulkan")]
-pub mod vulkan;
-
-mod open_gl;
+pub mod framebuffer;

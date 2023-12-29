@@ -22,91 +22,48 @@
  SOFTWARE.
 */
 
-use wave_engine::wave::graphics::renderer::Renderer;
-use wave_engine::wave::graphics::shader::{self, GlslShader};
+use wave_engine::wave::{EmptyApp, Engine, EnumErrors};
+use wave_engine::wave::graphics::shader::Shader;
+
 use wave_engine::wave::math::Mat4;
-use wave_engine::wave::window::{GlfwWindow, EnumWindowMode};
 
 #[test]
-#[ignore]
-fn test_shader_send() {
-  // Setup window context in order to use api functions.
-  let window = GlfwWindow::new(Some(640), Some(480),
-    None, None, EnumWindowMode::Windowed);
-  match window.as_ref() {
-    Ok(_) => {}
-    Err(err) => {
-      println!("[Window] --> Cannot create window! Error => {:?}", err);
-      return assert!(false);
-    }
-  }
+fn test_shader_send() -> Result<(), EnumErrors> {
+  let mut engine = Engine::new(None, Some(Box::new(EmptyApp::new())))?;
+  engine.on_new()?;
   
-  // Setup renderer in order to use api functions.
-  let renderer = Renderer::new(&mut window.unwrap());
-  
-  assert!(renderer.is_ok());
-  
-  let result = GlslShader::new("res/shaders/default_3D.vert",
-    "res/shaders/default_3D.frag");
-  
-  if result.is_err() {
-    return assert!(false);
-  }
+  let mut result = Shader::new("res/shaders/default_3D.vert",
+    "res/shaders/default_3D.frag")?;
   
   // Check if shader str is empty.
-  assert_ne!(result.as_ref().unwrap().to_string(), "Vertex shader :\n\nFragment shader : \n");
+  assert_ne!(result.to_string(), "Vertex shader :\n\nFragment shader : \n");
   
   // Sourcing and compilation.
-  let result = result.unwrap().send();
-  assert!(result.is_ok());
+  return match result.send() {
+    Ok(_) => { Ok(()) }
+    Err(err) => { Err(EnumErrors::from(err)) }
+  };
 }
 
 #[test]
-#[ignore]
-fn test_load_uniforms() {
-  let window = GlfwWindow::new(Some(640), Some(480),
-    None, None, EnumWindowMode::Windowed);
-  match window.as_ref() {
-    Ok(_) => {}
-    Err(err) => {
-      println!("[Window] --> Cannot create window! Error => {:?}", err);
-      return assert!(false);
-    }
-  }
+fn test_load_uniforms() -> Result<(), EnumErrors> {
+  let mut engine = Engine::new(None, Some(Box::new(EmptyApp::new())))?;
+  engine.on_new()?;
   
-  // Setup renderer in order to use api functions.
-  let renderer = Renderer::new(&mut window.unwrap());
-  assert!(renderer.is_ok());
-  
-  let mut new_shader = GlslShader::new("res/shaders/default_3D.vert",
-    "res/shaders/default_3D.frag");
-  assert!(new_shader.is_ok());
+  let mut new_shader = Shader::new("res/shaders/default_3D.vert",
+    "res/shaders/default_3D.frag")?;
   
   // Check if shader str is empty.
-  assert_ne!(new_shader.as_ref().unwrap().to_string(), "[Shader] -->\t\nVertex shader :\n\
+  assert_ne!(new_shader.to_string(), "[Shader] -->\t\nVertex shader :\n\
   \nFragment shader : \n");
   
   // Sourcing and compilation.
-  let result = new_shader.as_mut().unwrap().send();
-  assert!(result.is_ok());
+  new_shader.send()?;
   
   // Load uniforms.
-  let uniform = new_shader.as_mut().unwrap().upload_data("u_model_matrix",
-    &Mat4::new(1.0));
-  
-  
-  match uniform {
-    Ok(_) => {}
-    
-    #[cfg(feature = "OpenGL")]
-    Err(shader::EnumErrors::GlError(err)) => {
-      println!("[Window] --> Cannot load uniform {0}! Error => 0x{1:x}", "u_has_texture", err);
-      return assert!(false);
-    }
-    
-    Err(err) => {
-      println!("[Window] --> Cannot load uniform {0}! Error => 0x{1:#?}", "u_has_texture", err);
-      return assert!(false);
-    }
-  }
+  return match  new_shader.upload_data("u_model_matrix",
+    &Mat4::new(1.0)) {
+    Ok(_) => { Ok(()) }
+    Err(err) => { Err(EnumErrors::from(err)) }
+  };
 }

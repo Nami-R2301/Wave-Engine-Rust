@@ -22,6 +22,7 @@
  SOFTWARE.
 */
 
+use std::fmt::{Display, Formatter};
 use std::io::BufRead;
 
 use crate::log;
@@ -40,6 +41,16 @@ pub enum EnumErrors {
   InvalidFileExtension,
   InvalidRead,
   InvalidShapeData,
+}
+
+impl Display for EnumErrors {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "[ResLoader] -->\t Error encountered while loading resource : {:?}", self)
+  }
+}
+
+impl std::error::Error for EnumErrors {
+
 }
 
 #[derive(Debug, Clone)]

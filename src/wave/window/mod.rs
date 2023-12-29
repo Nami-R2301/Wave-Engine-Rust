@@ -28,11 +28,14 @@ use std::fmt::{Display, Formatter};
 
 #[cfg(feature = "Vulkan")]
 use ash::vk;
-#[cfg(feature = "OpenGL")]
 use glfw::Context;
 
-use crate::log;
+use crate::{log, wave::EnumApi};
+use crate::wave::graphics::renderer::Renderer;
 use crate::wave::math::Vec2;
+
+pub(crate) static mut S_WINDOW_CONTEXT: Option<*mut glfw::Glfw> = None;
+pub static mut S_WINDOW: Option<*mut Window> = None;
 
 static mut S_ORIGINAL_WIDTH: u32 = 640;
 static mut S_ORIGINAL_HEIGHT: u32 = 480;
@@ -48,6 +51,12 @@ pub enum EnumWindowMode {
   Windowed,
   Borderless,
   Fullscreen,
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum EnumFeatures {
+  VSync(bool),
+  MSAA(Option<u32>),
 }
 
 impl Display for EnumWindowMode {
@@ -70,25 +79,34 @@ pub enum EnumErrors {
   VulkanSurfaceCreationError,
 }
 
+impl Display for EnumErrors {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "[Window] -->\t Error encountered with window context : {:?}", self)
+  }
+}
+
+impl std::error::Error for EnumErrors {}
+
 #[cfg(feature = "debug")]
 fn glfw_error_callback(error: glfw::Error, message: String) {
   log!(EnumLogColor::Red, "ERROR", "[Window] -->\t GLFW error raised! Error => {0}\n{1:100}Info => \
    {2}", error, "", message);
 }
 
-pub struct GlfwWindow {
-  m_state: EnumState,
-  m_api_window: glfw::PWindow,
-  m_api_window_events: glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
-  m_window_mode: EnumWindowMode,
+pub struct Window {
+  pub m_api_window_events: glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
+  pub m_api_window: glfw::PWindow,
   pub m_vsync: bool,
-  pub m_vulkan_compatible: bool,
+  pub m_samples: u8,
   pub m_window_bounds: Vec2<i32>,
   pub m_is_windowed: bool,
+  m_window_mode: EnumWindowMode,
+  m_render_api: EnumApi,
+  m_state: EnumState,
 }
 
-impl GlfwWindow {
-  pub fn new(width_desired: Option<u32>, height_desired: Option<u32>,
+impl Window {
+  pub fn new(api_preference: Option<EnumApi>, width_desired: Option<u32>, height_desired: Option<u32>,
              refresh_count_desired: Option<u32>, sample_count_desired: Option<u32>,
              window_mode: EnumWindowMode) -> Result<Self, EnumErrors> {
     let mut result = glfw::init(glfw::fail_on_errors);
@@ -96,13 +114,11 @@ impl GlfwWindow {
     match result {
       Err(glfw::InitError::AlreadyInitialized) => {
         log!(EnumLogColor::Yellow, "WARN",
-          "[Window] -->\t GLFW window already initialized! Skipping \
-         creation of a new one...");
+          "[Window] -->\t GLFW window already initialized! Skipping creation of a new one...");
       }
       Err(glfw::InitError::Internal) => {
         log!(EnumLogColor::Red, "ERROR",
-          "[Window] -->\t Failed to create GLFW window due to internal \
-         error! Exiting...");
+          "[Window] -->\t Failed to create GLFW window due to internal error! Exiting...");
         return Err(EnumErrors::InitError);
       }
       Ok(_) => {}
@@ -110,25 +126,53 @@ impl GlfwWindow {
     
     let context_ref = result.as_mut().unwrap();
     
-    context_ref.window_hint(glfw::WindowHint::Samples(sample_count_desired));
-    context_ref.window_hint(glfw::WindowHint::RefreshRate(refresh_count_desired));
-    context_ref.window_hint(glfw::WindowHint::Resizable(true));
+    if window_mode == EnumWindowMode::Borderless {
+      context_ref.window_hint(glfw::WindowHint::Resizable(false));
+      context_ref.window_hint(glfw::WindowHint::Decorated(false));
+    } else {
+      context_ref.window_hint(glfw::WindowHint::Resizable(true));
+    }
     
-    #[cfg(feature = "Vulkan")]
-    {
+    // Hide window to prevent showing it before needing it.
+    context_ref.window_hint(glfw::WindowHint::Visible(false));
+    
+    // If user has not chosen an api, choose accordingly.
+    if api_preference.is_none() {
+      #[cfg(not(feature = "Vulkan"))]
+      {
+        // OpenGL hints.
+        context_ref.window_hint(glfw::WindowHint::RefreshRate(refresh_count_desired));
+        context_ref.window_hint(glfw::WindowHint::Samples(sample_count_desired));
+        #[cfg(feature = "debug")]
+        context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
+      }
+      
+      #[cfg(feature = "Vulkan")]
       context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
+    } else {
+      match api_preference.unwrap() {
+        EnumApi::OpenGL => {
+          // OpenGL hints.
+          context_ref.window_hint(glfw::WindowHint::RefreshRate(refresh_count_desired));
+          context_ref.window_hint(glfw::WindowHint::Samples(sample_count_desired));
+          
+          #[cfg(feature = "debug")]
+          context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
+        }
+        EnumApi::Vulkan => {
+          context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
+        }
+      }
     }
     
-    #[cfg(all(feature = "OpenGL", feature = "debug"))]
-    {
-      context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
+    unsafe {
+      S_WINDOW_CONTEXT = Some(context_ref);
     }
     
-    match unsafe {
-      context_ref.create_window(width_desired.unwrap_or(S_ORIGINAL_WIDTH),
-        height_desired.unwrap_or(S_ORIGINAL_HEIGHT), "Wave Engine (Rust)",
-        glfw::WindowMode::Windowed)
-    } {
+    match context_ref.create_window(width_desired.unwrap_or(640),
+        height_desired.unwrap_or(480),
+        "Wave Engine (Rust)",
+        glfw::WindowMode::Windowed) {
       None => {
         log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Unable to create GLFW window");
         Err(EnumErrors::InitError)
@@ -153,67 +197,78 @@ impl GlfwWindow {
           S_ORIGINAL_WIDTH = bounds.x as u32;
           S_ORIGINAL_HEIGHT = bounds.y as u32;
         }
-        let mut glfw_window = GlfwWindow {
+        
+        let mut glfw_window = Window {
           m_state: EnumState::Open,
-          m_vulkan_compatible: window.glfw.vulkan_supported(),
           m_api_window: window,
           m_api_window_events: events,
+          m_render_api: api_preference.is_some().then(|| {
+            return api_preference.unwrap();
+          }).unwrap_or_else(|| {
+            #[cfg(not(feature = "Vulkan"))]
+            return EnumApi::OpenGL;
+            #[cfg(feature = "Vulkan")]
+            return EnumApi::Vulkan;
+          }),
           m_window_mode: window_mode,
           m_vsync: true,
+          m_samples: sample_count_desired.unwrap_or(1) as u8,
           m_window_bounds: bounds,
           m_is_windowed: window_mode == EnumWindowMode::Windowed,
         };
         
         // Toggle on fullscreen if requested.
         return if window_mode != EnumWindowMode::Windowed {
-          let result = context_ref.with_primary_monitor(|_, monitor| -> Result<Self, EnumErrors> {
-            if monitor.is_none() {
-              log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot identify primary monitor!");
-              return Err(EnumErrors::InitError);
-            }
-            
-            let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
-            
-            match window_mode {
-              EnumWindowMode::Windowed => {}
-              EnumWindowMode::Borderless => {
-                glfw_window.m_api_window.set_monitor(glfw::WindowMode::Windowed,
-                  0, 0, mode.width, mode.height, refresh_count_desired);
+          let result =
+            context_ref.with_primary_monitor(|_, monitor| -> Result<Self, EnumErrors> {
+              if monitor.is_none() {
+                log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot identify primary monitor!");
+                return Err(EnumErrors::InitError);
               }
-              EnumWindowMode::Fullscreen => {
-                glfw_window.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
-                  0, 0, mode.width, mode.height, Some(mode.refresh_rate));
+              
+              let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
+              
+              match window_mode {
+                EnumWindowMode::Windowed => {}
+                EnumWindowMode::Borderless => {
+                  glfw_window.m_api_window.set_monitor(glfw::WindowMode::Windowed,
+                    0, 0, mode.width, mode.height, refresh_count_desired);
+                }
+                EnumWindowMode::Fullscreen => {
+                  glfw_window.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
+                    0, 0, mode.width, mode.height, Some(mode.refresh_rate));
+                }
               }
-            }
-            
-            return Ok(glfw_window);
-          });
+              return Ok(glfw_window);
+            });
           result
         } else {
           Ok(glfw_window)
-        };
+        }
       }
     }
   }
   
-  #[cfg(feature = "OpenGL")]
+  pub fn show(&mut self) {
+    self.m_api_window.show();
+  }
+  
+  pub fn hide(&mut self) {
+    self.m_api_window.hide();
+  }
+  
   pub fn init_opengl_surface(&mut self) {
     // Make the window's context current
     self.m_api_window.make_current();
     
     // Set v-sync.
-    self.m_api_window.glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
+    self.m_api_window.glfw.set_swap_interval(glfw::SwapInterval::Sync(self.m_vsync
+      .then(|| { return 1; })
+      .unwrap_or(0)));
   }
   
   #[cfg(feature = "Vulkan")]
-  pub fn init_vulkan_surface(&mut self, vk_instance: &ash::Instance, vk_surface_khr: &mut vk::SurfaceKHR) {
-    if !self.m_vulkan_compatible {
-      log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot create Vulkan surface,\
-       Vulkan API is not supported! Make sure the Vulkan SDK and drivers \
-             are installed or select another renderer and re-run app! Exiting...");
-      panic!();
-    }
-    
+  pub fn init_vulkan_surface(&self, vk_instance: &ash::Instance, vk_surface_khr: &mut vk::SurfaceKHR) {
     let result = self.m_api_window.create_window_surface(vk_instance.handle(),
       std::ptr::null_mut(), vk_surface_khr).result();
     
@@ -227,62 +282,65 @@ impl GlfwWindow {
     self.m_api_window.glfw.poll_events();
     for (_, event) in glfw::flush_messages(&self.m_api_window_events) {
       return match event {
-        glfw::WindowEvent::Key(glfw::Key::Escape, _, glfw::Action::Press, _) => {
-          self.m_api_window.set_should_close(true);
-          log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
-          true
-        }
-        glfw::WindowEvent::Key(glfw::Key::Enter, _, glfw::Action::Press, glfw::Modifiers::Alt) => {
-          let window: *mut glfw::PWindow = &mut self.m_api_window;
-          self.m_api_window.glfw.with_primary_monitor(|_, monitor| {
-            let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
-            
-            if !self.m_is_windowed {
-              unsafe {
-                (*window).set_monitor(glfw::WindowMode::Windowed,
-                  0, 0, S_ORIGINAL_WIDTH, S_ORIGINAL_HEIGHT, None);
-              }
-              self.m_is_windowed = true;
-              log!("INFO", "[Window] -->\t Window mode : Windowed");
-            } else {
-              match self.m_window_mode {
-                EnumWindowMode::Borderless => unsafe {
-                  (*window).set_monitor(glfw::WindowMode::Windowed,
-                    0, 0, mode.width, mode.height, None);
-                  log!("INFO", "[Window] -->\t Window mode : Borderless");
-                }
-                _ => unsafe {
-                  (*window).set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
-                    0, 0, mode.width, mode.height, Some(mode.refresh_rate));
-                  log!("INFO", "[Window] -->\t Window mode : Fullscreen");
-                }
-              }
-              self.m_is_windowed = false;
-            }
-          });
-          true
-        }
-        glfw::WindowEvent::Key(glfw::Key::V, _, glfw::Action::Press, glfw::Modifiers::Alt) => {
-          if self.m_vsync {
-            self.m_api_window.glfw.set_swap_interval(glfw::SwapInterval::None);
-            self.m_vsync = false;
-          } else {
-            self.m_api_window.glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
-            self.m_vsync = true;
-          }
-          return false;
-        }
-        glfw::WindowEvent::Key(key, _scancode, action, _mods) => {
-          // log!("INFO", "Key: {:?}, ScanCode: {:?}, Action: {:?}, Modifiers: [{:?}]",
-          // key, scancode, action, mods);
+        glfw::WindowEvent::Key(key, _scancode, action, mods) => {
           
-          match (key, action) {
-            (glfw::Key::R, glfw::Action::Press) => {
+          match (key, action, mods) {
+            (glfw::Key::Escape, glfw::Action::Press, _) => {
+              self.m_api_window.set_should_close(true);
+              log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
+              true
+            }
+            (glfw::Key::R, glfw::Action::Press, _) => {
               // Resize should force the window to "refresh"
               let (window_width, window_height) = self.m_api_window.get_size();
               self.m_api_window.set_size(window_width + 1, window_height);
               self.m_api_window.set_size(window_width, window_height);
               false
+            }
+            (glfw::Key::V, glfw::Action::Press, glfw::Modifiers::Alt) => {
+              if self.m_vsync {
+                self.m_api_window.glfw.set_swap_interval(glfw::SwapInterval::None);
+                self.m_vsync = false;
+              } else {
+                self.m_api_window.glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
+                self.m_vsync = true;
+              }
+              return false;
+            }
+            (glfw::Key::Enter, glfw::Action::Press, glfw::Modifiers::Alt) => {
+              let window: *mut glfw::PWindow = &mut self.m_api_window;
+              self.m_api_window.glfw.with_primary_monitor(|_, monitor| {
+                let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
+                
+                if !self.m_is_windowed {
+                  unsafe {
+                    if self.m_window_mode == EnumWindowMode::Borderless {
+                      (*window).set_decorated(true);
+                      (*window).set_size(S_ORIGINAL_WIDTH as i32, S_ORIGINAL_HEIGHT as i32);
+                    } else {
+                      (*window).set_monitor(glfw::WindowMode::Windowed,
+                        0, 0, S_ORIGINAL_WIDTH, S_ORIGINAL_HEIGHT, None);
+                    }
+                  }
+                  self.m_is_windowed = true;
+                  log!("INFO", "[Window] -->\t Window mode : Windowed");
+                } else {
+                  match self.m_window_mode {
+                    EnumWindowMode::Borderless => unsafe {
+                      (*window).set_decorated(false);
+                      (*window).set_size(mode.width as i32, mode.height as i32);
+                      log!("INFO", "[Window] -->\t Window mode : Borderless");
+                    }
+                    _ => unsafe {
+                      (*window).set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
+                        0, 0, mode.width, mode.height, Some(mode.refresh_rate));
+                      log!("INFO", "[Window] -->\t Window mode : Fullscreen");
+                    }
+                  }
+                  self.m_is_windowed = false;
+                }
+              });
+              true
             }
             _ => false
           }
@@ -293,10 +351,14 @@ impl GlfwWindow {
         }
         glfw::WindowEvent::FramebufferSize(width, height) => {
           log!("INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
-          #[cfg(feature = "OpenGL")]
-          unsafe {
-            gl::Viewport(0, 0, width, height);
+          let renderer = Renderer::get();
+          
+          if renderer.is_some() {
+            renderer.as_mut().unwrap()
+              .on_events(glfw::WindowEvent::FramebufferSize(width, height))
+              .expect("Cannot process window event (Framebuffer size) : No active renderer context!");
           }
+          
           self.m_window_bounds = Vec2::from(&[width, height]);
           false
         }
@@ -307,9 +369,18 @@ impl GlfwWindow {
     return false;
   }
   
+  pub fn on_delete(&mut self) -> Result<(), EnumErrors> {
+    if self.m_state == EnumState::Closed {
+      return Ok(());
+    }
+    self.m_state = EnumState::Closed;
+    return Ok(());
+  }
+  
   pub fn refresh(&mut self) {
-    #[cfg(feature = "OpenGL")]
-    self.m_api_window.swap_buffers();
+    if self.m_render_api == EnumApi::OpenGL {
+      self.m_api_window.swap_buffers();
+    }
   }
   
   pub fn is_closing(&self) -> bool {
@@ -325,12 +396,12 @@ impl GlfwWindow {
     return self.m_state;
   }
   
-  pub fn get_api_ptr(&self) -> &glfw::Glfw {
+  pub fn get_api_ref(&self) -> &glfw::Glfw {
     return &self.m_api_window.glfw;
   }
   
-  pub fn get_api_window(&mut self) -> &mut glfw::PWindow {
-    return &mut self.m_api_window;
+  pub fn get_api_mut(&mut self) -> &mut glfw::Glfw {
+    return &mut self.m_api_window.glfw;
   }
   
   pub fn set_title(&mut self, title: &str) {
@@ -345,5 +416,25 @@ impl GlfwWindow {
       });
     }
     return self.m_window_bounds.clone();
+  }
+  
+  pub fn get() -> Option<*mut Window> {
+    unsafe { return S_WINDOW; };
+  }
+}
+
+impl Drop for Window {
+  fn drop(&mut self) {
+    log!(EnumLogColor::Purple, "INFO", "[Window] -->\t Dropping window...");
+    match self.on_delete() {
+      Ok(_) => {
+        log!(EnumLogColor::Green, "INFO", "[Window] -->\t Dropped window successfully");
+      }
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error while dropping window : Error => {:?}",
+        err);
+        log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Dropped window unsuccessfully");
+      }
+    }
   }
 }

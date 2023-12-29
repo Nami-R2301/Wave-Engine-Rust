@@ -31,7 +31,7 @@ use once_cell::sync::Lazy;
 use crate::log;
 use crate::wave::graphics::color::Color;
 use crate::wave::graphics::renderer::{EnumErrors, Renderer};
-use crate::wave::graphics::shader::TraitShader;
+use crate::wave::graphics::shader::Shader;
 use crate::wave::math::{Mat4, Vec3};
 
 /*
@@ -43,9 +43,9 @@ use crate::wave::math::{Mat4, Vec3};
 static mut S_ENTITIES_ID_CACHE: Lazy<HashSet<u32>> = Lazy::new(|| HashSet::new());
 
 pub trait TraitRenderableEntity {
-  fn send(&mut self, shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors>;
-  fn resend(&mut self, shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors>;
-  fn free(&mut self, shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors>;
+  fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumErrors>;
+  fn resend(&mut self, shader_associated: &mut Shader) -> Result<(), EnumErrors>;
+  fn free(&mut self, shader_associated: &mut Shader) -> Result<(), EnumErrors>;
   fn is_sent(&self) -> bool;
 }
 
@@ -174,11 +174,11 @@ impl PartialEq for REntity {
 }
 
 impl TraitRenderableEntity for REntity {
-  fn send(&mut self, shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors> {
+  fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumErrors> {
     let renderer = Renderer::get().as_mut()
       .expect("[REntity] -->\t Cannot send REntity, renderer is null! Exiting...");
     
-    return match renderer.m_api.send(self, shader_associated) {
+    return match renderer.m_api.enqueue(self, shader_associated) {
       Ok(_) => {
         self.m_sent = true;
         Ok(())
@@ -191,15 +191,15 @@ impl TraitRenderableEntity for REntity {
     };
   }
   
-  fn resend(&mut self, _shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors> {
+  fn resend(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumErrors> {
     todo!()
   }
   
-  fn free(&mut self, _shader_associated: &mut dyn TraitShader) -> Result<(), EnumErrors> {
+  fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumErrors> {
     let renderer = Renderer::get().as_mut()
       .expect("[REntity] -->\t Cannot free REntity, renderer is null! Exiting...");
     
-    return match renderer.m_api.free(&self.m_renderer_id) {
+    return match renderer.m_api.dequeue(&self.m_renderer_id) {
       Ok(_) => {
         self.m_sent = false;
         Ok(())

@@ -27,3 +27,4 @@ use wave_engine::wave::Engine;  // Mimic crate::wave::Engine from src -- DO NOT 
 pub mod math;
 pub mod utils;
 pub mod graphics;
+pub mod input;

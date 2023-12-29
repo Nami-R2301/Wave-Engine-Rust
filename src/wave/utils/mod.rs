@@ -220,7 +220,7 @@ macro_rules! trace {
 /// Additionally, basic traits implementations for Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div,
 /// DivAssign, Display, Debug, and PartialEq will be automatically implemented.
 #[macro_export]
-macro_rules! create_vec {
+macro_rules! impl_struct {
     ($struct_name: ident<$struct_type: ident> { $($struct_item: ident,)* }) => {
       #[derive(Clone)]
       pub struct $struct_name<$struct_type> {
@@ -467,10 +467,6 @@ pub mod logger {
                                            $log_type, &current_time.to_string()[0..19], trace!());
 
       let log_message: String = format!($($format_and_arguments)*);
-      #[cfg(feature = "OpenGL")]
-      let mut log_file_ptr = Engine::get_log_file();
-      
-      #[cfg(feature = "Vulkan")]
       let mut log_file_ptr = Engine::get_log_file();
       
       writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
@@ -570,7 +566,8 @@ impl Time {
   
   pub fn from(local_time: DateTime<chrono::Utc>) -> Self {
     return Time {
-      m_nano_seconds: local_time.timestamp_nanos() as f64
+      m_nano_seconds: local_time.timestamp_nanos_opt().expect("[Internal] -->\t Cannot convert \
+      local time to nanoseconds in wave/utils/mod.rs on line 573!") as f64
     };
   }
   

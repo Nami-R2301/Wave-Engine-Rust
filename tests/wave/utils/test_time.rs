@@ -27,7 +27,8 @@ use wave_engine::wave::utils::Time;
 fn test_delta_time() {
   let time = chrono::Utc::now();
   let mut start_time: Time = Time {
-    m_nano_seconds: time.timestamp_nanos() as f64
+    m_nano_seconds: time.timestamp_nanos_opt().expect("[test] --> Could not convert local \
+    time to nanoseconds!") as f64
   };
   let mut end_time: Time = Time::from(time.clone());
   
@@ -46,7 +47,8 @@ fn test_delta_time() {
 #[test]
 fn test_wait_for() {
   let start_time: Time = Time {
-    m_nano_seconds: chrono::Utc::now().timestamp_nanos() as f64
+    m_nano_seconds: chrono::Utc::now().timestamp_nanos_opt().expect("[test] --> Could not \
+    convert local time to nanoseconds!") as f64
   };
   
   Time::wait_for(1.0);

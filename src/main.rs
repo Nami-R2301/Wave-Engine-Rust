@@ -22,9 +22,7 @@
  SOFTWARE.
 */
 
-use wave::*;
-
-use crate::wave::graphics::shader;
+use wave::{Engine, ExampleApp, EnumErrors, EnumApi};
 
 pub mod wave;
 
@@ -73,19 +71,14 @@ pub mod wave;
 
 fn main() -> Result<(), EnumErrors> {
   
-  // Allocated on the stack -- Use new_shared() to allocate on the heap.
-  #[cfg(feature = "Vulkan")]
-    let my_app: Box<ExampleApp<shader::VkShader>> = Box::new(ExampleApp::new());
+  // Instantiate an empty app on the heap to make sure all of its resources are ref-counted
+  // like `std::shared_ptr` in C++.
+  let my_app: Box<ExampleApp> = Box::new(ExampleApp::default());
   
-  #[cfg(feature = "OpenGL")]
-    let my_app: Box<ExampleApp<shader::GlShader>> = Box::new(ExampleApp::new());
+  // Supply it to our engine. Engine will NOT construct app and will only init the engine
+  // with the supplied GPU API of choice as its render and windowing targets.
+  let mut engine: Engine = Engine::new(Some(EnumApi::Vulkan), Some(my_app))?;
   
-  let mut engine: Box<Engine> = Box::new(Engine::new(my_app)?);
-  Engine::set_singleton(&mut engine);
-  
-  // Run `on_new()` for `my_app` prior to running.
-  engine.on_new()?;
-  engine.run()?;
-  engine.on_delete()?;  // Run `on_delete()` for `my_app` prior to dropping.
-  return Ok(());
+  // Execute the app in game loop and return if there's a close event or if an error occurred.
+  return engine.run();
 }

@@ -1,57 +1,20 @@
 /*
- MIT License
-
- Copyright (c) 2023 Nami Reghbati
-
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
-
- The above copyright notice and this permission notice shall be included in all
- copies or substantial portions of the Software.
-
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NON INFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- SOFTWARE.
-*/
-
-/*
-///////////////////////////////////   Vulkan    ///////////////////////////////////
-///////////////////////////////////             ///////////////////////////////////
-///////////////////////////////////             ///////////////////////////////////
- */
-
-
-
-/*
 ///////////////////////////////////   OpenGL    ///////////////////////////////////
 ///////////////////////////////////             ///////////////////////////////////
 ///////////////////////////////////             ///////////////////////////////////
  */
 
-#[cfg(feature = "OpenGL")]
 extern crate gl;
 
-#[cfg(feature = "OpenGL")]
-use crate::{log, check_gl_call};
+pub use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLintptr, GLsizei, GLsizeiptr, GLuint,
+  GLvoid};
 
-#[cfg(feature = "OpenGL")]
-use crate::wave::graphics::renderer::{EnumApi, EnumState, EnumErrors, Renderer};
+use crate::{check_gl_call, log};
+use crate::wave::graphics::open_gl::renderer::EnumOpenGLErrors;
+use crate::wave::graphics::renderer::{EnumErrors, EnumState, Renderer};
+use crate::wave::EnumApi;
 
-#[cfg(feature = "OpenGL")]
-pub use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
-
-#[cfg(feature = "OpenGL")]
-use gl::types::GLintptr;
-
-#[cfg(feature = "OpenGL")]
+#[allow(unused)]
 pub enum EnumAttributeType {
   UnsignedShort(i32),
   Short(i32),
@@ -65,19 +28,16 @@ pub enum EnumAttributeType {
   Mat4,
 }
 
-#[cfg(feature = "OpenGL")]
 pub struct GlVertexAttribute {
   pub m_gl_type: GLenum,
   pub m_count: i32,
   pub m_buffer_offset: usize,
   pub m_normalized: u8,
-  pub m_attribute_divisor: u8
+  pub m_attribute_divisor: u8,
 }
 
-#[cfg(feature = "OpenGL")]
 impl GlVertexAttribute {
   pub fn new(gl_type: EnumAttributeType, should_normalize: bool, buffer_offset: usize, attribute_divisor: u8) -> Result<Self, EnumErrors> {
-    
     let mut max_attrib_div: i32 = 0;
     check_gl_call!("Buffer (Attribute divisor)", gl::GetIntegerv(gl::MAX_VERTEX_ATTRIBS, &mut max_attrib_div));
     
@@ -94,7 +54,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
-          m_attribute_divisor: attribute_divisor
+          m_attribute_divisor: attribute_divisor,
         }
       }
       EnumAttributeType::Short(count) => {
@@ -103,7 +63,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
-          m_attribute_divisor: attribute_divisor
+          m_attribute_divisor: attribute_divisor,
         }
       }
       EnumAttributeType::UnsignedInt(count) => {
@@ -112,7 +72,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
-          m_attribute_divisor: attribute_divisor
+          m_attribute_divisor: attribute_divisor,
         }
       }
       EnumAttributeType::Int(count) => {
@@ -121,7 +81,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
-          m_attribute_divisor: attribute_divisor
+          m_attribute_divisor: attribute_divisor,
         }
       }
       EnumAttributeType::Float(count) => {
@@ -130,7 +90,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
-          m_attribute_divisor: attribute_divisor
+          m_attribute_divisor: attribute_divisor,
         }
       }
       EnumAttributeType::Double(count) => {
@@ -139,7 +99,7 @@ impl GlVertexAttribute {
           m_count: count,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
-          m_attribute_divisor: attribute_divisor
+          m_attribute_divisor: attribute_divisor,
         }
       }
       EnumAttributeType::Vec2 => {
@@ -148,7 +108,7 @@ impl GlVertexAttribute {
           m_count: 2,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
-          m_attribute_divisor: attribute_divisor
+          m_attribute_divisor: attribute_divisor,
         }
       }
       EnumAttributeType::Vec3 => {
@@ -157,7 +117,7 @@ impl GlVertexAttribute {
           m_count: 3,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
-          m_attribute_divisor: attribute_divisor
+          m_attribute_divisor: attribute_divisor,
         }
       }
       EnumAttributeType::Vec4 => {
@@ -166,7 +126,7 @@ impl GlVertexAttribute {
           m_count: 4,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
-          m_attribute_divisor: attribute_divisor
+          m_attribute_divisor: attribute_divisor,
         }
       }
       EnumAttributeType::Mat4 => {
@@ -175,19 +135,17 @@ impl GlVertexAttribute {
           m_count: 4 * 4,
           m_buffer_offset: buffer_offset,
           m_normalized: should_normalize as u8,
-          m_attribute_divisor: attribute_divisor
+          m_attribute_divisor: attribute_divisor,
         }
       }
     });
   }
 }
 
-#[cfg(feature = "OpenGL")]
 pub struct GlVao {
   m_renderer_id: u32,
 }
 
-#[cfg(feature = "OpenGL")]
 impl GlVao {
   pub fn new() -> Result<Self, EnumErrors> {
     let mut new_vao: GLuint = 0;
@@ -243,20 +201,22 @@ impl GlVao {
   }
 }
 
-#[cfg(feature = "OpenGL")]
 impl Drop for GlVao {
   fn drop(&mut self) {
-    unsafe {
-      let renderer = Renderer::get().as_ref()
-        .expect("[Buffer] -->\t Cannot drop Vao, renderer is null! Exiting...");
-      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.get_state() != EnumState::Shutdown {
-        gl::DeleteVertexArrays(1, &self.m_renderer_id);
+    let renderer = Renderer::get().as_ref()
+      .expect("[Buffer] -->\t Cannot drop Vao, renderer is null! Exiting...");
+    if renderer.get_type() == EnumApi::OpenGL && renderer.get_state() != EnumState::Shutdown {
+      match self.delete() {
+        Ok(_) => {}
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VAO : \
+          OpenGL returned with Error => {:?}", err)
+        }
       }
     }
   }
 }
 
-#[cfg(feature = "OpenGL")]
 pub struct GlVbo {
   pub m_renderer_id: u32,
   pub m_capacity: usize,
@@ -264,7 +224,6 @@ pub struct GlVbo {
   pub m_count: usize,
 }
 
-#[cfg(feature = "OpenGL")]
 impl GlVbo {
   pub fn new(alloc_size: usize, vertex_count: usize) -> Result<Self, EnumErrors> {
     let mut new_vbo: GLuint = 0;
@@ -305,6 +264,7 @@ impl GlVbo {
     return Ok(());
   }
   
+  #[allow(unused)]
   pub fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), EnumErrors> {
     if vertex_size == 0 || vertex_count == 0 {
       return Err(EnumErrors::InvalidBufferSize);
@@ -322,6 +282,7 @@ impl GlVbo {
     return Ok(());
   }
   
+  #[allow(unused)]
   pub fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), EnumErrors> {
     if vertex_size * vertex_count == 0 || vertex_size * vertex_count > self.m_size {
       return Err(EnumErrors::InvalidBufferSize);
@@ -343,6 +304,7 @@ impl GlVbo {
     return Ok(());
   }
   
+  #[allow(unused)]
   pub fn expand(&mut self, alloc_size: usize) -> Result<(), EnumErrors> {
     if alloc_size == 0 {
       return Err(EnumErrors::InvalidBufferSize);
@@ -369,6 +331,7 @@ impl GlVbo {
     return Ok(());
   }
   
+  #[allow(unused)]
   pub fn shrink(&mut self, dealloc_size: usize) -> Result<(), EnumErrors> {
     if dealloc_size == 0 {
       return Err(EnumErrors::InvalidBufferSize);
@@ -396,14 +359,17 @@ impl GlVbo {
   }
 }
 
-#[cfg(feature = "OpenGL")]
 impl Drop for GlVbo {
   fn drop(&mut self) {
-    unsafe {
-      let renderer = Renderer::get().as_ref()
-        .expect("[Buffer] -->\t Cannot drop Vbo, renderer is null! Exiting...");
-      if renderer.m_api.get_type() == EnumApi::OpenGL && renderer.get_state() != EnumState::Shutdown {
-        gl::DeleteBuffers(1, &self.m_renderer_id);
+    let renderer = Renderer::get().as_ref()
+      .expect("[Buffer] -->\t Cannot drop Vbo, renderer is null! Exiting...");
+    if renderer.get_type() == EnumApi::OpenGL && renderer.get_state() != EnumState::Shutdown {
+      match self.delete() {
+        Ok(_) => {}
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VBO : \
+          OpenGL returned with Error => {:?}", err)
+        }
       }
     }
   }
