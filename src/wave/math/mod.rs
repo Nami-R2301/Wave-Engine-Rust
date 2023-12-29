@@ -197,10 +197,10 @@ impl Mat4 {
     }
     return Mat4 {
       value_ptr: Vec4 {
-        x: Vec4::new(),
-        y: Vec4::new(),
-        z: Vec4::new(),
-        w: Vec4::new(),
+        x: Vec4::default(),
+        y: Vec4::default(),
+        z: Vec4::default(),
+        w: Vec4::default(),
       },
     };
   }
@@ -219,10 +219,10 @@ impl Mat4 {
   pub fn from(vec4s: [[f32; 4]; 4]) -> Self {
     return Mat4 {
       value_ptr: Vec4 {
-        x: Vec4::from(&vec4s[0]),
-        y: Vec4::from(&vec4s[1]),
-        z: Vec4::from(&vec4s[2]),
-        w: Vec4::from(&vec4s[3]),
+        x: Vec4::new(&vec4s[0]),
+        y: Vec4::new(&vec4s[1]),
+        z: Vec4::new(&vec4s[2]),
+        w: Vec4::new(&vec4s[3]),
       },
     };
   }
@@ -261,7 +261,7 @@ impl Mat4 {
     let mut rotation_y: Mat4 = Mat4::new(1.0);
     let mut rotation_z: Mat4 = Mat4::new(1.0);
     
-    let mut rotation_vec_clone = Vec3::new();
+    let mut rotation_vec_clone = Vec3::default();
     rotation_vec_clone.x = rotation_vec.x.to_radians();
     rotation_vec_clone.y = rotation_vec.y.to_radians();
     rotation_vec_clone.z = rotation_vec.z.to_radians();

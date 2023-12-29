@@ -179,12 +179,6 @@ macro_rules! trace {
     }};
 }
 
-#[cfg(not(feature = "debug"))]
-#[macro_export]
-macro_rules! trace {
-    () => {{ "" }};
-}
-
 ///
 /// Convenience macro for creating custom generic vectors of dynamic sizes without copying
 /// boilerplate code for traits and operator overloading. This macro is intended for internal
@@ -228,21 +222,21 @@ macro_rules! impl_struct {
       }
       
       impl<$struct_type: num::Zero> $struct_name<$struct_type> where $struct_type: Copy {
-         pub fn new() -> Self {
+         pub fn default() -> Self {
            return $struct_name { $($struct_item: $struct_type::zero(),)* };
          }
-         pub fn new_shared() -> Box<Self> {
-           return Box::new($struct_name::new());
-         }
-         pub fn from(array: &[$struct_type])  -> Self {
+         pub fn new(array: &[$struct_type])  -> Self {
            let mut new = $struct_name { $($struct_item: $struct_type::zero(),)* };
-           for i in (0..array.len()) {
+           for i in 0..array.len() {
              if i >= $struct_name::<$struct_type>::len() {
                break;
              }
              new[i] = array[i];
            }
            return new;
+         }
+         pub fn new_shared(array: &[$struct_type]) -> Box<Self> {
+           return Box::new($struct_name::new(array));
          }
          pub fn delete(&mut self) -> () {
            $(self.$struct_item = $struct_type::zero();)*
@@ -359,6 +353,12 @@ macro_rules! impl_struct {
         }
       }
     };
+}
+
+#[cfg(not(feature = "debug"))]
+#[macro_export]
+macro_rules! trace {
+    () => {{ "" }};
 }
 
 #[cfg(not(feature = "profiler"))]

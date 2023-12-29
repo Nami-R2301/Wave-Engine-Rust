@@ -25,7 +25,7 @@
 use crate::wave::graphics::open_gl::renderer::{EnumOpenGLErrors};
 use crate::wave::graphics::open_gl::buffer::{GLboolean, GLchar, GLenum, GLint, GLuint, GLfloat};
 use crate::wave::graphics::renderer::{EnumState, Renderer};
-use crate::wave::graphics::shader::{EnumErrors, TraitShader};
+use crate::wave::graphics::shader::{EnumError, TraitShader};
 use crate::wave::math::Mat4;
 use crate::wave::EnumApi;
 
@@ -47,12 +47,12 @@ pub struct GlShader {
 }
 
 impl TraitShader for GlShader {
-  fn new(vertex_file_path: &'static str, fragment_file_path: &'static str) -> Result<Self, EnumErrors> {
+  fn new(vertex_file_path: &'static str, fragment_file_path: &'static str) -> Result<Self, EnumError> {
     let vertex_file_str = std::fs::read_to_string(vertex_file_path);
     let fragment_file_str = std::fs::read_to_string(fragment_file_path);
     
     if vertex_file_str.is_err() || fragment_file_str.is_err() {
-      return Err(EnumErrors::ShaderFileError);
+      return Err(EnumError::ShaderFileError);
     }
     
     return Ok(GlShader {
@@ -67,18 +67,18 @@ impl TraitShader for GlShader {
     todo!()
   }
   
-  fn compile(&self, shader_id: u32, shader_type: &dyn std::any::Any) -> Result<(), EnumErrors> {
+  fn compile(&self, shader_id: u32, shader_type: &dyn std::any::Any) -> Result<(), EnumError> {
     // Compile and link.
     check_gl_call!("Shader", gl::CompileShader(shader_id));
     
     if !shader_type.is::<GLenum>() || !shader_type.is::<u32>() {
-      return Err(EnumErrors::ShaderFileError);
+      return Err(EnumError::ShaderFileError);
     }
     
     let conversion = shader_type.downcast_ref::<GLenum>();
     
     if conversion.is_none() {
-      return Err(EnumErrors::AnyConversionError);
+      return Err(EnumError::AnyConversionError);
     }
     
     // Error checking.
@@ -102,7 +102,7 @@ impl TraitShader for GlShader {
         }
         type_ => {
           log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Unknown type of shader '{:#?}'!", type_);
-          return Err(EnumErrors::ShaderTypeError);
+          return Err(EnumError::ShaderTypeError);
         }
       }
       
@@ -122,13 +122,13 @@ impl TraitShader for GlShader {
         Info => {1}", shader_type_str, unsafe {
         std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap()
       });
-      return Err(EnumErrors::ShaderSyntaxError);
+      return Err(EnumError::ShaderSyntaxError);
     }
     
     return Ok(());
   }
   
-  fn send(&mut self) -> Result<(), EnumErrors> {
+  fn send(&mut self) -> Result<(), EnumError> {
     check_gl_call!("Shader", self.m_id = gl::CreateProgram());
     
     check_gl_call!("Shader", let vertex_shader: GLuint = gl::CreateShader(gl::VERTEX_SHADER));
@@ -141,17 +141,17 @@ impl TraitShader for GlShader {
       (Err(_), Err(_)) => {
         log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Unable to source shaders {0} and {1}!",
           vertex_shader, fragment_shader);
-        return Err(EnumErrors::ShaderSourcing);
+        return Err(EnumError::ShaderSourcing);
       }
       (Err(_), Ok(_)) => {
         log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Unable to source vertex shader {0}!",
           vertex_shader);
-        return Err(EnumErrors::ShaderSourcing);
+        return Err(EnumError::ShaderSourcing);
       }
       (Ok(_), Err(_)) => {
         log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Unable to source fragment shader {0}!",
           fragment_shader);
-        return Err(EnumErrors::ShaderSourcing);
+        return Err(EnumError::ShaderSourcing);
       }
     }
     // Compile our shaders.
@@ -159,7 +159,7 @@ impl TraitShader for GlShader {
       self.compile(fragment_shader, &gl::FRAGMENT_SHADER)) {
       (Ok(_), Ok(_)) => {}
       _ => {
-        return Err(EnumErrors::ShaderCompilation);
+        return Err(EnumError::ShaderCompilation);
       }
     }
     
@@ -183,7 +183,7 @@ impl TraitShader for GlShader {
       }
       log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error linking program {0}! Error => {1}",
           self.m_id, unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap() });
-      return Err(EnumErrors::ProgramCreationError);
+      return Err(EnumError::ProgramCreationError);
     }
     
     // Delete shaders CPU-side, since we uploaded it to the GPU VRAM.
@@ -195,7 +195,7 @@ impl TraitShader for GlShader {
     return Ok(());
   }
   
-  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumErrors> {
+  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumError> {
     match self.bind() {
       Ok(_) => {}
       Err(err) => {
@@ -212,7 +212,7 @@ impl TraitShader for GlShader {
       if new_uniform == -1 {
         log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Could not upload uniform '{0}'!",
         uniform_name);
-        return Err(EnumErrors::UniformNotFound);
+        return Err(EnumError::UniformNotFound);
       }
       self.m_uniform_cache.insert(uniform_name, new_uniform);
       
@@ -236,7 +236,7 @@ impl TraitShader for GlShader {
       } else {
         log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Type of uniform '{0}' is unsupported for glsl!",
           uniform_name);
-        return Err(EnumErrors::UnsupportedUniformType);
+        return Err(EnumError::UnsupportedUniformType);
       }
     }
     return Ok(());
@@ -252,12 +252,12 @@ impl TraitShader for GlShader {
 }
 
 impl GlShader {
-  pub fn bind(&self) -> Result<(), EnumErrors> {
+  pub fn bind(&self) -> Result<(), EnumError> {
     check_gl_call!("Shader", gl::UseProgram(self.m_id));
     return Ok(());
   }
   
-  fn source(&self, shader_id: GLuint, shader_str: &String) -> Result<(), EnumErrors> {
+  fn source(&self, shader_id: GLuint, shader_str: &String) -> Result<(), EnumError> {
     let c_str: std::ffi::CString = std::ffi::CString::new(shader_str.as_str())
       .expect("[Shader] -->\t Could not convert shader string in GlShader::source() from &str \
        to CString!");

@@ -24,12 +24,42 @@
 
 use std::collections::HashMap;
 
-use wave_engine::wave::EnumErrors;
-use wave_engine::wave::input::{EnumAction, EnumKeys, Input};
+use wave_engine::wave::EnumError;
+use wave_engine::wave::input::{EnumAction, EnumKey, EnumModifier, EnumMouseButton, Input};
 use wave_engine::wave::window::{EnumWindowMode, S_WINDOW, Window};
 
-fn synchronous_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKeys, bool>, action_required: EnumAction) -> Result<(), EnumErrors> {
+fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, bool>, action_required: EnumAction,
+                               modifier: Option<EnumModifier>) -> Result<(), EnumError> {
   let copy = keys.clone();
+  while !window.is_closing() {
+    // Migrates new states from last frame to old ones to avoid reading an input multiple times.
+    // Needs to be updated every frame. Normally, this is done automatically in the main engine render
+    // loop, but here we state it explicitly for testing and clarity purposes.
+    Input::on_update();
+    window.m_api_window.glfw.poll_events();
+    
+    if Input::get_key_state(EnumKey::Escape, EnumAction::Press)? {
+      return Ok(());
+    }
+    
+    for (&key, _) in copy.iter() {
+      if modifier.is_some() {
+        if Input::get_modifier_key_combo(key, modifier.unwrap())? && !keys.get(&key).unwrap() {
+          keys.insert(key, true);
+        }
+        continue;
+      }
+      if Input::get_key_state(key, action_required)? && !keys.get(&key).unwrap() {
+        keys.insert(key, true);
+      }
+    }
+  }
+  return Ok(());
+}
+
+fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut HashMap<EnumMouseButton, bool>,
+                                        action_required: EnumAction) -> Result<(), EnumError> {
+  let copy = mouse_buttons.clone();
   while !window.is_closing() {
     window.m_api_window.glfw.poll_events();
     // Migrates new states from last frame to old ones to avoid reading an input multiple times.
@@ -37,22 +67,24 @@ fn synchronous_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKeys, boo
     // loop, but here we state it explicitly for testing and clarity purposes.
     Input::on_update();
     
-    if Input::get_key_state(EnumKeys::Escape, EnumAction::Press)? {
+    if Input::get_key_state(EnumKey::Escape, EnumAction::Press)? {
       return Ok(());
     }
     
-    for (&key, _) in copy.iter() {
-      Input::get_key_state(key, action_required)?;
-      keys.insert(key, true);
+    for (&mouse_button, _) in copy.iter() {
+      if Input::get_mouse_button_state(mouse_button, action_required)? &&
+        !mouse_buttons.get(&mouse_button).unwrap() {
+        mouse_buttons.insert(mouse_button, true);
+      }
     }
   }
   return Ok(());
 }
 
 #[test]
-fn test_single_key_inputs() -> Result<(), EnumErrors> {
-  let mut window = Window::new(None, Some(1024), Some(768), None,
-    None, EnumWindowMode::Windowed)?;
+fn test_synchronous_key_inputs() -> Result<(), EnumError> {
+  let mut window = Window::new(None, Some((1024, 768)),
+    None, None, EnumWindowMode::Windowed)?;
   unsafe {
     S_WINDOW = Some(&mut window);
   }
@@ -61,13 +93,13 @@ fn test_single_key_inputs() -> Result<(), EnumErrors> {
   {
     window.set_title("[Test] : Press keys : [A, B, C, D, E] in any order before exiting");
     window.show();
-    let mut keys_tracked: HashMap<EnumKeys, bool> = HashMap::from([
-      (EnumKeys::A, false), (EnumKeys::B, false), (EnumKeys::C, false), (EnumKeys::D, false),
-      (EnumKeys::E, false)]);
+    let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([
+      (EnumKey::A, false), (EnumKey::B, false), (EnumKey::C, false), (EnumKey::D, false),
+      (EnumKey::E, false)]);
     
-    synchronous_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Press)?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Press, None)?;
     
-    assert!(keys_tracked.iter().all(|(_, &was_pressed)| was_pressed));
+    assert!(keys_tracked.into_iter().all(|(_, was_pressed)| was_pressed));
     window.hide();
   }
   
@@ -75,13 +107,13 @@ fn test_single_key_inputs() -> Result<(), EnumErrors> {
   {
     window.set_title("[Test] : Press and hold keys : [F, G, H, I, J] in any order before exiting");
     window.show();
-    let mut keys_tracked: HashMap<EnumKeys, bool> = HashMap::from([
-      (EnumKeys::F, false), (EnumKeys::G, false), (EnumKeys::H, false), (EnumKeys::I, false),
-      (EnumKeys::J, false)]);
+    let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([
+      (EnumKey::F, false), (EnumKey::G, false), (EnumKey::H, false), (EnumKey::I, false),
+      (EnumKey::J, false)]);
     
-    synchronous_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Hold)?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Hold, None)?;
     
-    assert!(keys_tracked.iter().all(|(_, &was_held)| was_held));
+    assert!(keys_tracked.into_iter().all(|(_, was_held)| was_held));
     window.hide();
   }
   
@@ -89,13 +121,49 @@ fn test_single_key_inputs() -> Result<(), EnumErrors> {
   {
     window.set_title("[Test] : Press and quickly release keys : [K, L, M, N, O] in any order before exiting");
     window.show();
-    let mut keys_tracked: HashMap<EnumKeys, bool> = HashMap::from([
-      (EnumKeys::K, false), (EnumKeys::L, false), (EnumKeys::M, false), (EnumKeys::N, false),
-      (EnumKeys::O, false)]);
+    let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([
+      (EnumKey::K, false), (EnumKey::L, false), (EnumKey::M, false), (EnumKey::N, false),
+      (EnumKey::O, false)]);
     
-    synchronous_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Release)?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Release, None)?;
     
-    assert!(keys_tracked.iter().all(|(_, &was_released)| was_released));
+    assert!(keys_tracked.into_iter().all(|(_, was_released)| was_released));
+    window.hide();
+  }
+  
+  // Check for combination of input events.
+  {
+    window.set_title("[Test] : Hold SHIFT and press the following keys : [A] in any order before exiting");
+    window.show();
+    let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([(EnumKey::A, false)]);
+    
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Press,
+      Some(EnumModifier::Shift))?;
+    
+    assert!(keys_tracked.into_iter().all(|(_key, value)| value));
+    window.hide();
+  }
+  {
+    window.set_title("[Test] : Hold ALT and press the following keys : [B, D] in any order before exiting");
+    window.show();
+    let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([(EnumKey::B, false),
+      (EnumKey::D, false)]);
+    
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Hold,
+      Some(EnumModifier::Alt))?;
+    
+    assert!(keys_tracked.into_iter().all(|(_key, value)| value));
+    window.hide();
+  }
+  {
+    window.set_title("[Test] : Hold CONTROL and press the following keys : [SPACE] in any order before exiting");
+    window.show();
+    let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([(EnumKey::Space, false)]);
+    
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Release,
+      Some(EnumModifier::Control))?;
+    
+    assert!(keys_tracked.into_iter().all(|(_key, value)| value));
     window.hide();
   }
   
@@ -103,25 +171,51 @@ fn test_single_key_inputs() -> Result<(), EnumErrors> {
 }
 
 #[test]
-fn test_multiple_key_inputs() -> Result<(), EnumErrors> {
-  let mut window = Window::new(None, Some(1024), Some(768), None,
-    None, EnumWindowMode::Windowed)?;
+fn test_synchronous_mouse_button_inputs() -> Result<(), EnumError> {
+  let mut window = Window::new(None, Some((1024, 768)),
+    None, None, EnumWindowMode::Windowed)?;
   unsafe {
     S_WINDOW = Some(&mut window);
   }
   
-  // Check for combination of PRESS input events.
+  // Check if PRESS input events work properly.
   {
-    window.set_title("[Test] : Hold any of the two keys : [LEFT-SHIFT + A] while pressing the other one before exiting");
+    window.set_title("[Test] : Press mouse button : [M1, M2, M3, M4, M5] in any order before exiting");
     window.show();
-    let mut keys_tracked: HashMap<EnumKeys, bool> = HashMap::from([
-      (EnumKeys::LeftShift, false), (EnumKeys::A, false)]);
+    let mut mouse_buttons_tracked: HashMap<EnumMouseButton, bool> = HashMap::from([
+      (EnumMouseButton::LeftButton, false), (EnumMouseButton::RightButton, false),
+      (EnumMouseButton::MiddleButton, false), (EnumMouseButton::Button4, false),
+      (EnumMouseButton::Button5, false)]);
     
-    synchronous_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Press)?;
+    synchronous_mouse_button_inputs_loop(&mut window, &mut mouse_buttons_tracked, EnumAction::Press)?;
     
-    // Check if either one was pressed (The other will undoubtedly be held).
-    assert!(*keys_tracked.get(&EnumKeys::LeftShift).unwrap() ||
-      *keys_tracked.get(&EnumKeys::A).unwrap());
+    assert!(mouse_buttons_tracked.into_iter().all(|(_, was_pressed)| was_pressed));
+    window.hide();
+  }
+  
+  // Check if HOLD input events work properly.
+  {
+    window.set_title("[Test] : Press and hold mouse button : [M1, M2] in any order before exiting");
+    window.show();
+    let mut mouse_buttons_tracked: HashMap<EnumMouseButton, bool> = HashMap::from([
+      (EnumMouseButton::LeftButton, false), (EnumMouseButton::RightButton, false)]);
+    
+    synchronous_mouse_button_inputs_loop(&mut window, &mut mouse_buttons_tracked, EnumAction::Hold)?;
+    
+    assert!(mouse_buttons_tracked.into_iter().all(|(_, was_held)| was_held));
+    window.hide();
+  }
+  
+  // Check if RELEASE input events work properly.
+  {
+    window.set_title("[Test] : Press and release mouse button : [M2, M4] in any order before exiting");
+    window.show();
+    let mut mouse_buttons_tracked: HashMap<EnumMouseButton, bool> = HashMap::from([
+      (EnumMouseButton::RightButton, false), (EnumMouseButton::Button4, false)]);
+    
+    synchronous_mouse_button_inputs_loop(&mut window, &mut mouse_buttons_tracked, EnumAction::Release)?;
+    
+    assert!(mouse_buttons_tracked.into_iter().all(|(_, was_released)| was_released));
     window.hide();
   }
   

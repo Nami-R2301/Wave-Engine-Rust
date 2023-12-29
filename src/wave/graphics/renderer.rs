@@ -48,7 +48,7 @@ pub enum EnumFeature {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum EnumErrors {
+pub enum EnumError {
   Init,
   NoApi,
   UnsupportedApi,
@@ -67,13 +67,13 @@ pub enum EnumErrors {
   InvalidAttributeDivisor,
 }
 
-impl Display for EnumErrors {
+impl Display for EnumError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "[Renderer] -->\t Error encountered with renderer : {:?}", self)
   }
 }
 
-impl std::error::Error for EnumErrors {}
+impl std::error::Error for EnumError {}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumState {
@@ -112,20 +112,20 @@ impl Stats {
 }
 
 pub trait TraitContext {
-  fn on_new(window: &mut Window) -> Result<Self, EnumErrors> where Self: Sized;
-  fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumErrors>;
-  fn on_delete(&mut self) -> Result<(), EnumErrors>;
-  fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumErrors>;
-  fn get_max_msaa_count(&self) -> Result<u8, EnumErrors>;
+  fn on_new(window: &mut Window) -> Result<Self, EnumError> where Self: Sized;
+  fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError>;
+  fn on_delete(&mut self) -> Result<(), EnumError>;
+  fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError>;
+  fn get_max_msaa_count(&self) -> Result<u8, EnumError>;
   fn to_string(&self) -> String;
-  fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumErrors>;
+  fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError>;
   fn begin(&mut self);
   fn end(&mut self);
   fn batch(&mut self);
   fn flush(&mut self);
-  fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumErrors>;
-  fn draw(&mut self) -> Result<(), EnumErrors>;
-  fn dequeue(&mut self, id: &u64) -> Result<(), EnumErrors>;
+  fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
+  fn draw(&mut self) -> Result<(), EnumError>;
+  fn dequeue(&mut self, id: &u64) -> Result<(), EnumError>;
 }
 
 pub struct Renderer {
@@ -136,7 +136,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-  pub fn new(api_preference: Option<EnumApi>, window: &mut Window) -> Result<Renderer, EnumErrors> {
+  pub fn new(api_preference: Option<EnumApi>, window: &mut Window) -> Result<Renderer, EnumError> {
     // If user has not chosen an api, choose accordingly.
     if api_preference.is_none() {
       #[cfg(feature = "Vulkan")]
@@ -171,7 +171,7 @@ impl Renderer {
           log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot create renderer : Vulkan feature \
         not enabled!\nMake sure to turn on Vulkan rendering by enabling it in the Cargo.toml \
         file under features!");
-          return Err(EnumErrors::UnsupportedApi);
+          return Err(EnumError::UnsupportedApi);
         }
         
         #[cfg(feature = "Vulkan")]
@@ -193,22 +193,22 @@ impl Renderer {
     self.m_features = features_desired;
   }
   
-  pub fn submit(&mut self) -> Result<(), EnumErrors> {
+  pub fn submit(&mut self) -> Result<(), EnumError> {
     return Ok(self.m_api.submit(&self.m_features)?);
   }
   
-  pub fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumErrors> {
+  pub fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError> {
     return self.m_api.on_events(window_event);
   }
   
-  pub fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumErrors> {
+  pub fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError> {
     return self.m_api.toggle(feature);
   }
   
-  pub fn on_delete(&mut self) -> Result<(), EnumErrors> {
+  pub fn on_delete(&mut self) -> Result<(), EnumError> {
     if self.m_state == EnumState::Error {
       log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot delete renderer : No active renderer!");
-      return Err(EnumErrors::NotImplemented);
+      return Err(EnumError::NotImplemented);
     }
     if self.m_state == EnumState::Shutdown {
       return Ok(());

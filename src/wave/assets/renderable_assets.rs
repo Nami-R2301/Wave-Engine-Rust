@@ -30,7 +30,7 @@ use once_cell::sync::Lazy;
 
 use crate::log;
 use crate::wave::graphics::color::Color;
-use crate::wave::graphics::renderer::{EnumErrors, Renderer};
+use crate::wave::graphics::renderer::{EnumError, Renderer};
 use crate::wave::graphics::shader::Shader;
 use crate::wave::math::{Mat4, Vec3};
 
@@ -43,9 +43,9 @@ use crate::wave::math::{Mat4, Vec3};
 static mut S_ENTITIES_ID_CACHE: Lazy<HashSet<u32>> = Lazy::new(|| HashSet::new());
 
 pub trait TraitRenderableEntity {
-  fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumErrors>;
-  fn resend(&mut self, shader_associated: &mut Shader) -> Result<(), EnumErrors>;
-  fn free(&mut self, shader_associated: &mut Shader) -> Result<(), EnumErrors>;
+  fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
+  fn resend(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
+  fn free(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn is_sent(&self) -> bool;
 }
 
@@ -76,7 +76,7 @@ impl REntity {
       m_colors: Vec::new(),
       m_texture_coords: Vec::new(),
       m_model_matrix: Mat4::new(1.0),
-      m_transform: [Vec3::new(), Vec3::new(), Vec3::from(&[1.0, 1.0, 1.0])],
+      m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
       m_flat_shaded: false
     };
@@ -91,7 +91,7 @@ impl REntity {
       m_colors: Vec::new(),
       m_texture_coords: Vec::new(),
       m_model_matrix: Mat4::new(1.0),
-      m_transform: [Vec3::new(), Vec3::new(), Vec3::from(&[1.0, 1.0, 1.0])],
+      m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
       m_flat_shaded: is_flat_shaded
     };
@@ -130,7 +130,7 @@ impl REntity {
   }
   
   pub fn translate(&mut self, amount: Vec3<f32>) {
-    self.m_transform[0] = Vec3::from(&[amount.x, amount.y, -amount.z]);
+    self.m_transform[0] = Vec3::new(&[amount.x, amount.y, -amount.z]);
   }
   
   pub fn rotate(&mut self, amount: Vec3<f32>) {
@@ -174,7 +174,7 @@ impl PartialEq for REntity {
 }
 
 impl TraitRenderableEntity for REntity {
-  fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumErrors> {
+  fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError> {
     let renderer = Renderer::get().as_mut()
       .expect("[REntity] -->\t Cannot send REntity, renderer is null! Exiting...");
     
@@ -191,11 +191,11 @@ impl TraitRenderableEntity for REntity {
     };
   }
   
-  fn resend(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumErrors> {
+  fn resend(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumError> {
     todo!()
   }
   
-  fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumErrors> {
+  fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumError> {
     let renderer = Renderer::get().as_mut()
       .expect("[REntity] -->\t Cannot free REntity, renderer is null! Exiting...");
     

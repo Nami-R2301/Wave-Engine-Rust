@@ -35,7 +35,7 @@ use crate::wave::graphics::vulkan::shader::VkShader;
 
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum EnumErrors {
+pub enum EnumError {
   InvalidApi,
   ProgramCreationError,
   ShaderFileError,
@@ -50,22 +50,22 @@ pub enum EnumErrors {
   OpenGLError(EnumOpenGLErrors)
 }
 
-impl Display for EnumErrors {
+impl Display for EnumError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "[Shader] -->\t Error encountered with shader(s) : {:?}", self)
   }
 }
 
-impl std::error::Error for EnumErrors {
+impl std::error::Error for EnumError {
 
 }
 
 pub trait TraitShader {
-  fn new(vertex_file_path: &'static str, fragment_file_path: &'static str) -> Result<Self, EnumErrors> where Self: Sized;
+  fn new(vertex_file_path: &'static str, fragment_file_path: &'static str) -> Result<Self, EnumError> where Self: Sized;
   fn from(other_shader: Self) -> Self where Self: Sized;
-  fn compile(&self, shader_id: u32, shader_type: &dyn std::any::Any) -> Result<(), EnumErrors>;
-  fn send(&mut self) -> Result<(), EnumErrors>;
-  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumErrors>;
+  fn compile(&self, shader_id: u32, shader_type: &dyn std::any::Any) -> Result<(), EnumError>;
+  fn send(&mut self) -> Result<(), EnumError>;
+  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumError>;
   fn get_id(&self) -> u32;
   fn to_string(&self) -> String;
 }
@@ -78,11 +78,11 @@ pub struct Shader {
 }
 
 impl Shader {
-  pub fn new(vertex_file_path: &'static str, fragment_file_path: &'static str) -> Result<Self, EnumErrors> {
+  pub fn new(vertex_file_path: &'static str, fragment_file_path: &'static str) -> Result<Self, EnumError> {
     let renderer = Renderer::get();
     if renderer.is_none() {
       log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create shader : No active renderer!");
-      return Err(EnumErrors::InvalidApi);
+      return Err(EnumError::InvalidApi);
     }
     
     return match renderer.as_ref().unwrap().get_type() {
@@ -96,7 +96,7 @@ impl Shader {
         #[cfg(not(feature = "Vulkan"))]
         {
           log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create shader : Vulkan not supported!");
-          return Err(EnumErrors::InvalidApi);
+          return Err(EnumError::InvalidApi);
         }
         
         #[cfg(feature = "Vulkan")]
@@ -108,13 +108,13 @@ impl Shader {
     }
   }
   
-  pub fn compile(&self, shader_id: u32, shader_type: &dyn std::any::Any) -> Result<(), EnumErrors> {
+  pub fn compile(&self, shader_id: u32, shader_type: &dyn std::any::Any) -> Result<(), EnumError> {
     return self.m_api_data.compile(shader_id, shader_type);
   }
-  pub fn send(&mut self) -> Result<(), EnumErrors> {
+  pub fn send(&mut self) -> Result<(), EnumError> {
     return self.m_api_data.send();
   }
-  pub fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumErrors> {
+  pub fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumError> {
     return self.m_api_data.upload_data(uniform_name, uniform);
   }
   

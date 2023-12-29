@@ -11,7 +11,7 @@ pub use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLintptr, GLsizei
 
 use crate::{check_gl_call, log};
 use crate::wave::graphics::open_gl::renderer::EnumOpenGLErrors;
-use crate::wave::graphics::renderer::{EnumErrors, EnumState, Renderer};
+use crate::wave::graphics::renderer::{EnumError, EnumState, Renderer};
 use crate::wave::EnumApi;
 
 #[allow(unused)]
@@ -37,14 +37,14 @@ pub struct GlVertexAttribute {
 }
 
 impl GlVertexAttribute {
-  pub fn new(gl_type: EnumAttributeType, should_normalize: bool, buffer_offset: usize, attribute_divisor: u8) -> Result<Self, EnumErrors> {
+  pub fn new(gl_type: EnumAttributeType, should_normalize: bool, buffer_offset: usize, attribute_divisor: u8) -> Result<Self, EnumError> {
     let mut max_attrib_div: i32 = 0;
     check_gl_call!("Buffer (Attribute divisor)", gl::GetIntegerv(gl::MAX_VERTEX_ATTRIBS, &mut max_attrib_div));
     
     if attribute_divisor > max_attrib_div as u8 {
       log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Cannot assign attribute divisor of {0} to \
       vertex attribute, since it exceeds the maximum vertex attributes available!", attribute_divisor);
-      return Err(EnumErrors::InvalidAttributeDivisor);
+      return Err(EnumError::InvalidAttributeDivisor);
     }
     
     return Ok(match gl_type {
@@ -147,7 +147,7 @@ pub struct GlVao {
 }
 
 impl GlVao {
-  pub fn new() -> Result<Self, EnumErrors> {
+  pub fn new() -> Result<Self, EnumError> {
     let mut new_vao: GLuint = 0;
     check_gl_call!("Vao", gl::CreateVertexArrays(1, &mut new_vao));
     return Ok(GlVao {
@@ -155,25 +155,25 @@ impl GlVao {
     });
   }
   
-  pub fn delete(&mut self) -> Result<(), EnumErrors> {
+  pub fn delete(&mut self) -> Result<(), EnumError> {
     self.unbind()?;
     check_gl_call!("Vao", gl::DeleteVertexArrays(1, &self.m_renderer_id));
     return Ok(());
   }
   
-  pub fn bind(&mut self) -> Result<(), EnumErrors> {
+  pub fn bind(&mut self) -> Result<(), EnumError> {
     check_gl_call!("Vao", gl::BindVertexArray(self.m_renderer_id));
     return Ok(());
   }
   
-  pub fn unbind(&mut self) -> Result<(), EnumErrors> {
+  pub fn unbind(&mut self) -> Result<(), EnumError> {
     check_gl_call!("Vao", gl::BindVertexArray(0));
     return Ok(());
   }
   
-  pub fn enable_attributes(&mut self, attributes: Vec<GlVertexAttribute>) -> Result<(), EnumErrors> {
+  pub fn enable_attributes(&mut self, attributes: Vec<GlVertexAttribute>) -> Result<(), EnumError> {
     if attributes.is_empty() {
-      return Err(EnumErrors::InvalidVertexAttribute);
+      return Err(EnumError::InvalidVertexAttribute);
     }
     
     let mut max_attrib_div: i32 = 0;
@@ -184,7 +184,7 @@ impl GlVao {
       if index > max_attrib_div as usize {
         log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Vertex attribute index exceeds maximum \
         vertex attributes supported!");
-        return Err(EnumErrors::InvalidVertexAttribute);
+        return Err(EnumError::InvalidVertexAttribute);
       }
       
       if attribute.m_gl_type == gl::UNSIGNED_INT || attribute.m_gl_type == gl::INT {
@@ -225,7 +225,7 @@ pub struct GlVbo {
 }
 
 impl GlVbo {
-  pub fn new(alloc_size: usize, vertex_count: usize) -> Result<Self, EnumErrors> {
+  pub fn new(alloc_size: usize, vertex_count: usize) -> Result<Self, EnumError> {
     let mut new_vbo: GLuint = 0;
     check_gl_call!("Vbo", gl::CreateBuffers(1, &mut new_vbo));
     check_gl_call!("Vbo", gl::BindBuffer(gl::ARRAY_BUFFER, new_vbo));
@@ -240,23 +240,23 @@ impl GlVbo {
     });
   }
   
-  pub fn delete(&mut self) -> Result<(), EnumErrors> {
+  pub fn delete(&mut self) -> Result<(), EnumError> {
     self.unbind()?;
     check_gl_call!("Vbo", gl::DeleteBuffers(1, &self.m_renderer_id));
     return Ok(());
   }
   
-  pub fn bind(&mut self) -> Result<(), EnumErrors> {
+  pub fn bind(&mut self) -> Result<(), EnumError> {
     check_gl_call!("Vbo", gl::BindBuffer(gl::ARRAY_BUFFER, self.m_renderer_id));
     return Ok(());
   }
   
-  pub fn unbind(&self) -> Result<(), EnumErrors> {
+  pub fn unbind(&self) -> Result<(), EnumError> {
     check_gl_call!("Vbo", gl::BindBuffer(gl::ARRAY_BUFFER, 0));
     return Ok(());
   }
   
-  pub fn set_data(&mut self, data: *const GLvoid, alloc_size: usize, byte_offset: usize) -> Result<(), EnumErrors> {
+  pub fn set_data(&mut self, data: *const GLvoid, alloc_size: usize, byte_offset: usize) -> Result<(), EnumError> {
     self.bind()?;
     check_gl_call!("Vbo", gl::BufferSubData(gl::ARRAY_BUFFER, byte_offset as GLsizeiptr,
       alloc_size as GLsizeiptr, data));
@@ -265,9 +265,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), EnumErrors> {
+  pub fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), EnumError> {
     if vertex_size == 0 || vertex_count == 0 {
-      return Err(EnumErrors::InvalidBufferSize);
+      return Err(EnumError::InvalidBufferSize);
     }
     let old_size: usize = self.m_size;
     
@@ -283,9 +283,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), EnumErrors> {
+  pub fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), EnumError> {
     if vertex_size * vertex_count == 0 || vertex_size * vertex_count > self.m_size {
-      return Err(EnumErrors::InvalidBufferSize);
+      return Err(EnumError::InvalidBufferSize);
     }
     self.bind()?;
     if vertex_size * vertex_count == self.m_size {
@@ -305,9 +305,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub fn expand(&mut self, alloc_size: usize) -> Result<(), EnumErrors> {
+  pub fn expand(&mut self, alloc_size: usize) -> Result<(), EnumError> {
     if alloc_size == 0 {
-      return Err(EnumErrors::InvalidBufferSize);
+      return Err(EnumError::InvalidBufferSize);
     }
     
     self.bind()?;
@@ -332,9 +332,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub fn shrink(&mut self, dealloc_size: usize) -> Result<(), EnumErrors> {
+  pub fn shrink(&mut self, dealloc_size: usize) -> Result<(), EnumError> {
     if dealloc_size == 0 {
-      return Err(EnumErrors::InvalidBufferSize);
+      return Err(EnumError::InvalidBufferSize);
     }
     
     self.bind()?;

@@ -36,20 +36,20 @@ use crate::wave::graphics::color::Color;
  */
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum EnumErrors {
+pub enum EnumError {
   InvalidPath,
   InvalidFileExtension,
   InvalidRead,
   InvalidShapeData,
 }
 
-impl Display for EnumErrors {
+impl Display for EnumError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "[ResLoader] -->\t Error encountered while loading resource : {:?}", self)
   }
 }
 
-impl std::error::Error for EnumErrors {
+impl std::error::Error for EnumError {
 
 }
 
@@ -67,30 +67,30 @@ impl ResLoader {
   /// * `file_name`: A file path **including** the extension of its format.
   ///
   /// # Returns:
-  ///   - Result<Shape, EnumErrors> : Will return a valid shape if successful, otherwise an [EnumErrors]
+  ///   - Result<Shape, EnumError> : Will return a valid shape if successful, otherwise an [EnumError]
   ///     on any error encountered. These include, but are not limited to :
-  ///     + [EnumErrors::InvalidPath] : If the file path provided is not a valid for for assets or
+  ///     + [EnumError::InvalidPath] : If the file path provided is not a valid for for assets or
   ///     if the working directory leads to the incorrect *res* path.
-  ///     + [EnumErrors::InvalidFileExtension] : If the file extension is not supported.
-  ///     + [EnumErrors::InvalidRead] : If the file could not be read due to invalid formatting or
+  ///     + [EnumError::InvalidFileExtension] : If the file extension is not supported.
+  ///     + [EnumError::InvalidRead] : If the file could not be read due to invalid formatting or
   ///     missing read permissions.
   ///
   /// # Examples
   ///
   /// ```text
-  /// use wave::utils::asset_loader::{EnumErrors, ResLoader}
+  /// use wave::utils::asset_loader::{EnumError, ResLoader}
   ///
   /// let cube = ResLoader::new("objs/cube");
   /// let sphere = ResLoader::new("sphere.gltt");
   /// let diamond = ResLoader::new("res/assets/objs/diamond.obj");
   /// let pyramid = ResLoader::new("objs/pyramid.obj");
   ///
-  /// assert_eq!(cube, EnumErrors::InvalidPath);
-  /// assert_eq!(sphere, EnumErrors::InvalidFileExtension);
-  /// assert_eq!(diamond, EnumErrors::InvalidPath);
+  /// assert_eq!(cube, EnumError::InvalidPath);
+  /// assert_eq!(sphere, EnumError::InvalidFileExtension);
+  /// assert_eq!(diamond, EnumError::InvalidPath);
   /// assert!(pyramid.is_ok());
   /// ```
-  pub fn new(file_name: &str) -> Result<REntity, EnumErrors> {
+  pub fn new(file_name: &str) -> Result<REntity, EnumError> {
     let asset_path = &("res/assets/".to_string() + file_name);
     let path = std::path::Path::new(asset_path).extension();
     
@@ -98,7 +98,7 @@ impl ResLoader {
       None => {
         log!(EnumLogColor::Red, "ERROR", "[ResLoader] -->\t Could not find path {0}! Make sure it \
           exists and you have the appropriate permissions to read it.", asset_path);
-        Err(EnumErrors::InvalidPath)
+        Err(EnumError::InvalidPath)
       }
       Some(_) => {
         let path_str = path.unwrap().to_str().unwrap();
@@ -108,7 +108,7 @@ impl ResLoader {
           &_ => {
             log!(EnumLogColor::Red, "Error", "[ResLoader] -->\t Asset file format {0} not supported!",
               asset_path);
-            Err(EnumErrors::InvalidFileExtension)
+            Err(EnumError::InvalidFileExtension)
           }
         }
       }
@@ -126,18 +126,18 @@ impl ResLoader {
   /// is set to be the root of this project.
   ///
   /// # Returns:
-  ///   - `Result<GlREntity, EnumErrors>` : Will return a valid shape if successful, otherwise an [EnumErrors]
+  ///   - `Result<GlREntity, EnumError>` : Will return a valid shape if successful, otherwise an [EnumError]
   ///     on any error encountered. These include, but are not limited to :
-  ///     + [EnumErrors::InvalidPath] : If the file path provided is not a valid for for assets or
+  ///     + [EnumError::InvalidPath] : If the file path provided is not a valid for for assets or
   ///     if the working directory leads to the incorrect *res* path.
-  ///     + [EnumErrors::InvalidFileExtension] : If the file does not correspond to a valid file type
+  ///     + [EnumError::InvalidFileExtension] : If the file does not correspond to a valid file type
   ///     (**obj**, **gltf**).
-  ///     + [EnumErrors::InvalidRead] : If the file could not be read due to invalid formatting or
+  ///     + [EnumError::InvalidRead] : If the file could not be read due to invalid formatting or
   ///     missing read permissions.
-  ///     + [EnumErrors::InvalidShapeData] : If the file could not be loaded properly due to data
+  ///     + [EnumError::InvalidShapeData] : If the file could not be loaded properly due to data
   ///     corruption or invalid shape data.
   ///
-  fn load_obj(file_name: &str) -> Result<REntity, EnumErrors> {
+  fn load_obj(file_name: &str) -> Result<REntity, EnumError> {
     let file = std::fs::File::open(file_name);
     return match file {
       Ok(_) => {
@@ -177,7 +177,7 @@ impl ResLoader {
       }
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[ResLoader] -->\t Cannot open file! Error => {0}", err);
-        Err(EnumErrors::InvalidPath)
+        Err(EnumError::InvalidPath)
       }
     };
   }
@@ -363,7 +363,7 @@ impl ResLoader {
     return object;
   }
   
-  fn load_gltf(_file_name: &str) -> Result<REntity, EnumErrors> {
+  fn load_gltf(_file_name: &str) -> Result<REntity, EnumError> {
     todo!()
   }
 }

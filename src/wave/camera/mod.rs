@@ -25,7 +25,7 @@
 use crate::wave::math::Mat4;
 use crate::wave::math::Vec3;
 
-pub enum EnumErrors {
+pub enum EnumError {
   InvalidDimensions,
   InvalidMatrix,
 }
@@ -85,8 +85,8 @@ impl PerspectiveCamera {
   }
   
   pub fn set_view_projection(&mut self) {
-    let up: Vec3<f32> = Vec3::from(&[0.0, 1.0, 0.0]);
-    let direction: Vec3<f32> = Vec3::from(&[0.0, 0.0, 1.0]);
+    let up: Vec3<f32> = Vec3::new(&[0.0, 1.0, 0.0]);
+    let direction: Vec3<f32> = Vec3::new(&[0.0, 0.0, 1.0]);
     let right: Vec3<f32> = up.cross(direction.clone());
     
     let projection_matrix: Mat4 = Mat4::apply_perspective(self.m_fov, self.m_aspect_ratio, self.m_z_near, self.m_z_far);

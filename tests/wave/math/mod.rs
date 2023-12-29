@@ -31,50 +31,50 @@ use wave_engine::wave::math::*;
 
 #[test]
 fn test_vec2_add() {
-  let vec2_left: Vec2<i32> = Vec2::from(&[1, 2]);
-  let vec2_right: Vec2<i32> = Vec2::from(&[-1, -2]);
+  let vec2_left: Vec2<i32> = Vec2::new(&[1, 2]);
+  let vec2_right: Vec2<i32> = Vec2::new(&[-1, -2]);
   
-  assert_eq!(vec2_left + vec2_right, Vec2::new());
+  assert_eq!(vec2_left + vec2_right, Vec2::default());
   
-  let vec2_left: Vec2<f32> = Vec2::from(&[1.0, 2.000001]); // f32's max precision arithmetic => 6.
-  let vec2_right: Vec2<f32> = Vec2::from(&[-1.0, -2.0]);
+  let vec2_left: Vec2<f32> = Vec2::new(&[1.0, 2.000001]); // f32's max precision arithmetic => 6.
+  let vec2_right: Vec2<f32> = Vec2::new(&[-1.0, -2.0]);
   
-  assert_ne!(vec2_left + vec2_right, Vec2::new());
+  assert_ne!(vec2_left + vec2_right, Vec2::default());
   
-  let vec2_left: Vec2<f32> = Vec2::from(&[1.0, 2.0000001]); // This should round down due to precision > 6.
-  let vec2_right: Vec2<f32> = Vec2::from(&[-1.0, -2.0]);
+  let vec2_left: Vec2<f32> = Vec2::new(&[1.0, 2.0000001]); // This should round down due to precision > 6.
+  let vec2_right: Vec2<f32> = Vec2::new(&[-1.0, -2.0]);
   let result: Vec2<f32> = vec2_left + vec2_right;
   
-  assert_eq!(result, Vec2::new());
+  assert_eq!(result, Vec2::default());
 }
 
 #[test]
 fn test_vec2_sub() {
-  let vec2_left: Vec2<i32> = Vec2::from(&[1, 2]);
-  let vec2_right: Vec2<i32> = Vec2::from(&[-1, -2]);
+  let vec2_left: Vec2<i32> = Vec2::new(&[1, 2]);
+  let vec2_right: Vec2<i32> = Vec2::new(&[-1, -2]);
   
-  assert_ne!(vec2_left - vec2_right, Vec2::new());
+  assert_ne!(vec2_left - vec2_right, Vec2::default());
 }
 
 #[test]
 fn test_vec2_mul() {
-  let vec2_left: Vec2<i32> = Vec2::from(&[1, 2]);
-  let vec2_right: Vec2<i32> = Vec2::from(&[-1, -2]);
+  let vec2_left: Vec2<i32> = Vec2::new(&[1, 2]);
+  let vec2_right: Vec2<i32> = Vec2::new(&[-1, -2]);
   
-  assert_eq!(vec2_left + vec2_right, Vec2::new());
+  assert_eq!(vec2_left + vec2_right, Vec2::default());
 }
 
 #[test]
 fn test_vec2_div() {
-  let vec2_left: Vec2<i32> = Vec2::from(&[0, 2]);
-  let vec2_right: Vec2<i32> = Vec2::from(&[1, -2]);
+  let vec2_left: Vec2<i32> = Vec2::new(&[0, 2]);
+  let vec2_right: Vec2<i32> = Vec2::new(&[1, -2]);
   
-  assert_eq!(vec2_left / vec2_right, Vec2::from(&[0, -1]));
+  assert_eq!(vec2_left / vec2_right, Vec2::new(&[0, -1]));
 }
 
 #[test]
 fn test_vec2_debug() {
-  let vec2: Vec2<f32> = Vec2::from(&[1.111111, 2.222222]);
+  let vec2: Vec2<f32> = Vec2::new(&[1.111111, 2.222222]);
   
   let string: String = format!("{0}", vec2);
   
@@ -83,10 +83,10 @@ fn test_vec2_debug() {
 
 #[test]
 fn test_vec2_eq() {
-  let vec2_left: Vec2<i32> = Vec2::from(&[1, 2]);
-  let vec2_right: Vec2<i32> = Vec2::from(&[-1, -2]);
+  let vec2_left: Vec2<i32> = Vec2::new(&[1, 2]);
+  let vec2_right: Vec2<i32> = Vec2::new(&[-1, -2]);
   
-  assert_eq!(vec2_left - Vec2::from(&[2, 4]), vec2_right);
+  assert_eq!(vec2_left - Vec2::new(&[2, 4]), vec2_right);
 }
 
 /*
@@ -97,47 +97,47 @@ fn test_vec2_eq() {
 
 #[test]
 fn test_vec3_add() {
-  let vec3_left: Vec3<i32> = Vec3::from(&[1, 2, 5]);
-  let vec3_right: Vec3<i32> = Vec3::from(&[-1, -2, -5]);
+  let vec3_left: Vec3<i32> = Vec3::new(&[1, 2, 5]);
+  let vec3_right: Vec3<i32> = Vec3::new(&[-1, -2, -5]);
   
-  assert_eq!(vec3_left + vec3_right, Vec3::new());
+  assert_eq!(vec3_left + vec3_right, Vec3::default());
 }
 
 #[test]
 fn test_vec3_sub() {
-  let mut vec3_left: Vec3<i32> = Vec3::from(&[1, 2, 3]);
-  let vec3_right: Vec3<i32> = Vec3::from(&[-1, -2, -3]);
+  let mut vec3_left: Vec3<i32> = Vec3::new(&[1, 2, 3]);
+  let vec3_right: Vec3<i32> = Vec3::new(&[-1, -2, -3]);
   
-  vec3_left -= Vec3::from(&[-1, -2, -3]);
-  assert_eq!(vec3_left, Vec3::from(&[2, 4, 6]));
+  vec3_left -= Vec3::new(&[-1, -2, -3]);
+  assert_eq!(vec3_left, Vec3::new(&[2, 4, 6]));
   
   vec3_left -= vec3_right;
-  assert_eq!(vec3_left, Vec3::from(&[3, 6, 9]));
+  assert_eq!(vec3_left, Vec3::new(&[3, 6, 9]));
 }
 
 #[test]
 fn test_vec3_mul() {
-  let vec2_left: Vec2<i32> = Vec2::from(&[1, 2]);
-  let vec2_right: Vec2<i32> = Vec2::from(&[0, -2]);
+  let vec2_left: Vec2<i32> = Vec2::new(&[1, 2]);
+  let vec2_right: Vec2<i32> = Vec2::new(&[0, -2]);
   
-  assert_eq!(vec2_left * vec2_right, Vec2::from(&[0, -4]));
+  assert_eq!(vec2_left * vec2_right, Vec2::new(&[0, -4]));
 }
 
 #[test]
 #[should_panic(expected = "attempt to divide by zero")]
 fn test_vec3_div() {
-  let vec2_left: Vec2<i32> = Vec2::from(&[1, 2]);
-  let vec2_right: Vec2<i32> = Vec2::new();
+  let vec2_left: Vec2<i32> = Vec2::new(&[1, 2]);
+  let vec2_right: Vec2<i32> = Vec2::default();
   
-  assert_eq!(vec2_left / vec2_right, Vec2::new());
+  assert_eq!(vec2_left / vec2_right, Vec2::default());
 }
 
 #[test]
 fn test_vec3_eq() {
-  let vec2_left: Vec2<i32> = Vec2::from(&[1, 2]);
-  let vec2_right: Vec2<i32> = Vec2::from(&[-1, -2]);
+  let vec2_left: Vec2<i32> = Vec2::new(&[1, 2]);
+  let vec2_right: Vec2<i32> = Vec2::new(&[-1, -2]);
   
-  assert_eq!(vec2_left + vec2_right, Vec2::new());
+  assert_eq!(vec2_left + vec2_right, Vec2::default());
 }
 
 /*
@@ -148,46 +148,46 @@ fn test_vec3_eq() {
 
 #[test]
 fn test_vec4_add() {
-  let vec4_left: Vec4<i32> = Vec4::from(&[1, 2, 5, -1]);
-  let vec4_right: Vec4<i32> = Vec4::from(&[-1, -2, -5, 1]);
+  let vec4_left: Vec4<i32> = Vec4::new(&[1, 2, 5, -1]);
+  let vec4_right: Vec4<i32> = Vec4::new(&[-1, -2, -5, 1]);
   
-  assert_eq!(vec4_left + vec4_right, Vec4::new());
+  assert_eq!(vec4_left + vec4_right, Vec4::default());
 }
 
 #[test]
 fn test_vec4_sub() {
-  let mut vec4_left: Vec4<i32> = Vec4::from(&[1, 2, 3, 4]);
-  let vec4_right: Vec4<i32> = Vec4::from(&[-1, -2, -3, -4]);
+  let mut vec4_left: Vec4<i32> = Vec4::new(&[1, 2, 3, 4]);
+  let vec4_right: Vec4<i32> = Vec4::new(&[-1, -2, -3, -4]);
   
   vec4_left -= vec4_right.clone();
-  assert_eq!(&vec4_left, &Vec4::from(&[2, 4, 6, 8]));
+  assert_eq!(&vec4_left, &Vec4::new(&[2, 4, 6, 8]));
   
   vec4_left -= vec4_right;
-  assert_eq!(vec4_left, Vec4::from(&[3, 6, 9, 12]));
+  assert_eq!(vec4_left, Vec4::new(&[3, 6, 9, 12]));
 }
 
 #[test]
 fn test_vec4_mul() {
-  let vec4_left: Vec4<i32> = Vec4::from(&[1, 2, 3, -4]);
-  let vec4_right: Vec4<i32> = Vec4::from(&[0, -2, 3, -4]);
+  let vec4_left: Vec4<i32> = Vec4::new(&[1, 2, 3, -4]);
+  let vec4_right: Vec4<i32> = Vec4::new(&[0, -2, 3, -4]);
   
-  assert_eq!(vec4_left * vec4_right, Vec4::from(&[0, -4, 9, 16]));
+  assert_eq!(vec4_left * vec4_right, Vec4::new(&[0, -4, 9, 16]));
 }
 
 #[test]
 fn test_vec4_div() {
-  let vec4_left: Vec4<i32> = Vec4::from(&[1, 2, 3, 4]);
-  let vec4_right: Vec4<i32> = Vec4::from(&[-1, -2, -3, -4]);
+  let vec4_left: Vec4<i32> = Vec4::new(&[1, 2, 3, 4]);
+  let vec4_right: Vec4<i32> = Vec4::new(&[-1, -2, -3, -4]);
   
-  assert_eq!(vec4_left / vec4_right, Vec4::from(&[-1, -1, -1, -1]));
+  assert_eq!(vec4_left / vec4_right, Vec4::new(&[-1, -1, -1, -1]));
 }
 
 #[test]
 fn test_vec4_eq() {
-  let vec4_left: Vec4<i32> = Vec4::from(&[1, 2, 3, 4]);
-  let vec4_right: Vec4<i32> = Vec4::from(&[-1, -2, -3, -4]);
+  let vec4_left: Vec4<i32> = Vec4::new(&[1, 2, 3, 4]);
+  let vec4_right: Vec4<i32> = Vec4::new(&[-1, -2, -3, -4]);
   
-  assert_eq!((vec4_left + Vec4::new()) * Vec4::from(&[-1, -1, -1, -1]), vec4_right);
+  assert_eq!((vec4_left + Vec4::default()) * Vec4::new(&[-1, -1, -1, -1]), vec4_right);
 }
 
 
@@ -201,10 +201,10 @@ fn test_vec4_eq() {
 fn test_matrix_index() {
   let mut matrix: Mat4 = Mat4 {
     value_ptr: Vec4 {
-      x: Vec4::from(&[1.0, 0.0, 0.0, 5.0]),
-      y: Vec4::from(&[0.0, 1.0, 0.0, 10.0]),
-      z: Vec4::from(&[0.0, 0.0, 1.0, 2.0]),
-      w: Vec4::from(&[4.0, 20.0, 11.0, 1.0]),
+      x: Vec4::new(&[1.0, 0.0, 0.0, 5.0]),
+      y: Vec4::new(&[0.0, 1.0, 0.0, 10.0]),
+      z: Vec4::new(&[0.0, 0.0, 1.0, 2.0]),
+      w: Vec4::new(&[4.0, 20.0, 11.0, 1.0]),
     },
   };
   

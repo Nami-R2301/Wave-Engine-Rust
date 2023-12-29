@@ -22,13 +22,13 @@
  SOFTWARE.
 */
 
-use wave_engine::wave::{EmptyApp, Engine, EnumErrors};
+use wave_engine::wave::{EmptyApp, Engine, EnumError};
 use wave_engine::wave::graphics::shader::Shader;
 
 use wave_engine::wave::math::Mat4;
 
 #[test]
-fn test_shader_send() -> Result<(), EnumErrors> {
+fn test_shader_send() -> Result<(), EnumError> {
   let mut engine = Engine::new(None, Some(Box::new(EmptyApp::new())))?;
   engine.on_new()?;
   
@@ -41,12 +41,12 @@ fn test_shader_send() -> Result<(), EnumErrors> {
   // Sourcing and compilation.
   return match result.send() {
     Ok(_) => { Ok(()) }
-    Err(err) => { Err(EnumErrors::from(err)) }
+    Err(err) => { Err(EnumError::from(err)) }
   };
 }
 
 #[test]
-fn test_load_uniforms() -> Result<(), EnumErrors> {
+fn test_load_uniforms() -> Result<(), EnumError> {
   let mut engine = Engine::new(None, Some(Box::new(EmptyApp::new())))?;
   engine.on_new()?;
   
@@ -64,6 +64,6 @@ fn test_load_uniforms() -> Result<(), EnumErrors> {
   return match  new_shader.upload_data("u_model_matrix",
     &Mat4::new(1.0)) {
     Ok(_) => { Ok(()) }
-    Err(err) => { Err(EnumErrors::from(err)) }
+    Err(err) => { Err(EnumError::from(err)) }
   };
 }

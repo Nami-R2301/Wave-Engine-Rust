@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-use wave::{Engine, ExampleApp, EnumErrors, EnumApi};
+use wave::{Engine, ExampleApp, EnumError, EnumApi};
 
 pub mod wave;
 
@@ -69,7 +69,7 @@ pub mod wave;
 /// ```
 ///
 
-fn main() -> Result<(), EnumErrors> {
+fn main() -> Result<(), EnumError> {
   
   // Instantiate an empty app on the heap to make sure all of its resources are ref-counted
   // like `std::shared_ptr` in C++.
@@ -77,7 +77,7 @@ fn main() -> Result<(), EnumErrors> {
   
   // Supply it to our engine. Engine will NOT construct app and will only init the engine
   // with the supplied GPU API of choice as its render and windowing targets.
-  let mut engine: Engine = Engine::new(Some(EnumApi::Vulkan), Some(my_app))?;
+  let mut engine: Engine = Engine::new(Some(EnumApi::OpenGL), Some(my_app))?;
   
   // Execute the app in game loop and return if there's a close event or if an error occurred.
   return engine.run();

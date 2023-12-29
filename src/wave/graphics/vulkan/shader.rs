@@ -4,7 +4,7 @@
 ///////////////////////////////////                    ///////////////////////////////////
  */
 
-use crate::wave::graphics::shader::{TraitShader, EnumErrors};
+use crate::wave::graphics::shader::{TraitShader, EnumError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VkShader {
@@ -16,7 +16,7 @@ pub struct VkShader {
 }
 
 impl TraitShader for VkShader {
-  fn new(_vertex_file_path: &'static str, _fragment_file_path: &'static str) -> Result<Self, EnumErrors> where Self: Sized {
+  fn new(_vertex_file_path: &'static str, _fragment_file_path: &'static str) -> Result<Self, EnumError> where Self: Sized {
     return Ok(VkShader {
       m_id: 0,
       m_vertex_str: "Empty".to_string(),
@@ -29,15 +29,15 @@ impl TraitShader for VkShader {
     todo!()
   }
   
-  fn compile(&self, _shader_id: u32, _shader_type: &dyn std::any::Any) -> Result<(), EnumErrors> {
+  fn compile(&self, _shader_id: u32, _shader_type: &dyn std::any::Any) -> Result<(), EnumError> {
     todo!()
   }
   
-  fn send(&mut self) -> Result<(), EnumErrors> {
+  fn send(&mut self) -> Result<(), EnumError> {
     return Ok(());
   }
   
-  fn upload_data(&mut self, _uniform_name: &'static str, _uniform: &dyn std::any::Any) -> Result<(), EnumErrors> {
+  fn upload_data(&mut self, _uniform_name: &'static str, _uniform: &dyn std::any::Any) -> Result<(), EnumError> {
     return Ok(());
   }
   

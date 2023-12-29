@@ -29,7 +29,7 @@ use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::graphics::color::Color;
 use crate::wave::graphics::open_gl::buffer::{EnumAttributeType, GLchar, GLenum, GLsizei,
   GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
-use crate::wave::graphics::renderer::{EnumErrors, EnumFeature, TraitContext};
+use crate::wave::graphics::renderer::{EnumError, EnumFeature, TraitContext};
 use crate::wave::graphics::shader::Shader;
 use crate::wave::window::Window;
 
@@ -56,7 +56,7 @@ macro_rules! check_gl_call {
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
           Code => 0x{1:x}", $name, error);
-          return Err(EnumErrors::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
+          return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
         }
       }
     };
@@ -68,7 +68,7 @@ macro_rules! check_gl_call {
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
                Code => 0x{1:x}", $name, error);
-          return Err(EnumErrors::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
+          return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
         }
       }
     };
@@ -80,7 +80,7 @@ macro_rules! check_gl_call {
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
              Code => 0x{1:x}", $name, error);
-          return Err(EnumErrors::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
+          return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
         }
       }
     };
@@ -92,7 +92,7 @@ macro_rules! check_gl_call {
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
            Code => 0x{1:x}", $name, error);
-          return Err(EnumErrors::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
+          return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
         }
       }
     };
@@ -121,7 +121,7 @@ pub struct GlContext {
 }
 
 impl TraitContext for GlContext {
-  fn on_new(window: &mut Window) -> Result<Self, EnumErrors> {
+  fn on_new(window: &mut Window) -> Result<Self, EnumError> {
     // Init context.
     window.init_opengl_surface();
     gl::load_with(|f_name| window.get_api_mut().get_proc_address_raw(f_name));
@@ -132,7 +132,7 @@ impl TraitContext for GlContext {
     });
   }
   
-  fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumErrors> {
+  fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError> {
     return match window_event {
       glfw::WindowEvent::FramebufferSize(width, height) => {
         check_gl_call!("Renderer", gl::Viewport(0, 0, width, height));
@@ -142,11 +142,11 @@ impl TraitContext for GlContext {
     }
   }
   
-  fn on_delete(&mut self) -> Result<(), EnumErrors> {
+  fn on_delete(&mut self) -> Result<(), EnumError> {
     return Ok(());
   }
   
-  fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumErrors> {
+  fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError> {
     // Enable or disable features AFTER context creation since we need a context to load our openGL
     // functions.
     for feature in features {
@@ -157,18 +157,21 @@ impl TraitContext for GlContext {
     if window_opt.is_none() {
       log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot set OpenGl viewport dimensions : \
       No active window context!");
-      return Err(EnumErrors::OpenGLError(EnumOpenGLErrors::InvalidContext));
+      return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidContext));
     }
     
     let window = window_opt.unwrap();
-    check_gl_call!("Renderer", gl::Viewport(0, 0, (*window).get_size().x, (*window).get_size().y));
+    let window_framebuffer_size = unsafe {
+      (*window).get_framebuffer_size()
+    };
+    check_gl_call!("Renderer", gl::Viewport(0, 0, window_framebuffer_size.0 as i32, window_framebuffer_size.1 as i32));
     check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
     
     check_gl_call!("Renderer", gl::FrontFace(gl::CW));
     return Ok(());
   }
   
-  fn get_max_msaa_count(&self) -> Result<u8, EnumErrors> {
+  fn get_max_msaa_count(&self) -> Result<u8, EnumError> {
     // let framebuffer_color_sample_count: u8 = self.m_framebuffer.max_color_sample_count;
     // let framebuffer_depth_sample_count: u8 = self.m_framebuffer.max_depth_sample_count;
     //
@@ -177,7 +180,7 @@ impl TraitContext for GlContext {
     if window.is_none() {
       log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot retrieve MSAA max count supported \
       by the window context : No active window context available!");
-      return Err(EnumErrors::OpenGLError(EnumOpenGLErrors::InvalidContext));
+      return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidContext));
     }
     return Ok(unsafe { (*window.unwrap()).m_samples });
   }
@@ -200,7 +203,7 @@ impl TraitContext for GlContext {
     }
   }
   
-  fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumErrors> {
+  fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError> {
     match feature {
       EnumFeature::Debug(enabled) => {
         if enabled {
@@ -231,7 +234,7 @@ impl TraitContext for GlContext {
           max_sample_count = self.get_max_msaa_count()?;
           if max_sample_count < 2 {
             log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot enable MSAA!");
-            return Err(EnumErrors::MSAAError);
+            return Err(EnumError::MSAAError);
           } else if sample_count.unwrap() > max_sample_count {
             log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t Cannot enable MSAA with X{0}! \
               Defaulting to {1}...", sample_count.unwrap(), max_sample_count);
@@ -306,7 +309,7 @@ impl TraitContext for GlContext {
     todo!()
   }
   
-  fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumErrors> {
+  fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError> {
     if sendable_entity.is_empty() {
       log!(EnumLogColor::Yellow, "WARN", "[Renderer] --> Entity {0} sent has no \
       vertices! Not sending it...", sendable_entity)
@@ -386,7 +389,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn draw(&mut self) -> Result<(), EnumErrors> {
+  fn draw(&mut self) -> Result<(), EnumError> {
     check_gl_call!("Renderer", gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
     for index in 0usize..self.m_batch.m_shaders.len() {
       check_gl_call!("Renderer", gl::UseProgram(self.m_batch.m_shaders[index]));
@@ -396,7 +399,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn dequeue(&mut self, _id: &u64) -> Result<(), EnumErrors> {
+  fn dequeue(&mut self, _id: &u64) -> Result<(), EnumError> {
     todo!()
   }
 }
