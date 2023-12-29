@@ -45,9 +45,16 @@ fn test_instance_extensions() {
   
   // Test with static byte arrays.
   {
-    let extensions_raw = unsafe {
+    #[cfg(target_os = "linux")]
+      let extensions_raw = unsafe {
       vec![std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_surface\0").as_ptr(),
         std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_xcb_surface\0").as_ptr()]
+    };
+    
+    #[cfg(target_os = "windows")]
+      let extensions_raw = unsafe {
+      vec![std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_surface\0").as_ptr(),
+        std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_win32_surface\0").as_ptr()]
     };
     
     unsafe {
@@ -59,11 +66,15 @@ fn test_instance_extensions() {
   }
   // Test with static CString.
   {
-    let extensions_raw =
-      vec![std::ffi::CString::new("VK_KHR_surface")
-        .expect("Cannot convert to C string!"),
-        std::ffi::CString::new("VK_KHR_xcb_surface")
-          .expect("Cannot convert to C string!")];
+    #[cfg(target_os = "linux")]
+      let extensions_raw =
+      vec![std::ffi::CString::new("VK_KHR_surface").unwrap(),
+        std::ffi::CString::new("VK_KHR_xcb_surface").unwrap()];
+    
+    #[cfg(target_os = "windows")]
+      let extensions_raw =
+      vec![std::ffi::CString::new("VK_KHR_surface").unwrap(),
+        std::ffi::CString::new("VK_KHR_win32_surface").unwrap()];
     
     unsafe {
       for extension in extensions_raw {
@@ -155,10 +166,18 @@ fn test_instance_creation() {
   }
   
   // Test with static byte arrays.
+  #[cfg(target_os = "linux")]
   let extensions_raw = unsafe {
     vec![std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_surface\0").as_ptr(),
       std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_xcb_surface\0").as_ptr()]
   };
+  
+  #[cfg(target_os = "windows")]
+  let extensions_raw = unsafe {
+    vec![std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_surface\0").as_ptr(),
+      std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_KHR_win32_surface\0").as_ptr()]
+  };
+  
   VkContext::check_extension_support(&entry, &extensions)
     .expect("Error validating extensions!");
   
@@ -191,10 +210,18 @@ fn test_instance_creation() {
   }
   
   // Test with static CStrings.
+  #[cfg(target_os = "linux")]
   let c_extensions =
     vec![std::ffi::CString::new("VK_KHR_surface")
       .expect("Failed to convert to C string!"),
       std::ffi::CString::new("VK_KHR_xcb_surface")
+        .expect("Failed to convert to C string!")];
+  
+  #[cfg(target_os = "windows")]
+  let c_extensions =
+    vec![std::ffi::CString::new("VK_KHR_surface")
+      .expect("Failed to convert to C string!"),
+      std::ffi::CString::new("VK_KHR_win32_surface")
         .expect("Failed to convert to C string!")];
   
   VkContext::check_extension_support(&entry, &extensions).expect("Error validating extensions!");
