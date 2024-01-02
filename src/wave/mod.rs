@@ -283,7 +283,7 @@ impl Engine {
       }
       
       if Input::get_modifier_key_combo(EnumKey::Enter, EnumModifier::Alt)? {
-        self.m_window.toggle_fullscreen();
+        self.m_window.toggle_fullscreen()?;
       }
     }
     

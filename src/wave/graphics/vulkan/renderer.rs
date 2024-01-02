@@ -160,136 +160,11 @@ pub struct VkContext {
   m_swap_chain: Option<khr::Swapchain>,
   m_swap_chain_khr: vk::SwapchainKHR,
   m_swap_chain_images: Vec<vk::Image>,
+  m_swap_chain_image_views: Vec<vk::ImageView>,
   m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
 }
 
 impl VkContext {
-  pub fn create_instance(window: &mut Window, additional_extensions: Option<Vec<&str>>,
-                         additional_layers: Option<Vec<&str>>) -> Result<(ash::Entry, ash::Instance), EnumError> {
-    let entry = ash::Entry::linked();
-    
-    let app_name = std::ffi::CString::new("Wave Engine Rust").unwrap();
-    let engine_name = std::ffi::CString::new("Wave Engine").unwrap();
-    let mut app_info = vk::ApplicationInfo::default();
-    app_info.p_application_name = app_name.as_ptr();
-    app_info.p_engine_name = engine_name.as_ptr();
-    app_info.engine_version = vk::make_api_version(0, 0, 1, 0);
-    app_info.api_version = vk::API_VERSION_1_3;
-    
-    // Add debug callback for create_instance() and destroy_instance().
-    let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
-    
-    // Validate API calls and log output.
-    let layers = VkContext::load_layers(additional_layers)?;
-    VkContext::check_layer_support(&entry, &layers)?;
-    
-    let c_layers_ptr: Vec<*const std::ffi::c_char> = layers
-      .iter()
-      .map(|c_layer| c_layer.as_ptr())
-      .collect();
-    
-    let extensions = VkContext::load_extensions(window.get_api_ref(),
-      additional_extensions)?;
-    VkContext::check_extension_support(&entry, &extensions)?;
-    
-    let c_extensions_ptr: Vec<*const std::ffi::c_char> = extensions
-      .iter()
-      .map(|c_extension| c_extension.as_ptr())
-      .collect();
-    
-    let mut instance_create_info = vk::InstanceCreateInfo::builder()
-      .enabled_extension_names(c_extensions_ptr.as_slice())
-      .application_info(&app_info);
-    
-    #[cfg(feature = "debug")]
-    {
-      debug_create_info.s_type = vk::DebugUtilsMessengerCreateInfoEXT::STRUCTURE_TYPE;
-      debug_create_info.message_severity = vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-        .bitor(vk::DebugUtilsMessageSeverityFlagsEXT::WARNING)
-        .bitor(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR)
-        .bitor(vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE);
-      
-      debug_create_info.message_type = vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-        .bitor(vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION)
-        .bitor(vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE);
-      
-      debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
-      
-      instance_create_info = instance_create_info
-        .enabled_layer_names(c_layers_ptr.as_slice())
-        .push_next(&mut debug_create_info);
-    }
-    
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    {
-      instance_create_info.flags |= vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
-    }
-    
-    unsafe {
-      return match entry.create_instance(&instance_create_info.build(), None) {
-        Ok(vk_instance) => {
-          Ok((entry, vk_instance))
-        }
-        Err(err) => {
-          log!(EnumLogColor::Red, "ERROR", "[Renderer] --> \t Vulkan Error : {:#?}", err);
-          
-          Err(EnumError::VulkanError(EnumVulkanErrors::InstanceError))
-        }
-      };
-    }
-  }
-  
-  pub fn create_logical_device(ash_instance: &ash::Instance, vk_physical_device: vk::PhysicalDevice,
-                               graphics_queue_family_index: u32, additional_extensions: Option<Vec<&str>>) -> Result<ash::Device, EnumError> {
-    let physical_device_features = unsafe {
-      ash_instance.get_physical_device_features(vk_physical_device)
-    };
-    
-    // Get swap chain extension.
-    let mut required_device_extensions: Vec<std::ffi::CString> =
-      vec![std::ffi::CString::new(khr::Swapchain::name().to_bytes())
-        .expect("Failed to convert swap chain name to CString in VKContext::new()!")];
-    
-    // Get additional extensions.
-    if additional_extensions.is_some() {
-      for extension in additional_extensions.unwrap() {
-        required_device_extensions.push(std::ffi::CString::new(extension.as_bytes())
-          .expect("Failed to convert device extension name into CString in load_logical_device()!"));
-      }
-    }
-    
-    VkContext::check_device_extension_support(&ash_instance, &vk_physical_device,
-      &required_device_extensions)?;
-    
-    let required_device_extensions_ptr: Vec<*const std::ffi::c_char> = required_device_extensions
-      .iter()
-      .map(|extension_name| {
-        return extension_name.as_ptr();
-      })
-      .collect();
-    
-    let device_queue_create_info = vk::DeviceQueueCreateInfo::builder()
-      .flags(vk::DeviceQueueCreateFlags::default())
-      .queue_family_index(graphics_queue_family_index)
-      .queue_priorities(&[1.0])
-      .build();
-    
-    let device_create_info = vk::DeviceCreateInfo::builder()
-      .queue_create_infos(&[device_queue_create_info])
-      .enabled_extension_names(&required_device_extensions_ptr)
-      .enabled_features(&physical_device_features)
-      .build();
-    
-    let vk_device = unsafe {
-      ash_instance.create_device(vk_physical_device, &device_create_info, None)
-    };
-    if vk_device.is_err() {
-      return Err(EnumError::VulkanError(EnumVulkanErrors::LogicalDeviceError));
-    }
-    
-    return Ok(vk_device.unwrap());
-  }
-  
   pub fn create_swap_chain(&mut self, vsync_preferred: bool) -> Result<(), EnumError> {
     // Setup swap chain.
     let mut swap_chain_properties = VkContext::query_swap_properties(&self.m_surface, self.m_physical_device, self.m_surface_khr)?;
@@ -364,6 +239,44 @@ impl VkContext {
     self.m_swap_chain_properties = swap_chain_properties;
     self.m_swap_chain = Some(swap_chain);
     self.m_swap_chain_khr = swap_chain_khr.unwrap();
+    
+    return Ok(());
+  }
+  
+  pub fn create_swap_image_views(&mut self) -> Result<(), EnumError> {
+    self.m_swap_chain_image_views.reserve_exact(self.m_swap_chain_images.len());
+    
+    for &swap_image in self.m_swap_chain_images.iter() {
+      let mut image_view_create_info: vk::ImageViewCreateInfo = vk::ImageViewCreateInfo::default();
+      image_view_create_info.s_type = vk::ImageViewCreateInfo::STRUCTURE_TYPE;
+      image_view_create_info.image = swap_image;
+      image_view_create_info.format = self.m_swap_chain_properties.m_ideal_format;
+      image_view_create_info.components.r = vk::ComponentSwizzle::R;
+      image_view_create_info.components.g = vk::ComponentSwizzle::G;
+      image_view_create_info.components.b = vk::ComponentSwizzle::B;
+      image_view_create_info.components.a = vk::ComponentSwizzle::A;
+      image_view_create_info.subresource_range.aspect_mask = vk::ImageAspectFlags::COLOR;
+      image_view_create_info.subresource_range.base_mip_level = 0;
+      image_view_create_info.subresource_range.level_count = 1;
+      image_view_create_info.subresource_range.base_array_layer = 0;
+      image_view_create_info.subresource_range.layer_count = 1;
+      
+      match unsafe { self.m_logical_device.create_image_view(&image_view_create_info, None) } {
+        Ok(image_view) => {
+          self.m_swap_chain_image_views.push(image_view);
+        }
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot create image view : \
+          Vulkan returned with Err => {:?}", err);
+          return Err(EnumError::VulkanError(EnumVulkanErrors::SwapImagesError));
+        }
+      }
+    }
+    
+    return Ok(());
+  }
+  
+  pub fn create_pipeline(&mut self) -> Result<(), EnumError> {
     
     return Ok(());
   }
@@ -510,9 +423,7 @@ impl VkContext {
     return Ok(());
   }
   
-  pub fn check_device_extension_support(ash_instance: &ash::Instance,
-                                        vk_physical_device: &vk::PhysicalDevice,
-                                        extension_names: &Vec<std::ffi::CString>) -> Result<(), EnumError> {
+  pub fn check_device_extension_support(ash_instance: &ash::Instance, vk_physical_device: &vk::PhysicalDevice, extension_names: &Vec<std::ffi::CString>) -> Result<(), EnumError> {
     let extension_properties = unsafe {
       ash_instance.enumerate_device_extension_properties(*vk_physical_device)
     };
@@ -538,6 +449,130 @@ impl VkContext {
     return Ok(());
   }
   
+  fn create_instance(window: &mut Window, additional_extensions: Option<Vec<&str>>, additional_layers: Option<Vec<&str>>) -> Result<(ash::Entry, ash::Instance), EnumError> {
+    let entry = ash::Entry::linked();
+    
+    let app_name = std::ffi::CString::new("Wave Engine Rust").unwrap();
+    let engine_name = std::ffi::CString::new("Wave Engine").unwrap();
+    let mut app_info = vk::ApplicationInfo::default();
+    app_info.p_application_name = app_name.as_ptr();
+    app_info.p_engine_name = engine_name.as_ptr();
+    app_info.engine_version = vk::make_api_version(0, 0, 1, 0);
+    app_info.api_version = vk::API_VERSION_1_3;
+    
+    // Add debug callback for create_instance() and destroy_instance().
+    let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
+    
+    // Validate API calls and log output.
+    let layers = VkContext::load_layers(additional_layers)?;
+    VkContext::check_layer_support(&entry, &layers)?;
+    
+    let c_layers_ptr: Vec<*const std::ffi::c_char> = layers
+      .iter()
+      .map(|c_layer| c_layer.as_ptr())
+      .collect();
+    
+    let extensions = VkContext::load_extensions(window.get_api_ref(),
+      additional_extensions)?;
+    VkContext::check_extension_support(&entry, &extensions)?;
+    
+    let c_extensions_ptr: Vec<*const std::ffi::c_char> = extensions
+      .iter()
+      .map(|c_extension| c_extension.as_ptr())
+      .collect();
+    
+    let mut instance_create_info = vk::InstanceCreateInfo::builder()
+      .enabled_extension_names(c_extensions_ptr.as_slice())
+      .application_info(&app_info);
+    
+    #[cfg(feature = "debug")]
+    {
+      debug_create_info.s_type = vk::DebugUtilsMessengerCreateInfoEXT::STRUCTURE_TYPE;
+      debug_create_info.message_severity = vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+        .bitor(vk::DebugUtilsMessageSeverityFlagsEXT::WARNING)
+        .bitor(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR)
+        .bitor(vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE);
+      
+      debug_create_info.message_type = vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+        .bitor(vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION)
+        .bitor(vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE);
+      
+      debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
+      
+      instance_create_info = instance_create_info
+        .enabled_layer_names(c_layers_ptr.as_slice())
+        .push_next(&mut debug_create_info);
+    }
+    
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+      instance_create_info.flags |= vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
+    }
+    
+    unsafe {
+      return match entry.create_instance(&instance_create_info.build(), None) {
+        Ok(vk_instance) => {
+          Ok((entry, vk_instance))
+        }
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[Renderer] --> \t Vulkan Error : {:#?}", err);
+          
+          Err(EnumError::VulkanError(EnumVulkanErrors::InstanceError))
+        }
+      };
+    }
+  }
+  
+  fn create_logical_device(ash_instance: &ash::Instance, vk_physical_device: vk::PhysicalDevice, graphics_queue_family_index: u32, additional_extensions: Option<Vec<&str>>) -> Result<ash::Device, EnumError> {
+    let physical_device_features = unsafe {
+      ash_instance.get_physical_device_features(vk_physical_device)
+    };
+    
+    // Get swap chain extension.
+    let mut required_device_extensions: Vec<std::ffi::CString> =
+      vec![std::ffi::CString::new(khr::Swapchain::name().to_bytes())
+        .expect("Failed to convert swap chain name to CString in VKContext::new()!")];
+    
+    // Get additional extensions.
+    if additional_extensions.is_some() {
+      for extension in additional_extensions.unwrap() {
+        required_device_extensions.push(std::ffi::CString::new(extension.as_bytes())
+          .expect("Failed to convert device extension name into CString in load_logical_device()!"));
+      }
+    }
+    
+    VkContext::check_device_extension_support(&ash_instance, &vk_physical_device,
+      &required_device_extensions)?;
+    
+    let required_device_extensions_ptr: Vec<*const std::ffi::c_char> = required_device_extensions
+      .iter()
+      .map(|extension_name| {
+        return extension_name.as_ptr();
+      })
+      .collect();
+    
+    let device_queue_create_info = vk::DeviceQueueCreateInfo::builder()
+      .flags(vk::DeviceQueueCreateFlags::default())
+      .queue_family_index(graphics_queue_family_index)
+      .queue_priorities(&[1.0])
+      .build();
+    
+    let device_create_info = vk::DeviceCreateInfo::builder()
+      .queue_create_infos(&[device_queue_create_info])
+      .enabled_extension_names(&required_device_extensions_ptr)
+      .enabled_features(&physical_device_features)
+      .build();
+    
+    let vk_device = unsafe {
+      ash_instance.create_device(vk_physical_device, &device_create_info, None)
+    };
+    if vk_device.is_err() {
+      return Err(EnumError::VulkanError(EnumVulkanErrors::LogicalDeviceError));
+    }
+    
+    return Ok(vk_device.unwrap());
+  }
+  
   /// Setup debug logging for API calls that redirect to custom debug callback.
   ///
   /// ### Arguments:
@@ -549,8 +584,7 @@ impl VkContext {
   /// A tuple containing the created debug messenger and debug extension if
   /// successful, otherwise an [EnumError] on any error encountered.
   ///
-  fn set_debug(entry: &ash::Entry, instance: &ash::Instance) -> Result<(ext::DebugUtils,
-                                                                        vk::DebugUtilsMessengerEXT), EnumError> {
+  fn set_debug(entry: &ash::Entry, instance: &ash::Instance) -> Result<(ext::DebugUtils, vk::DebugUtilsMessengerEXT), EnumError> {
     #[cfg(feature = "debug")]
     {
       // For debug callback function
@@ -819,6 +853,7 @@ impl TraitContext for VkContext {
       m_swap_chain: None,
       m_swap_chain_khr: Default::default(),
       m_swap_chain_images: Default::default(),
+      m_swap_chain_image_views: Default::default()
     })
   }
   
@@ -830,6 +865,10 @@ impl TraitContext for VkContext {
   
   fn on_delete(&mut self) -> Result<(), EnumError> {
     unsafe {
+      self.m_swap_chain_image_views.iter().for_each(|image_view| {
+        self.m_logical_device.destroy_image_view(*image_view, None);
+      });
+      
       if self.m_swap_chain.is_some() {
         self.m_swap_chain.as_ref().unwrap().destroy_swapchain(self.m_swap_chain_khr, None);
       }
@@ -881,6 +920,8 @@ impl TraitContext for VkContext {
     }
     
     self.m_swap_chain_images = swap_chain_images.unwrap();
+    
+    self.create_swap_image_views()?;
     
     return Ok(());
   }
