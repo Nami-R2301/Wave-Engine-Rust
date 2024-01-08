@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-use wave::{Engine, ExampleApp, EnumError, EnumApi};
+use wave::{Engine, ExampleApp, EnumError, graphics::renderer::EnumApi};
 
 pub mod wave;
 

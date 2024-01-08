@@ -175,10 +175,10 @@ impl PartialEq for REntity {
 
 impl TraitRenderableEntity for REntity {
   fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError> {
-    let renderer = Renderer::get().as_mut()
+    let renderer = Renderer::get()
       .expect("[REntity] -->\t Cannot send REntity, renderer is null! Exiting...");
     
-    return match renderer.m_api.enqueue(self, shader_associated) {
+    return match unsafe { (*renderer).enqueue(self, shader_associated) } {
       Ok(_) => {
         self.m_sent = true;
         Ok(())
@@ -196,10 +196,10 @@ impl TraitRenderableEntity for REntity {
   }
   
   fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumError> {
-    let renderer = Renderer::get().as_mut()
+    let renderer = Renderer::get()
       .expect("[REntity] -->\t Cannot free REntity, renderer is null! Exiting...");
     
-    return match renderer.m_api.dequeue(&self.m_renderer_id) {
+    return match unsafe { (*renderer).dequeue(&self.m_renderer_id) } {
       Ok(_) => {
         self.m_sent = false;
         Ok(())

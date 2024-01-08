@@ -27,14 +27,19 @@ use std::fmt::{Display, Formatter};
 use crate::log;
 
 use crate::wave::assets::renderable_assets::REntity;
-use crate::wave::EnumApi;
 use crate::wave::graphics::open_gl::renderer::{EnumOpenGLErrors, GlContext};
 use crate::wave::graphics::shader::Shader;
 #[cfg(feature = "Vulkan")]
 use crate::wave::graphics::vulkan::renderer::{EnumVulkanErrors, VkContext};
 use crate::wave::window::Window;
 
-pub static mut S_RENDERER: Option<&mut Renderer> = None;
+pub static mut S_RENDERER: Option<*mut Renderer> = None;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum EnumApi {
+  OpenGL,
+  Vulkan,
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumFeature {
@@ -113,7 +118,9 @@ impl Stats {
 
 pub trait TraitContext {
   fn on_new(window: &mut Window) -> Result<Self, EnumError> where Self: Sized;
+  fn get_api_version(&self) -> f32;
   fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError>;
+  fn on_render(&mut self) -> Result<(), EnumError>;
   fn on_delete(&mut self) -> Result<(), EnumError>;
   fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError>;
   fn get_max_msaa_count(&self) -> Result<u8, EnumError>;
@@ -124,15 +131,14 @@ pub trait TraitContext {
   fn batch(&mut self);
   fn flush(&mut self);
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
-  fn draw(&mut self) -> Result<(), EnumError>;
   fn dequeue(&mut self, id: &u64) -> Result<(), EnumError>;
 }
 
 pub struct Renderer {
-  m_type: EnumApi,
-  m_state: EnumState,
-  m_features: HashSet<EnumFeature>,
-  pub m_api: Box<dyn TraitContext>,
+  pub m_type: EnumApi,
+  pub m_state: EnumState,
+  pub m_features: HashSet<EnumFeature>,
+  m_api: Box<dyn TraitContext>,
 }
 
 impl Renderer {
@@ -201,6 +207,10 @@ impl Renderer {
     return self.m_api.on_events(window_event);
   }
   
+  pub fn on_render(&mut self) -> Result<(), EnumError> {
+    return self.m_api.on_render();
+  }
+  
   pub fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError> {
     return self.m_api.toggle(feature);
   }
@@ -219,23 +229,26 @@ impl Renderer {
     return Ok(());
   }
   
-  pub fn get_type(&self) -> EnumApi {
-    return self.m_type;
+  pub fn enqueue(&mut self, r_entity: &REntity, associated_shader: &mut Shader) -> Result<(), EnumError> {
+    return self.m_api.enqueue(r_entity, associated_shader);
   }
   
-  pub fn get_state(&self) -> EnumState {
-    return self.m_state;
+  pub fn dequeue(&mut self, id: &u64) -> Result<(), EnumError> {
+    return self.m_api.dequeue(id);
   }
   
-  pub fn get() -> &'static mut Option<&'static mut Renderer> {
-    return unsafe { &mut S_RENDERER };
+  pub fn get() -> Option<*mut Renderer> {
+    return unsafe { S_RENDERER };
+  }
+  
+  pub fn get_version(&self) -> f32 {
+    return self.m_api.get_api_version();
   }
 }
 
 impl Display for Renderer {
   fn fmt(&self, format: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(format, "State => {0:#?}\n{1:113}Api => {2:#?}\n{1:113}{3}", self.m_state, "", self.m_type,
-      self.m_api.to_string())
+    write!(format, "State => {0:#?}\n{1:113}{2}", self.m_state, "", self.m_api.to_string())
   }
 }
 

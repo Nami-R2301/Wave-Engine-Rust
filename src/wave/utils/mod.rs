@@ -554,26 +554,26 @@ const CONST_TIME_MILLI: f64 = 1000.0;
 
 #[derive(PartialEq, PartialOrd, Copy, Clone)]
 pub struct Time {
-  pub m_nano_seconds: f64,
+  pub m_nano_seconds: u64,
 }
 
 impl Time {
   pub fn new() -> Self {
     return Time {
-      m_nano_seconds: 0.0,
+      m_nano_seconds: 0,
     };
   }
   
   pub fn from(local_time: DateTime<chrono::Utc>) -> Self {
     return Time {
       m_nano_seconds: local_time.timestamp_nanos_opt().expect("[Internal] -->\t Cannot convert \
-      local time to nanoseconds in wave/utils/mod.rs on line 573!") as f64
+      local time to nanoseconds in wave/utils/mod.rs!") as u64
     };
   }
   
-  pub fn get_delta(start_time: &Time, end_time: &Time) -> Time {
+  pub fn get_delta(start_time: Time, end_time: Time) -> Time {
     return Time {
-      m_nano_seconds: (&end_time.m_nano_seconds - &start_time.m_nano_seconds).abs(),
+      m_nano_seconds: (end_time.m_nano_seconds - start_time.m_nano_seconds),
     };
   }
   
@@ -581,32 +581,32 @@ impl Time {
     if seconds <= 0.0 {
       return;
     }
-    let end_time: f64 = Time::from(chrono::Utc::now()).m_nano_seconds + (seconds * CONST_TIME_NANO);
-    while Time::from(chrono::Utc::now()).m_nano_seconds < end_time {}
+    let end_time: f64 = Time::from(chrono::Utc::now()).m_nano_seconds as f64 + (seconds * CONST_TIME_NANO);
+    while (Time::from(chrono::Utc::now()).m_nano_seconds as f64) < end_time {}
   }
   
-  pub fn wait_between(start_time: &Time, end_time: &Time) -> () {
+  pub fn wait_between(start_time: Time, end_time: Time) -> () {
     if start_time == end_time {
       return;
     }
-    while &Time::from(chrono::Utc::now()) >= &start_time &&
-      Time::from(chrono::Utc::now()) < *end_time {}
+    while Time::from(chrono::Utc::now()) >= start_time &&
+      Time::from(chrono::Utc::now()) < end_time {}
   }
   
   pub fn reset(&mut self) {
-    self.m_nano_seconds = 0.0;
+    self.m_nano_seconds = 0;
   }
   
   pub fn to_secs(&self) -> f64 {
-    return self.m_nano_seconds / CONST_TIME_NANO;
+    return self.m_nano_seconds as f64 / CONST_TIME_NANO;
   }
   
   pub fn to_micros(&self) -> f64 {
-    return self.m_nano_seconds / CONST_TIME_MILLI;
+    return self.m_nano_seconds as f64 / CONST_TIME_MILLI;
   }
   
   pub fn to_millis(&self) -> f64 {
-    return self.m_nano_seconds / CONST_TIME_MICRO;
+    return self.m_nano_seconds as f64 / CONST_TIME_MICRO;
   }
 }
 

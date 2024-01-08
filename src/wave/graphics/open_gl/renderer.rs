@@ -23,7 +23,9 @@
 */
 
 use std::collections::HashSet;
+extern crate gl46;
 
+use gl46::GlFns;
 use crate::{check_gl_call, log};
 use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::graphics::color::Color;
@@ -39,7 +41,9 @@ use crate::wave::window::Window;
 ///////////////////////////////////                     ///////////////////////////////////
  */
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub(crate) static mut S_GL_4_6: Option<GlFns> = None;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum EnumOpenGLErrors {
   InvalidContext,
   InvalidOperation(GLenum),
@@ -124,12 +128,31 @@ impl TraitContext for GlContext {
   fn on_new(window: &mut Window) -> Result<Self, EnumError> {
     // Init context.
     window.init_opengl_surface();
-    gl::load_with(|f_name| window.get_api_mut().get_proc_address_raw(f_name));
-    
+    gl::load_with(|f_name| window.get_api_ref().get_proc_address_raw(f_name));
+    unsafe {
+      S_GL_4_6 = Some(GlFns::load_from(&|f_name| {
+        let string = std::ffi::CStr::from_ptr(f_name as *const std::ffi::c_char);
+        window.get_api_ref().get_proc_address_raw(string.to_str().unwrap())
+      }).unwrap());
+    }
     return Ok(GlContext {
       m_batch: GlBatchPrimitives::new(),
       m_debug_callback: Some(gl_error_callback),
     });
+  }
+  
+  fn get_api_version(&self) -> f32 {
+    let version: Vec<&str> = unsafe {
+      std::ffi::CStr::from_ptr(gl::GetString(gl::VERSION) as *const i8)
+        .to_str().unwrap_or("Cannot retrieve api version information!")
+        .split(" ")
+        .collect()
+    };
+    
+    let api_version: &str = version.first().unwrap_or(&"Unknown api version!");
+    let api_major_minor_only = api_version.get(0..3).unwrap().to_string();
+    let to_float: f32 = api_major_minor_only.parse::<f32>().unwrap_or(-1.0);
+    return to_float;
   }
   
   fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError> {
@@ -140,6 +163,16 @@ impl TraitContext for GlContext {
       }
       _ => { Ok(false) }
     }
+  }
+  
+  fn on_render(&mut self) -> Result<(), EnumError> {
+    check_gl_call!("Renderer", gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
+    for index in 0usize..self.m_batch.m_shaders.len() {
+      check_gl_call!("Renderer", gl::UseProgram(self.m_batch.m_shaders[index]));
+      self.m_batch.m_vao_buffers[index].bind()?;
+      check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0, self.m_batch.m_vbo_buffers[index].m_count as GLsizei));
+    }
+    return Ok(());
   }
   
   fn on_delete(&mut self) -> Result<(), EnumError> {
@@ -187,18 +220,28 @@ impl TraitContext for GlContext {
   
   fn to_string(&self) -> String {
     unsafe {
-      let api_vendor = std::ffi::CStr::from_ptr(gl::GetString(gl::VENDOR) as *const i8)
+      let api_vendor: &str = std::ffi::CStr::from_ptr(gl::GetString(gl::VENDOR) as *const i8)
         .to_str().unwrap_or("Cannot retrieve api vendor information!");
-      let api_version = std::ffi::CStr::from_ptr(gl::GetString(gl::VERSION) as *const i8)
-        .to_str().unwrap_or("Cannot retrieve api version information!");
-      let renderer_info = std::ffi::CStr::from_ptr(gl::GetString(gl::RENDERER) as *const i8)
+      let version: Vec<&str> = std::ffi::CStr::from_ptr(gl::GetString(gl::VERSION) as *const i8)
+        .to_str().unwrap_or("Cannot retrieve api version information!")
+        .split(" ")
+        .collect();
+      
+      let api_version: &str = version.first().unwrap_or(&"Unknown api version!");
+      let driver_version: &str = version.last().unwrap_or(&"Unknown driver version!");
+      
+      let device_name = std::ffi::CStr::from_ptr(gl::GetString(gl::RENDERER) as *const i8)
         .to_str().unwrap_or("Cannot retrieve renderer information!");
       let shading_info = std::ffi::CStr::from_ptr(gl::GetString(gl::SHADING_LANGUAGE_VERSION) as *const i8)
         .to_str().unwrap_or("Cannot retrieve shading language information!");
       
-      let str: String = format!("Renderer Hardware => {0},\n{1:<113}Vendor => {2:<15},\n{3:<113}\
-      Version => {4:<15},\n{5:<113}Shading Language => {6:<15}",
-        renderer_info, "", api_vendor, "", api_version, "", shading_info);
+      let str: String = format!("Api => OpenGL,\n{0:<113}\
+      Api version => {4},\n{0:<113}\
+      Vendor => {2},\n{0:<113}\
+      Device name => {1},\n{0:<113}\
+      Driver version => {3},\n{0:<113}\
+      Shading language => {5}",
+        "", device_name, api_vendor, driver_version, api_version, shading_info);
       return str;
     }
   }
@@ -386,16 +429,6 @@ impl TraitContext for GlContext {
     self.m_batch.m_vao_buffers.push(vao);
     self.m_batch.m_vbo_buffers.push(vbo);
     
-    return Ok(());
-  }
-  
-  fn draw(&mut self) -> Result<(), EnumError> {
-    check_gl_call!("Renderer", gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
-    for index in 0usize..self.m_batch.m_shaders.len() {
-      check_gl_call!("Renderer", gl::UseProgram(self.m_batch.m_shaders[index]));
-      self.m_batch.m_vao_buffers[index].bind()?;
-      check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0, self.m_batch.m_vbo_buffers[index].m_count as GLsizei));
-    }
     return Ok(());
   }
   

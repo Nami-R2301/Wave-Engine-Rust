@@ -24,7 +24,7 @@
 
 pub extern crate ash;
 
-use std::ops::BitOr;
+use std::ops::{BitAnd, BitOr};
 use ash::extensions::{ext, khr};
 use ash::vk::{self, PhysicalDeviceType, TaggedStructure};
 
@@ -249,6 +249,7 @@ impl VkContext {
     for &swap_image in self.m_swap_chain_images.iter() {
       let mut image_view_create_info: vk::ImageViewCreateInfo = vk::ImageViewCreateInfo::default();
       image_view_create_info.s_type = vk::ImageViewCreateInfo::STRUCTURE_TYPE;
+      image_view_create_info.view_type = vk::ImageViewType::TYPE_2D;
       image_view_create_info.image = swap_image;
       image_view_create_info.format = self.m_swap_chain_properties.m_ideal_format;
       image_view_create_info.components.r = vk::ComponentSwizzle::R;
@@ -447,6 +448,26 @@ impl VkContext {
     }
     
     return Ok(());
+  }
+  
+  fn get_driver_version(version_raw: u32, vendor_id: u32) -> String {
+    return match vendor_id {
+      0x10DE => {
+        format!("{0}.{1}.{2}.{3}", (version_raw >> 22).bitand(0x3ff),
+          (version_raw >> 14).bitand(0x0ff), (version_raw >> 6).bitand(0x0ff),
+          version_raw.bitand(0x003f))
+      },
+      0x8086 => {
+        #[cfg(target_os = "windows")]
+        return format!("{0}.{1}", version_raw >> 14, version_raw.bitand(0x3fff));
+        
+        #[cfg(not(target_os = "windows"))]
+        return format!("{0}.{1}.{2}", version_raw >> 22, (version_raw >> 12).bitand(0x3ff),
+        version_raw.bitand(0xfff));
+      },
+      _ => format!("{0}.{1}.{2}", version_raw >> 22, (version_raw >> 12).bitand(0x3ff),
+        version_raw.bitand(0xfff))
+    }
   }
   
   fn create_instance(window: &mut Window, additional_extensions: Option<Vec<&str>>, additional_layers: Option<Vec<&str>>) -> Result<(ash::Entry, ash::Instance), EnumError> {
@@ -857,6 +878,20 @@ impl TraitContext for VkContext {
     })
   }
   
+  fn get_api_version(&self) -> f32 {
+    let device_properties = unsafe {
+      self.m_instance.get_physical_device_properties(self.m_physical_device)
+    };
+    
+    let major = vk::api_version_major(device_properties.api_version);
+    let minor = vk::api_version_minor(device_properties.api_version);
+    
+    let to_str = format!("{0}.{1}", major, minor);
+    let to_float: f32 = to_str.parse::<f32>().unwrap_or(-1.0);
+    
+    return to_float;
+  }
+  
   fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError> {
     return match window_event {
       _ => Ok(false)
@@ -966,20 +1001,24 @@ impl TraitContext for VkContext {
       .to_str()
       .unwrap_or("[Renderer] -->\t Could not retrieve device name in get_api_info()!");
     
-    let mut device_type_str: String = String::new();
+    let device_type_str: String;
     match device_properties.device_type {
-      PhysicalDeviceType::DISCRETE_GPU => { device_type_str += "Discrete GPU" }
-      PhysicalDeviceType::INTEGRATED_GPU => { device_type_str += "Integrated GPU" }
-      PhysicalDeviceType::CPU => { device_type_str += "CPU" }
-      _ => { device_type_str += "Other" }
-    }
+      PhysicalDeviceType::DISCRETE_GPU => { device_type_str = "Discrete GPU".to_string() }
+      PhysicalDeviceType::INTEGRATED_GPU => { device_type_str = "Integrated GPU".to_string() }
+      PhysicalDeviceType::CPU => { device_type_str = "CPU".to_string() }
+      _ => { device_type_str = "Other".to_string() }
+    };
     
-    let info_physical_device: String = format!("Renderer Hardware => {1},\n{0:<113}Driver version => {2}\n{0:<113}\
-    Device type => {3}\n{0:<113}Api version => {4}.{5}.{6}", "", device_name_str,
-      device_properties.driver_version, device_type_str,
+    let info_physical_device: String = format!("Api => Vulkan,\n{0:<113}\
+    Api version => {1}.{2}.{3}\n{0:<113}\
+    Device name => {4}\n{0:<113}Driver version => {5}\n{0:<113}Device type => {6}",
+      "",
       vk::api_version_major(device_properties.api_version),
       vk::api_version_minor(device_properties.api_version),
-      vk::api_version_patch(device_properties.api_version));
+      vk::api_version_patch(device_properties.api_version),
+      device_name_str,
+      VkContext::get_driver_version(device_properties.driver_version,
+      device_properties.vendor_id), device_type_str);
     
     // Get logical device capabilities and presentation format and extent chosen for swap chain.
     let info_logical_device: String = format!("\n{0:113}{1}", "", self.m_swap_chain_properties);
@@ -1058,7 +1097,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn draw(&mut self) -> Result<(), EnumError> {
+  fn on_render(&mut self) -> Result<(), EnumError> {
     return Ok(());
   }
   

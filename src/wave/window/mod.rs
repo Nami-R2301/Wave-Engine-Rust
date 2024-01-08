@@ -30,8 +30,8 @@ use std::fmt::{Display, Formatter};
 use ash::vk;
 use glfw::Context;
 
-use crate::{log, wave::EnumApi};
-use crate::wave::graphics::renderer::Renderer;
+use crate::log;
+use crate::wave::graphics::renderer::{EnumApi, Renderer};
 use crate::wave::input::{self, Input};
 
 pub(crate) static mut S_WINDOW_CONTEXT: Option<*mut glfw::Glfw> = None;
@@ -317,8 +317,7 @@ impl Window {
               self.m_api_window.set_size(window_width + 1, window_height);
               self.m_api_window.set_size(window_width, window_height);
             }
-            (glfw::Key::Enter, glfw::Action::Press, glfw::Modifiers::Alt) => {
-            }
+            (glfw::Key::Enter, glfw::Action::Press, glfw::Modifiers::Alt) => {}
             _ => {}
           }
         }
@@ -327,14 +326,13 @@ impl Window {
         }
         glfw::WindowEvent::FramebufferSize(width, height) => {
           log!("INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
-          let renderer = Renderer::get();
+          let renderer = Renderer::get()
+            .expect("Cannot process window event (Framebuffer size) : No active renderer context!");
           
-          if renderer.is_some() {
-            renderer.as_mut().unwrap()
-              .on_events(glfw::WindowEvent::FramebufferSize(width, height))
-              .expect("Cannot process window event (Framebuffer size) : No active renderer context!");
-          }
           unsafe {
+            (*renderer).on_events(glfw::WindowEvent::FramebufferSize(width, height))
+              .expect("Error while processing events for renderer!");
+            
             S_PREVIOUS_WIDTH = self.m_window_resolution.0 as u32;
             S_PREVIOUS_HEIGHT = self.m_window_resolution.1 as u32;
           }
@@ -412,16 +410,16 @@ impl Window {
         let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
         
         if !self.m_is_windowed {
-            self.m_api_window.set_resizable(true);
-            
-            if self.m_window_mode == EnumWindowMode::Borderless {
-              self.m_api_window.set_decorated(true);
-              self.m_api_window.set_size(S_PREVIOUS_WIDTH as i32, S_PREVIOUS_HEIGHT as i32);
-            } else {
-              self.m_api_window.set_monitor(glfw::WindowMode::Windowed,
-                self.m_window_pos.0, self.m_window_pos.1,
-                S_PREVIOUS_WIDTH, S_PREVIOUS_HEIGHT, None);
-            }
+          self.m_api_window.set_resizable(true);
+          
+          if self.m_window_mode == EnumWindowMode::Borderless {
+            self.m_api_window.set_decorated(true);
+            self.m_api_window.set_size(S_PREVIOUS_WIDTH as i32, S_PREVIOUS_HEIGHT as i32);
+          } else {
+            self.m_api_window.set_monitor(glfw::WindowMode::Windowed,
+              self.m_window_pos.0, self.m_window_pos.1,
+              S_PREVIOUS_WIDTH, S_PREVIOUS_HEIGHT, None);
+          }
           log!("INFO", "[Window] -->\t Window mode : Windowed");
         } else {
           match self.m_window_mode {

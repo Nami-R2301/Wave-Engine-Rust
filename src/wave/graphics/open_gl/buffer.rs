@@ -11,8 +11,7 @@ pub use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLintptr, GLsizei
 
 use crate::{check_gl_call, log};
 use crate::wave::graphics::open_gl::renderer::EnumOpenGLErrors;
-use crate::wave::graphics::renderer::{EnumError, EnumState, Renderer};
-use crate::wave::EnumApi;
+use crate::wave::graphics::renderer::{EnumError, EnumApi, EnumState, Renderer};
 
 #[allow(unused)]
 pub enum EnumAttributeType {
@@ -203,14 +202,16 @@ impl GlVao {
 
 impl Drop for GlVao {
   fn drop(&mut self) {
-    let renderer = Renderer::get().as_ref()
+    let renderer = Renderer::get()
       .expect("[Buffer] -->\t Cannot drop Vao, renderer is null! Exiting...");
-    if renderer.get_type() == EnumApi::OpenGL && renderer.get_state() != EnumState::Shutdown {
-      match self.delete() {
-        Ok(_) => {}
-        Err(err) => {
-          log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VAO : \
+    unsafe {
+      if (*renderer).m_type == EnumApi::OpenGL && (*renderer).m_state != EnumState::Shutdown {
+        match self.delete() {
+          Ok(_) => {}
+          Err(err) => {
+            log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VAO : \
           OpenGL returned with Error => {:?}", err)
+          }
         }
       }
     }
@@ -361,16 +362,66 @@ impl GlVbo {
 
 impl Drop for GlVbo {
   fn drop(&mut self) {
-    let renderer = Renderer::get().as_ref()
+    let renderer = Renderer::get()
       .expect("[Buffer] -->\t Cannot drop Vbo, renderer is null! Exiting...");
-    if renderer.get_type() == EnumApi::OpenGL && renderer.get_state() != EnumState::Shutdown {
-      match self.delete() {
-        Ok(_) => {}
-        Err(err) => {
-          log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VBO : \
+    unsafe {
+      if (*renderer).m_type == EnumApi::OpenGL && (*renderer).m_state != EnumState::Shutdown {
+        match self.delete() {
+          Ok(_) => {}
+          Err(err) => {
+            log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VBO : \
           OpenGL returned with Error => {:?}", err)
+          }
         }
       }
     }
+  }
+}
+
+#[derive(Debug, PartialOrd, PartialEq, Eq, Ord, Hash)]
+pub struct GlUbo {
+  m_buffer_id: u32,
+}
+
+impl GlUbo {
+  pub fn default() -> Self {
+    return Self {
+      m_buffer_id: 0,
+    };
+  }
+  pub fn new(size: usize, binding: u32) -> Result<Self, EnumError> {
+    let mut buffer_id = 0;
+    check_gl_call!("Ubo", gl::CreateBuffers(1, &mut buffer_id));
+    check_gl_call!("Ubo", gl::BindBuffer(gl::UNIFORM_BUFFER, buffer_id));
+    check_gl_call!("Ubo", gl::BufferData(gl::UNIFORM_BUFFER, size as GLsizeiptr, std::ptr::null(),
+    gl::DYNAMIC_DRAW));
+    check_gl_call!("Ubo", gl::BindBufferBase(gl::UNIFORM_BUFFER, binding, buffer_id));
+    
+    return Ok(Self {
+      m_buffer_id: buffer_id,
+    });
+  }
+  
+  pub fn bind(&mut self) -> Result<(), EnumError> {
+    // const char *glsl_version = get_api_shader_version();
+    // if (glsl_version[9] != '4' ||
+    //   glsl_version[10] < 2)  // If glsl < #version 420, uniform binding can't be done in shaders.
+    // {
+    //   unsigned int u_camera_block = glGetUniformBlockIndex(
+    //   Gl_renderer::shader_commands[shader.get_id()]->associated_shader->get_id(), "u_camera");
+    //   CHECK_GL_CALL(glUniformBlockBinding(Gl_renderer::shader_commands[shader.get_id()]->associated_shader->get_id(),
+    //     u_camera_block, 0));
+    // }
+  return Ok(());
+  }
+  
+  pub fn unbind(&mut self) -> Result<(), EnumError> {
+    return Ok(());
+  }
+  
+  pub fn set_data(&mut self, offset: usize, size: usize, data: *const GLvoid) -> Result<(), EnumError> {
+    check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, offset as GLintptr,
+      size as GLsizeiptr, data));
+    return Ok(());
   }
 }

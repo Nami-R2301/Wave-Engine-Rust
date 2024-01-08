@@ -1,4 +1,4 @@
-#version 420 core
+#version 420
 
 struct Vertex_data_s
 {
