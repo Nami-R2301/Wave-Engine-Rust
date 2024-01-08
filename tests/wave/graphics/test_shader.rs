@@ -23,7 +23,7 @@
 */
 
 use wave_engine::wave::{EmptyApp, Engine, EnumError};
-use wave_engine::wave::graphics::shader::Shader;
+use wave_engine::wave::graphics::shader::{EnumShaderSource, EnumShaderType, Shader, ShaderStage};
 
 use wave_engine::wave::math::Mat4;
 
@@ -32,11 +32,18 @@ fn test_shader_send() -> Result<(), EnumError> {
   let mut engine = Engine::new(None, Some(Box::new(EmptyApp::new())))?;
   engine.on_new()?;
   
-  let mut result = Shader::new("res/shaders/default_3D.vert",
-    "res/shaders/default_3D.frag")?;
+  let vertex_shader = ShaderStage {
+    m_type: EnumShaderType::Vertex,
+    m_source: EnumShaderSource::FromFile(String::from("res/shaders/test.vert")),
+    m_is_cached: false,
+  };
+  let fragment_shader = ShaderStage {
+    m_type: EnumShaderType::Fragment,
+    m_source: EnumShaderSource::FromFile(String::from("res/shaders/test.frag")),
+    m_is_cached: false,
+  };
   
-  // Check if shader str is empty.
-  assert_ne!(result.to_string(), "Vertex shader :\n\nFragment shader : \n");
+  let mut result = Shader::new(vec![vertex_shader, fragment_shader])?;
   
   // Sourcing and compilation.
   return match result.send() {
@@ -50,12 +57,18 @@ fn test_load_uniforms() -> Result<(), EnumError> {
   let mut engine = Engine::new(None, Some(Box::new(EmptyApp::new())))?;
   engine.on_new()?;
   
-  let mut new_shader = Shader::new("res/shaders/default_3D.vert",
-    "res/shaders/default_3D.frag")?;
+  let vertex_shader = ShaderStage {
+    m_type: EnumShaderType::Vertex,
+    m_source: EnumShaderSource::FromFile(String::from("res/shaders/test.vert")),
+    m_is_cached: false,
+  };
+  let fragment_shader = ShaderStage {
+    m_type: EnumShaderType::Fragment,
+    m_source: EnumShaderSource::FromFile(String::from("res/shaders/test.frag")),
+    m_is_cached: false,
+  };
   
-  // Check if shader str is empty.
-  assert_ne!(new_shader.to_string(), "[Shader] -->\t\nVertex shader :\n\
-  \nFragment shader : \n");
+  let mut new_shader = Shader::new(vec![vertex_shader, fragment_shader])?;
   
   // Sourcing and compilation.
   new_shader.send()?;

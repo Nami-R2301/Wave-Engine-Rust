@@ -178,6 +178,8 @@ impl Shader {
       EnumApi::Vulkan => {
         shader.m_api_data = Box::new(VkShader::new(shader_stages)?);
       }
+      #[cfg(not(feature = "Vulkan"))]
+      EnumApi::Vulkan => {}
     }
     
     return Ok(shader);

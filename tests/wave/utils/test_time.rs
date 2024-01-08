@@ -36,12 +36,12 @@ fn test_delta_time() {
   // level when asserting.
   end_time.m_nano_seconds += 1000000000.0;
   
-  assert_eq!(Time::get_delta(&start_time, &end_time).to_secs(), 1.0);
+  assert_eq!(Time::get_delta(start_time, end_time).to_secs(), 1.0);
   
   start_time.m_nano_seconds += 2000000000.0;
   
   // Make sure we get the absolute difference between the two time intervals.
-  assert_eq!(Time::get_delta(&start_time, &end_time).to_secs(), 1.0);
+  assert_eq!(Time::get_delta(start_time, end_time).to_secs(), 1.0);
 }
 
 #[test]
@@ -53,11 +53,9 @@ fn test_wait_for() {
   
   Time::wait_for(1.0);
   
-  assert_eq!(Time::get_delta(&Time::from(chrono::Utc::now()),
-    &start_time).to_secs() as i64, 1);
+  assert_eq!(Time::get_delta(Time::from(chrono::Utc::now()), start_time).to_secs() as i64, 1);
   
   Time::wait_for(-1.0);  // When we supply an invalid argument.
   
-  assert_eq!(Time::get_delta(&Time::from(chrono::Utc::now()),
-    &start_time).to_secs() as i64, 1);
+  assert_eq!(Time::get_delta(Time::from(chrono::Utc::now()), start_time).to_secs() as i64, 1);
 }
