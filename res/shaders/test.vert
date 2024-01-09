@@ -8,12 +8,13 @@ struct Vertex_data_s
     vec2 vout_tex_coords;
 };
 
-layout (std140, binding = 0) uniform u_view_projection
+layout (std140, binding = 0) uniform u_camera
 {
-    mat4 m_matrix;
-} U_View_projection_matrix;
+    mat4 m_view;
+    mat4 m_projection;
+} U_camera;
 
-layout (std140, binding = 1) uniform u_model_matrix
+layout (std140, binding = 1) uniform u_model
 {
     mat4 m_matrix;
 } U_Model_matrix;
@@ -28,7 +29,7 @@ layout (location = 0) flat out uint vout_entity_ID;
 layout (location = 1) out Vertex_data_s vout_vertex_data;
 
 void main() {
-    gl_Position = U_View_projection_matrix.m_matrix * (U_Model_matrix.m_matrix * vec4(in_position, 1.0));
+    gl_Position = U_camera.m_projection * U_camera.m_view * (U_Model_matrix.m_matrix * vec4(in_position, 1.0));
     vout_entity_ID = in_entity_ID;
     vout_vertex_data.vout_normal = in_normal;
     vout_vertex_data.vout_tex_coords = in_tex_coords;

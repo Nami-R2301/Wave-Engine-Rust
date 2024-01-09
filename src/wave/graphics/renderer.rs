@@ -27,6 +27,7 @@ use std::fmt::{Display, Formatter};
 use crate::log;
 
 use crate::wave::assets::renderable_assets::REntity;
+use crate::wave::camera::PerspectiveCamera;
 use crate::wave::graphics::open_gl::renderer::{EnumOpenGLErrors, GlContext};
 use crate::wave::graphics::shader::Shader;
 #[cfg(feature = "Vulkan")]
@@ -67,6 +68,7 @@ pub enum EnumError {
   OpenGLError(EnumOpenGLErrors),
   MSAAError,
   ShaderError,
+  InvalidUBO,
   InvalidBufferSize,
   InvalidVertexAttribute,
   InvalidAttributeDivisor,
@@ -119,6 +121,7 @@ impl Stats {
 pub trait TraitContext {
   fn on_new(window: &mut Window) -> Result<Self, EnumError> where Self: Sized;
   fn get_api_version(&self) -> f32;
+  fn get_shader_version(&self) -> f32;
   fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError>;
   fn on_render(&mut self) -> Result<(), EnumError>;
   fn on_delete(&mut self) -> Result<(), EnumError>;
@@ -126,9 +129,7 @@ pub trait TraitContext {
   fn get_max_msaa_count(&self) -> Result<u8, EnumError>;
   fn to_string(&self) -> String;
   fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError>;
-  fn begin(&mut self);
-  fn end(&mut self);
-  fn batch(&mut self);
+  fn batch(&mut self, camera: &PerspectiveCamera) -> Result<(), EnumError>;
   fn flush(&mut self);
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn dequeue(&mut self, id: &u64) -> Result<(), EnumError>;
@@ -199,6 +200,10 @@ impl Renderer {
     self.m_features = features_desired;
   }
   
+  pub fn batch(&mut self, camera: &PerspectiveCamera) -> Result<(), EnumError> {
+    return self.m_api.batch(camera);
+  }
+  
   pub fn submit(&mut self) -> Result<(), EnumError> {
     return Ok(self.m_api.submit(&self.m_features)?);
   }
@@ -243,6 +248,10 @@ impl Renderer {
   
   pub fn get_version(&self) -> f32 {
     return self.m_api.get_api_version();
+  }
+  
+  pub fn get_shader_version(&self) -> f32 {
+    return self.m_api.get_shader_version();
   }
 }
 

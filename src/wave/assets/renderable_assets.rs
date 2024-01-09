@@ -59,7 +59,6 @@ pub struct REntity {
   pub m_texture_coords: Vec<f32>,
   // UUID given by the renderer to differentiate entities in batch rendering.
   m_renderer_id: u64,
-  m_model_matrix: Mat4,
   // Transformations applied to the entity, to be eventually applied to the model matrix.
   m_transform: [Vec3<f32>; 3],
   m_sent: bool,
@@ -75,7 +74,6 @@ impl REntity {
       m_normals: Vec::new(),
       m_colors: Vec::new(),
       m_texture_coords: Vec::new(),
-      m_model_matrix: Mat4::new(1.0),
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
       m_flat_shaded: false
@@ -90,7 +88,6 @@ impl REntity {
       m_normals: Vec::new(),
       m_colors: Vec::new(),
       m_texture_coords: Vec::new(),
-      m_model_matrix: Mat4::new(1.0),
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
       m_flat_shaded: is_flat_shaded
@@ -144,10 +141,9 @@ impl REntity {
     self.m_transform[2] = amount;
   }
   
-  pub fn get_matrix(&mut self) -> &Mat4 {
-    self.m_model_matrix = Mat4::apply_model(&self.m_transform[0],
+  pub fn get_matrix(&self) -> Mat4 {
+    return Mat4::apply_model(&self.m_transform[0],
       &self.m_transform[1], &self.m_transform[2]);
-    return &self.m_model_matrix;
   }
 }
 

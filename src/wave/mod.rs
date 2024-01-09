@@ -414,27 +414,22 @@ impl TraitApp for ExampleApp {
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
-    let vertex_shader = ShaderStage {
-      m_type: EnumShaderType::Vertex,
-      m_source: EnumShaderSource::FromFile(String::from("res/shaders/test.vert")),
-      m_is_cached: false,
-    };
-    let fragment_shader = ShaderStage {
-      m_type: EnumShaderType::Fragment,
-      m_source: EnumShaderSource::FromFile(String::from("res/shaders/test.frag")),
-      m_is_cached: false,
-    };
+    let vertex_shader = ShaderStage::new(EnumShaderType::Vertex,
+      EnumShaderSource::FromFile(String::from("res/shaders/test.vert")), true);
+    let fragment_shader = ShaderStage::new(EnumShaderType::Fragment,
+      EnumShaderSource::FromFile(String::from("res/shaders/test.frag")), true);
     
     let shader = Shader::new(vec![vertex_shader, fragment_shader])?;
     
-    // log!("INFO", "{0}", shader);
+    log!("INFO", "{0}", shader);
     
     self.m_shaders.push(shader);
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
     
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending shaders to GPU...");
     // Sourcing and compilation.
-    self.m_shaders[0].send()?;
-    log!("INFO", "[Shader] -->\t Shader sent to GPU successfully");
+    self.m_shaders[0].submit()?;
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Shaders sent to GPU successfully");
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Uploading camera view and projection to the GPU...");
     let aspect_ratio: f32 = unsafe {
@@ -443,16 +438,18 @@ impl TraitApp for ExampleApp {
     };
     
     self.m_cameras.push(PerspectiveCamera::from(75.0, aspect_ratio, 0.01, 1000.0));
-    self.m_cameras[0].set_view_projection();
-    self.m_shaders[0].upload_data("u_view_projection", self.m_cameras[0].get_matrix())?;
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Camera view and projection uploaded to GPU successfully");
+    let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
+    unsafe { (*renderer).batch(&self.m_cameras[0])? };
+    // self.m_cameras[0].set_view_projection();
+    // self.m_shaders[0].upload_data("u_view_projection", self.m_cameras[0].get_matrix())?;
+    // log!(EnumLogColor::Green, "INFO", "[App] -->\t Camera view and projection uploaded to GPU successfully");
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
     self.m_renderable_assets.push(REntity::from(ResLoader::new("awp.obj")?));
     self.m_renderable_assets[0].translate(Vec3::new(&[10.0, -10.0, 50.0]));
     self.m_renderable_assets[0].rotate(Vec3::new(&[-90.0, 90.0, 0.0]));
-    self.m_shaders[0].upload_data("u_model_matrix", self.m_renderable_assets[0].get_matrix())?;
-    log!("INFO", "[Shader] -->\t Uniform 'u_model_matrix' uploaded to GPU successfully");
+    // self.m_shaders[0].upload_data("u_model", &self.m_renderable_assets[0].get_matrix())?;
+    // log!("INFO", "[Shader] -->\t Uniform 'u_model_matrix' uploaded to GPU successfully");
     
     self.m_renderable_assets[0].send(&mut self.m_shaders[0])?;
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
@@ -475,15 +472,6 @@ impl TraitApp for ExampleApp {
   }
   
   fn on_render(&mut self) -> Result<(), EnumError> {
-    let window = Window::get().expect("Cannot retrieve active window context!");
-    let aspect_ratio: f32 = unsafe {
-      (*window).m_window_resolution.0 as f32 /
-        (*window).m_window_resolution.1 as f32
-    };
-    
-    self.m_cameras[0].update_projection(70.0, aspect_ratio, 0.01, 1000.0);
-    self.m_shaders[0].upload_data("u_view_projection", self.m_cameras[0].get_matrix())?;
-    
     let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
     unsafe { (*renderer).on_render()? };
     

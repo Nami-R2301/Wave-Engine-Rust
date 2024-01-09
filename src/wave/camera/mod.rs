@@ -84,13 +84,16 @@ impl PerspectiveCamera {
     return &self.m_matrix;
   }
   
-  pub fn set_view_projection(&mut self) {
+  pub fn get_projection_matrix(&self) -> Mat4 {
+    return Mat4::apply_perspective(self.m_fov, self.m_aspect_ratio, self.m_z_near, self.m_z_far);
+  }
+  
+  pub fn get_view_matrix(&self) -> Mat4 {
     let up: Vec3<f32> = Vec3::new(&[0.0, 1.0, 0.0]);
     let direction: Vec3<f32> = Vec3::new(&[0.0, 0.0, 1.0]);
     let right: Vec3<f32> = up.cross(direction.clone());
     
-    let projection_matrix: Mat4 = Mat4::apply_perspective(self.m_fov, self.m_aspect_ratio, self.m_z_near, self.m_z_far);
-    let view_matrix: Mat4 = Mat4::from(
+    return Mat4::from(
       [
         [right.x,     right.y,     right.z,            self.m_matrix[0][3]],
         [up.x,        up.y,        up.z,               self.m_matrix[1][3]],
@@ -98,6 +101,11 @@ impl PerspectiveCamera {
         
         [self.m_matrix[3][0], self.m_matrix[3][1], self.m_matrix[3][2], self.m_matrix[3][3]],
       ]);
+  }
+  
+  pub fn set_view_projection(&mut self) {
+    let projection_matrix: Mat4 = self.get_projection_matrix();
+    let view_matrix: Mat4 = self.get_view_matrix();
     
     self.m_matrix = (projection_matrix * view_matrix).transpose();
   }

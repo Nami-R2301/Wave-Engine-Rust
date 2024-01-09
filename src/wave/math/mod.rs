@@ -29,7 +29,6 @@
  */
 
 use std::mem::size_of;
-
 use super::super::impl_struct;
 
 impl_struct!(Vec2<T> { x, y, });
@@ -158,16 +157,26 @@ impl<T> std::ops::IndexMut<usize> for Vec4<T> {
 ///////////////////////////////////                     ///////////////////////////////////
  */
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Mat4 {
-  pub value_ptr: Vec4<Vec4<f32>>,
+  pub m_value_ptr: Vec4<Vec4<f32>>,
 }
 
 impl Mat4 {
-  pub fn new(initialize_identity_value: f32) -> Mat4 {
+  pub fn default() -> Self {
+    return Self {
+      m_value_ptr: Vec4 {
+        x: Vec4::default(),
+        y: Vec4::default(),
+        z: Vec4::default(),
+        w: Vec4::default(),
+      }
+    }
+  }
+  pub fn new(initialize_identity_value: f32) -> Self {
     if initialize_identity_value != 0.0 {
-      return Mat4 {
-        value_ptr: Vec4 {
+      return Self {
+        m_value_ptr: Vec4 {
           x: Vec4 {
             x: initialize_identity_value,
             y: 0.0,
@@ -195,8 +204,8 @@ impl Mat4 {
         },
       };
     }
-    return Mat4 {
-      value_ptr: Vec4 {
+    return Self {
+      m_value_ptr: Vec4 {
         x: Vec4::default(),
         y: Vec4::default(),
         z: Vec4::default(),
@@ -209,16 +218,20 @@ impl Mat4 {
     return Box::new(Mat4::new(initialize_identity_value));
   }
   
+  pub const fn get_size() -> usize {
+    return 4 * 4 * 4;  // sizeof(float) * (16 floats).
+  }
+  
   pub fn delete(&mut self) {
-    self.value_ptr.x.delete();
-    self.value_ptr.y.delete();
-    self.value_ptr.z.delete();
-    self.value_ptr.w.delete();
+    self.m_value_ptr.x.delete();
+    self.m_value_ptr.y.delete();
+    self.m_value_ptr.z.delete();
+    self.m_value_ptr.w.delete();
   }
   
   pub fn from(vec4s: [[f32; 4]; 4]) -> Self {
     return Mat4 {
-      value_ptr: Vec4 {
+      m_value_ptr: Vec4 {
         x: Vec4::new(&vec4s[0]),
         y: Vec4::new(&vec4s[1]),
         z: Vec4::new(&vec4s[2]),
@@ -330,22 +343,22 @@ impl std::fmt::Display for Mat4 {
                                     {4:.3}, {5:.3}, {6:.3}, {7:.3}\n\
                                     {8:.3}, {9:.3}, {10:.3}, {11:.3}\n\
                                     {12:.3}, {13:.3}, {14:.3}, {15:.3}\n",
-      &self.value_ptr[0][0],
-      &self.value_ptr[0][1],
-      &self.value_ptr[0][2],
-      &self.value_ptr[0][3],
-      &self.value_ptr[1][0],
-      &self.value_ptr[1][1],
-      &self.value_ptr[1][2],
-      &self.value_ptr[1][3],
-      &self.value_ptr[2][0],
-      &self.value_ptr[2][1],
-      &self.value_ptr[2][2],
-      &self.value_ptr[2][3],
-      &self.value_ptr[3][0],
-      &self.value_ptr[3][1],
-      &self.value_ptr[3][2],
-      &self.value_ptr[3][3]
+      &self.m_value_ptr[0][0],
+      &self.m_value_ptr[0][1],
+      &self.m_value_ptr[0][2],
+      &self.m_value_ptr[0][3],
+      &self.m_value_ptr[1][0],
+      &self.m_value_ptr[1][1],
+      &self.m_value_ptr[1][2],
+      &self.m_value_ptr[1][3],
+      &self.m_value_ptr[2][0],
+      &self.m_value_ptr[2][1],
+      &self.m_value_ptr[2][2],
+      &self.m_value_ptr[2][3],
+      &self.m_value_ptr[3][0],
+      &self.m_value_ptr[3][1],
+      &self.m_value_ptr[3][2],
+      &self.m_value_ptr[3][3]
     )
   }
 }
@@ -356,13 +369,13 @@ impl std::ops::Index<usize> for Mat4 {
   type Output = Vec4<f32>;
   
   fn index(&self, index: usize) -> &Self::Output {
-    return &self.value_ptr[index];
+    return &self.m_value_ptr[index];
   }
 }
 
 impl std::ops::IndexMut<usize> for Mat4 {
   fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-    return &mut self.value_ptr[index];
+    return &mut self.m_value_ptr[index];
   }
 }
 
@@ -370,7 +383,7 @@ impl std::ops::IndexMut<usize> for Mat4 {
 
 impl PartialEq for Mat4 {
   fn eq(&self, other: &Self) -> bool {
-    if &self.value_ptr == &other.value_ptr {
+    if &self.m_value_ptr == &other.m_value_ptr {
       return true;
     }
     for row in 0..4usize {
@@ -388,6 +401,8 @@ impl PartialEq for Mat4 {
   }
 }
 
+impl Eq for Mat4 {}
+
 ///////////////////// ARITHMETIC ////////////////////////
 
 impl std::ops::Mul for Mat4 {
@@ -397,25 +412,25 @@ impl std::ops::Mul for Mat4 {
     let mut default_matrix: Mat4 = Mat4::new(0.0);
     
     for col in 0..4usize {
-      default_matrix.value_ptr.x[col] += (self.value_ptr.x.x * other_matrix.value_ptr.x[col])
-        + (self.value_ptr.x.y * other_matrix.value_ptr.y[col])
-        + (self.value_ptr.x.z * other_matrix.value_ptr.z[col])
-        + (self.value_ptr.x.w * other_matrix.value_ptr.w[col]);
+      default_matrix.m_value_ptr.x[col] += (self.m_value_ptr.x.x * other_matrix.m_value_ptr.x[col])
+        + (self.m_value_ptr.x.y * other_matrix.m_value_ptr.y[col])
+        + (self.m_value_ptr.x.z * other_matrix.m_value_ptr.z[col])
+        + (self.m_value_ptr.x.w * other_matrix.m_value_ptr.w[col]);
       
-      default_matrix.value_ptr.y[col] += (self.value_ptr.y.x * other_matrix.value_ptr.x[col])
-        + (self.value_ptr.y.y * other_matrix.value_ptr.y[col])
-        + (self.value_ptr.y.z * other_matrix.value_ptr.z[col])
-        + (self.value_ptr.y.w * other_matrix.value_ptr.w[col]);
+      default_matrix.m_value_ptr.y[col] += (self.m_value_ptr.y.x * other_matrix.m_value_ptr.x[col])
+        + (self.m_value_ptr.y.y * other_matrix.m_value_ptr.y[col])
+        + (self.m_value_ptr.y.z * other_matrix.m_value_ptr.z[col])
+        + (self.m_value_ptr.y.w * other_matrix.m_value_ptr.w[col]);
       
-      default_matrix.value_ptr.z[col] += (self.value_ptr.z.x * other_matrix.value_ptr.x[col])
-        + (self.value_ptr.z.y * other_matrix.value_ptr.y[col])
-        + (self.value_ptr.z.z * other_matrix.value_ptr.z[col])
-        + (self.value_ptr.z.w * other_matrix.value_ptr.w[col]);
+      default_matrix.m_value_ptr.z[col] += (self.m_value_ptr.z.x * other_matrix.m_value_ptr.x[col])
+        + (self.m_value_ptr.z.y * other_matrix.m_value_ptr.y[col])
+        + (self.m_value_ptr.z.z * other_matrix.m_value_ptr.z[col])
+        + (self.m_value_ptr.z.w * other_matrix.m_value_ptr.w[col]);
       
-      default_matrix.value_ptr.w[col] += (self.value_ptr.w.x * other_matrix.value_ptr.x[col])
-        + (self.value_ptr.w.y * other_matrix.value_ptr.y[col])
-        + (self.value_ptr.w.z * other_matrix.value_ptr.z[col])
-        + (self.value_ptr.w.w * other_matrix.value_ptr.w[col]);
+      default_matrix.m_value_ptr.w[col] += (self.m_value_ptr.w.x * other_matrix.m_value_ptr.x[col])
+        + (self.m_value_ptr.w.y * other_matrix.m_value_ptr.y[col])
+        + (self.m_value_ptr.w.z * other_matrix.m_value_ptr.z[col])
+        + (self.m_value_ptr.w.w * other_matrix.m_value_ptr.w[col]);
     }
     return default_matrix;
   }

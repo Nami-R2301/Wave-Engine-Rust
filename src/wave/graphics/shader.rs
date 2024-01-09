@@ -82,7 +82,7 @@ impl Display for EnumShaderType {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     match self {
       EnumShaderType::Vertex => write!(f, "Vertex"),
-      EnumShaderType::Fragment => write!(f, "fragment"),
+      EnumShaderType::Fragment => write!(f, "Fragment"),
       EnumShaderType::Compute => write!(f, "Compute")
     }
   }
@@ -97,8 +97,9 @@ pub enum EnumShaderSource {
 impl Display for EnumShaderSource {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     match self {
-      EnumShaderSource::FromFile(file_path) => write!(f, "File, path : {0}", file_path.rsplit("/").next().unwrap()),
-      EnumShaderSource::FromStr(literal_source) => write!(f, "Literal, size : {0}", literal_source.len())
+      EnumShaderSource::FromFile(file_path) => write!(f, "File : {0}", file_path),
+      
+      EnumShaderSource::FromStr(literal_source) => write!(f, "Literal : {0}", literal_source)
     }
   }
 }
@@ -110,18 +111,19 @@ pub trait TraitShader {
   fn get_name(&self) -> EnumApi;
   fn source(&mut self) -> Result<(), EnumError>;
   fn compile(&mut self) -> Result<(), EnumError>;
-  fn send(&mut self) -> Result<(), EnumError>;
+  fn submit(&mut self) -> Result<(), EnumError>;
   fn to_string(&self) -> String;
   fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumError>;
   fn get_id(&self) -> u32;
   fn on_delete(&mut self) -> Result<(), EnumError>;
 }
 
-#[derive(Debug, Clone, PartialOrd, PartialEq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct ShaderStage {
   pub m_type: EnumShaderType,
   pub m_source: EnumShaderSource,
-  pub m_is_cached: bool,
+  pub m_try_load_cache: bool,
+  m_is_cached: bool,
 }
 
 impl ShaderStage {
@@ -129,9 +131,34 @@ impl ShaderStage {
     return Self {
       m_type: EnumShaderType::Vertex,
       m_source: EnumShaderSource::FromStr(String::from("")),
+      m_try_load_cache: false,
       m_is_cached: false,
     };
   }
+  
+  pub fn new(shader_type: EnumShaderType, shader_source: EnumShaderSource,
+             try_loading_from_cache: bool) -> Self {
+    return Self {
+      m_type: shader_type,
+      m_source: shader_source,
+      m_try_load_cache: try_loading_from_cache,
+      m_is_cached: false,
+    }
+  }
+  
+  pub fn cache_status(&self) -> &bool {
+    return &self.m_is_cached;
+  }
+}
+
+impl PartialEq<Self> for ShaderStage {
+  fn eq(&self, other: &Self) -> bool {
+    return self.m_type == other.m_type && self.m_source == other.m_source;
+  }
+}
+
+impl Eq for ShaderStage {
+
 }
 
 pub struct Shader {
@@ -145,17 +172,23 @@ impl Shader {
     };
   }
   
-  pub fn new(shader_stages: Vec<ShaderStage>) -> Result<Self, EnumError> {
-    for shader_stage in shader_stages.iter() {
+  pub fn new(mut shader_stages: Vec<ShaderStage>) -> Result<Self, EnumError> {
+    for shader_stage in shader_stages.iter_mut() {
       match &shader_stage.m_source {
-        EnumShaderSource::FromFile(file_path) => {
-          if file_path.is_empty() {
+        EnumShaderSource::FromFile(file_path_str) => {
+          if file_path_str.is_empty() {
             log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create shader : Invalid file \
             path given for shader source!");
             return Err(EnumError::InvalidShaderModule);
           }
-          let file_path = std::path::Path::new(file_path.as_str());
+          let file_path = std::path::Path::new(file_path_str.as_str());
           Shader::check_file_validity(file_path)?;
+          
+          if shader_stage.m_try_load_cache && Shader::check_cache(file_path).is_ok() {
+            shader_stage.m_is_cached = true;
+            shader_stage.m_source = EnumShaderSource::FromFile(format!("cache/{0}.spv",
+              file_path.file_name().unwrap().to_str().unwrap()))
+          }
         }
         EnumShaderSource::FromStr(literal_string) => {
           if literal_string.is_empty() {
@@ -236,8 +269,8 @@ impl Shader {
     return Ok(());
   }
   
-  pub fn send(&mut self) -> Result<(), EnumError> {
-    return self.m_api_data.send();
+  pub fn submit(&mut self) -> Result<(), EnumError> {
+    return self.m_api_data.submit();
   }
   pub fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumError> {
     return self.m_api_data.upload_data(uniform_name, uniform);
@@ -279,6 +312,7 @@ impl Drop for Shader {
 
 impl Display for Shader {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "[Shader] -->\t Shaders linked : \n{0:113}{1}", "", self.to_string())
+    write!(f, "[Shader] -->\t Program ID => {1}\n{0:113}[Api] |Shader stage| (Source, Cached?) : {2}",
+      "", self.m_api_data.get_id(), self.to_string())
   }
 }

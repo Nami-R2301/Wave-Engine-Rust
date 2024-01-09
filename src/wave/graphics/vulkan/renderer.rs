@@ -33,6 +33,7 @@ use std::collections::HashSet;
 
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
+use crate::wave::camera::PerspectiveCamera;
 use crate::wave::graphics::renderer::{EnumFeature, EnumError, TraitContext};
 use crate::wave::graphics::shader::Shader;
 use crate::wave::window::Window;
@@ -1077,15 +1078,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn begin(&mut self) {
-    todo!()
-  }
-  
-  fn end(&mut self) {
-    todo!()
-  }
-  
-  fn batch(&mut self) {
+  fn batch(&mut self, _camera: &PerspectiveCamera) -> Result<(), EnumError> {
     todo!()
   }
   
@@ -1102,6 +1095,10 @@ impl TraitContext for VkContext {
   }
   
   fn dequeue(&mut self, _id: &u64) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn get_shader_version(&self) -> f32 {
     todo!()
   }
 }

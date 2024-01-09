@@ -216,7 +216,7 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! impl_struct {
     ($struct_name: ident<$struct_type: ident> { $($struct_item: ident,)* }) => {
-      #[derive(Clone)]
+      #[derive(Copy, Clone)]
       pub struct $struct_name<$struct_type> {
         $(pub $struct_item: $struct_type,)*
       }

@@ -28,9 +28,9 @@ extern crate gl46;
 use gl46::GlFns;
 use crate::{check_gl_call, log};
 use crate::wave::assets::renderable_assets::REntity;
+use crate::wave::camera::PerspectiveCamera;
 use crate::wave::graphics::color::Color;
-use crate::wave::graphics::open_gl::buffer::{EnumAttributeType, GLchar, GLenum, GLsizei,
-  GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
+use crate::wave::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar, GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
 use crate::wave::graphics::renderer::{EnumError, EnumFeature, TraitContext};
 use crate::wave::graphics::shader::Shader;
 use crate::wave::window::Window;
@@ -106,6 +106,7 @@ struct GlBatchPrimitives {
   m_shaders: Vec<u32>,
   m_vao_buffers: Vec<GlVao>,
   m_vbo_buffers: Vec<GlVbo>,
+  m_ubo_buffers: Vec<GlUbo>
 }
 
 impl GlBatchPrimitives {
@@ -114,6 +115,7 @@ impl GlBatchPrimitives {
       m_shaders: Vec::new(),
       m_vao_buffers: Vec::new(),
       m_vbo_buffers: Vec::new(),
+      m_ubo_buffers: Vec::new()
     };
   }
 }
@@ -153,6 +155,17 @@ impl TraitContext for GlContext {
     let api_major_minor_only = api_version.get(0..3).unwrap().to_string();
     let to_float: f32 = api_major_minor_only.parse::<f32>().unwrap_or(-1.0);
     return to_float;
+  }
+  
+  fn get_shader_version(&self) -> f32 {
+    let shading_info: Vec<&str> = unsafe {
+      std::ffi::CStr::from_ptr(gl::GetString(gl::SHADING_LANGUAGE_VERSION) as *const i8)
+        .to_str().unwrap_or("Cannot retrieve api version information!")
+        .split(" ")
+        .collect()
+    };
+    let shading_language_version_str = shading_info.first().unwrap();
+    return shading_language_version_str.parse::<f32>().unwrap_or(0.0);
   }
   
   fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError> {
@@ -336,16 +349,15 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn begin(&mut self) {
-    todo!()
-  }
-  
-  fn end(&mut self) {
-    todo!()
-  }
-  
-  fn batch(&mut self) {
-    todo!()
+  fn batch(&mut self, camera: &PerspectiveCamera) -> Result<(), EnumError> {
+    // Setup common ubos across all shaders.
+    self.m_batch.m_ubo_buffers.push(GlUbo::new(EnumUboTypeSize::Camera, 0)?);
+    for shader_id in self.m_batch.m_shaders.iter() {
+      self.m_batch.m_ubo_buffers[0].bind("u_camera", *shader_id)?;
+    }
+    self.m_batch.m_ubo_buffers[0].set_data(EnumUboType::Camera(camera.get_projection_matrix(),
+      camera.get_view_matrix()))?;
+    return Ok(());
   }
   
   fn flush(&mut self) {
@@ -363,6 +375,7 @@ impl TraitContext for GlContext {
     // Allocate main dynamic vbo to hold all the data provided.
     let mut vbo = GlVbo::new(sendable_entity.size(), sendable_entity.count())?;
     let mut vao = GlVao::new()?;
+    let mut ubo_model = GlUbo::new(EnumUboTypeSize::Model, 1)?;
     
     // IDs layout : (u32 for each vertex).
     vbo.set_data(sendable_entity.m_entity_id.as_ptr() as *const GLvoid,
@@ -425,9 +438,13 @@ impl TraitContext for GlContext {
     // Enable all added attributes.
     vao.enable_attributes(attributes)?;
     
+    ubo_model.bind("u_model", shader_associated.get_id())?;
+    ubo_model.set_data(EnumUboType::Model(sendable_entity.get_matrix()))?;
+    
     self.m_batch.m_shaders.push(shader_associated.get_id());
     self.m_batch.m_vao_buffers.push(vao);
     self.m_batch.m_vbo_buffers.push(vbo);
+    self.m_batch.m_ubo_buffers.push(ubo_model);
     
     return Ok(());
   }
