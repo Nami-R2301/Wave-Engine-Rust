@@ -29,7 +29,7 @@ use wave_engine::wave::math::Mat4;
 
 #[test]
 fn test_shader_send() -> Result<(), EnumError> {
-  let mut engine = Engine::new(None, Some(Box::new(EmptyApp::new())))?;
+  let mut engine = Engine::new(None, Some(Box::new(EmptyApp::default())))?;
   engine.on_new()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderType::Vertex,
@@ -48,7 +48,7 @@ fn test_shader_send() -> Result<(), EnumError> {
 
 #[test]
 fn test_load_uniforms() -> Result<(), EnumError> {
-  let mut engine = Engine::new(None, Some(Box::new(EmptyApp::new())))?;
+  let mut engine = Engine::new(None, Some(Box::new(EmptyApp::default())))?;
   engine.on_new()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderType::Vertex,

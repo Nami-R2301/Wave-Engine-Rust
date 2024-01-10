@@ -32,8 +32,8 @@ fn test_obj_loader() {
   match cube {
     Ok(gl_vertices) => {
       let gl_renderable_entity: REntity = REntity::from(gl_vertices);
-      assert_ne!(gl_renderable_entity.m_entity_id[0], u32::MAX);
-      assert_eq!(gl_renderable_entity.m_vertices.len(), 36 * 3);  // Count * Vec3 (x,y,z).
+      assert_ne!(gl_renderable_entity.m_entity_id_array[0], u32::MAX);
+      assert_eq!(gl_renderable_entity.m_vertex_array.len(), 36 * 3);  // Count * Vec3 (x,y,z).
     }
     Err(_) => {
       assert!(false);
