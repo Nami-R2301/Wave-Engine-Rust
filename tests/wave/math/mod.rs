@@ -200,7 +200,7 @@ fn test_vec4_eq() {
 #[test]
 fn test_matrix_index() {
   let mut matrix: Mat4 = Mat4 {
-    value_ptr: Vec4 {
+    m_value_ptr: Vec4 {
       x: Vec4::new(&[1.0, 0.0, 0.0, 5.0]),
       y: Vec4::new(&[0.0, 1.0, 0.0, 10.0]),
       z: Vec4::new(&[0.0, 0.0, 1.0, 2.0]),

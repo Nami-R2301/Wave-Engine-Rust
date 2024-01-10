@@ -22,15 +22,16 @@
  SOFTWARE.
 */
 
+use std::any::Any;
 use std::collections::{HashMap, HashSet};
 
 use gl::types::{GLenum, GLsizei};
 
 use crate::{check_gl_call, log};
 use crate::wave::graphics::open_gl::buffer::{GLboolean, GLchar, GLfloat, GLint, GLuint};
-use crate::wave::graphics::open_gl::renderer::{EnumOpenGLErrors, S_GL_4_6};
+use crate::wave::graphics::open_gl::renderer::{S_GL_4_6};
 use crate::wave::graphics::renderer::{EnumApi, EnumState, Renderer};
-use crate::wave::graphics::shader::{EnumError, EnumShaderSource, EnumShaderType, ShaderStage, TraitShader};
+use crate::wave::graphics::shader::{self, EnumShaderSource, EnumShaderType, ShaderStage, TraitShader};
 use crate::wave::math::Mat4;
 
 /*
@@ -38,6 +39,22 @@ use crate::wave::math::Mat4;
 ///////////////////////////////////                    ///////////////////////////////////
 ///////////////////////////////////                    ///////////////////////////////////
  */
+
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Ord, Hash)]
+pub enum EnumError {
+  ProgramCreationError,
+  ShaderFileError,
+  ShaderCachingError,
+  ShaderSyntaxError,
+  ShaderTypeError,
+  ShaderSourcingError,
+  ShaderCompilationError,
+  ShaderLinkageError,
+  ShaderModuleError,
+  UnsupportedUniformType,
+  UniformNotFound,
+  OpenGLApiError
+}
 
 #[derive(Debug, Clone)]
 pub struct GlShader {
@@ -57,7 +74,7 @@ impl TraitShader for GlShader {
     };
   }
   
-  fn new(shader_stages: Vec<ShaderStage>) -> Result<Self, EnumError> {
+  fn new(shader_stages: Vec<ShaderStage>) -> Result<Self, shader::EnumError> {
     let hash_set = HashSet::from_iter(shader_stages.into_iter());
     return Ok(GlShader {
       m_program_id: 0,
@@ -75,7 +92,7 @@ impl TraitShader for GlShader {
     return EnumApi::OpenGL;
   }
   
-  fn source(&mut self) -> Result<(), EnumError> {
+  fn source(&mut self) -> Result<(), shader::EnumError> {
     for shader_stage in self.m_shader_stages.iter() {
       check_gl_call!("Shader", let shader_id: GLuint = gl::CreateShader(shader_stage.m_type as GLenum));
       let shader_source: Vec<u8>;
@@ -105,7 +122,7 @@ impl TraitShader for GlShader {
     return Ok(());
   }
   
-  fn compile(&mut self) -> Result<(), EnumError> {
+  fn compile(&mut self) -> Result<(), shader::EnumError> {
     for shader_stage in self.m_shader_stages.iter() {
       let shader_id = self.m_shader_ids.get(&shader_stage.m_type)
         .expect(format!("[shader] -->\t Cannot find shader ID for {0}", shader_stage.m_type).as_str());
@@ -172,14 +189,14 @@ impl TraitShader for GlShader {
         Info => {1}", shader_type_str, unsafe {
         std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap()
       });
-        return Err(EnumError::ShaderSyntaxError);
+        return Err(shader::EnumError::from(EnumError::ShaderSyntaxError));
       }
     }
     
     return Ok(());
   }
   
-  fn submit(&mut self) -> Result<(), EnumError> {
+  fn submit(&mut self) -> Result<(), shader::EnumError> {
     if self.m_shader_stages.is_empty() {
       log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot send shader : No shader stages \
       provided!");
@@ -211,7 +228,7 @@ impl TraitShader for GlShader {
       }
       log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error linking program {0}! Error => {1}",
           self.m_program_id, unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str().unwrap() });
-      return Err(EnumError::ProgramCreationError);
+      return Err(shader::EnumError::from(EnumError::ProgramCreationError));
     }
     
     // Delete shaders CPU-side, since we uploaded it to the GPU VRAM.
@@ -234,7 +251,7 @@ impl TraitShader for GlShader {
     return format;
   }
   
-  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumError> {
+  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), shader::EnumError> {
     match self.bind() {
       Ok(_) => {}
       Err(err) => {
@@ -251,7 +268,7 @@ impl TraitShader for GlShader {
       if new_uniform == -1 {
         log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Could not upload uniform '{0}'!",
         uniform_name);
-        return Err(EnumError::UniformNotFound);
+        return Err(shader::EnumError::from(EnumError::UniformNotFound));
       }
       self.m_uniform_cache.insert(uniform_name, new_uniform);
       
@@ -275,7 +292,7 @@ impl TraitShader for GlShader {
       } else {
         log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Type of uniform '{0}' is unsupported for glsl!",
           uniform_name);
-        return Err(EnumError::UnsupportedUniformType);
+        return Err(shader::EnumError::from(EnumError::UnsupportedUniformType));
       }
     }
     return Ok(());
@@ -285,7 +302,11 @@ impl TraitShader for GlShader {
     return self.m_program_id;
   }
   
-  fn on_delete(&mut self) -> Result<(), EnumError> {
+  fn get_api_handle(&self) -> &dyn Any {
+    return self;
+  }
+  
+  fn on_delete(&mut self) -> Result<(), shader::EnumError> {
     Ok(unsafe {
       let renderer = Renderer::get()
         .expect("[Shader] -->\t Cannot drop GlShader, renderer is None! Exiting...");
@@ -299,7 +320,7 @@ impl TraitShader for GlShader {
 }
 
 impl GlShader {
-  pub fn bind(&self) -> Result<(), EnumError> {
+  pub fn bind(&self) -> Result<(), shader::EnumError> {
     check_gl_call!("Shader", gl::UseProgram(self.m_program_id));
     return Ok(());
   }

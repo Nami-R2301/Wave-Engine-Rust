@@ -22,16 +22,18 @@
  SOFTWARE.
 */
 
+use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
-use crate::log;
 
+use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::camera::PerspectiveCamera;
-use crate::wave::graphics::open_gl::renderer::{EnumOpenGLErrors, GlContext};
+use crate::wave::graphics::{open_gl, vulkan};
+use crate::wave::graphics::open_gl::renderer::GlContext;
 use crate::wave::graphics::shader::Shader;
 #[cfg(feature = "Vulkan")]
-use crate::wave::graphics::vulkan::renderer::{EnumVulkanErrors, VkContext};
+use crate::wave::graphics::vulkan::renderer::VkContext;
 use crate::wave::window::Window;
 
 pub static mut S_RENDERER: Option<*mut Renderer> = None;
@@ -53,7 +55,7 @@ pub enum EnumFeature {
   Blending(bool, i64, i64),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum EnumError {
   Init,
   NoApi,
@@ -64,14 +66,23 @@ pub enum EnumError {
   EntityNotFound,
   CError,
   #[cfg(feature = "Vulkan")]
-  VulkanError(EnumVulkanErrors),
-  OpenGLError(EnumOpenGLErrors),
-  MSAAError,
-  ShaderError,
-  InvalidUBO,
-  InvalidBufferSize,
-  InvalidVertexAttribute,
-  InvalidAttributeDivisor,
+  VulkanError(vulkan::renderer::EnumError),
+  OpenGLError(open_gl::renderer::EnumError),
+  OpenGLInvalidBufferOperation(open_gl::buffer::EnumError),
+  #[cfg(feature = "Vulkan")]
+  VulkanInvalidBufferOperation(vulkan::buffer::EnumError),
+}
+
+impl From<open_gl::renderer::EnumError> for EnumError {
+  fn from(value: open_gl::renderer::EnumError) -> Self {
+    return EnumError::OpenGLError(value);
+  }
+}
+
+impl From<vulkan::renderer::EnumError> for EnumError {
+  fn from(value: vulkan::renderer::EnumError) -> Self {
+    return EnumError::VulkanError(value);
+  }
 }
 
 impl Display for EnumError {
@@ -120,8 +131,9 @@ impl Stats {
 
 pub trait TraitContext {
   fn on_new(window: &mut Window) -> Result<Self, EnumError> where Self: Sized;
+  fn get_api_handle(&mut self) -> &mut dyn Any;
   fn get_api_version(&self) -> f32;
-  fn get_shader_version(&self) -> f32;
+  fn get_max_shader_version_available(&self) -> f32;
   fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError>;
   fn on_render(&mut self) -> Result<(), EnumError>;
   fn on_delete(&mut self) -> Result<(), EnumError>;
@@ -129,7 +141,7 @@ pub trait TraitContext {
   fn get_max_msaa_count(&self) -> Result<u8, EnumError>;
   fn to_string(&self) -> String;
   fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError>;
-  fn batch(&mut self, camera: &PerspectiveCamera) -> Result<(), EnumError>;
+  fn setup_camera_ubo(&mut self, camera: &PerspectiveCamera) -> Result<(), EnumError>;
   fn flush(&mut self);
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn dequeue(&mut self, id: &u64) -> Result<(), EnumError>;
@@ -200,8 +212,8 @@ impl Renderer {
     self.m_features = features_desired;
   }
   
-  pub fn batch(&mut self, camera: &PerspectiveCamera) -> Result<(), EnumError> {
-    return self.m_api.batch(camera);
+  pub fn setup_camera_ubo(&mut self, camera: &PerspectiveCamera) -> Result<(), EnumError> {
+    return self.m_api.setup_camera_ubo(camera);
   }
   
   pub fn submit(&mut self) -> Result<(), EnumError> {
@@ -220,6 +232,10 @@ impl Renderer {
     return self.m_api.toggle(feature);
   }
   
+  pub fn get_api_handle(&mut self) -> &mut dyn Any {
+    return self.m_api.get_api_handle();
+  }
+  
   pub fn on_delete(&mut self) -> Result<(), EnumError> {
     if self.m_state == EnumState::Error {
       log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot delete renderer : No active renderer!");
@@ -231,6 +247,7 @@ impl Renderer {
     // Free up resources.
     self.m_api.on_delete()?;
     self.m_state = EnumState::Shutdown;
+    unsafe { S_RENDERER = None };
     return Ok(());
   }
   
@@ -250,8 +267,8 @@ impl Renderer {
     return self.m_api.get_api_version();
   }
   
-  pub fn get_shader_version(&self) -> f32 {
-    return self.m_api.get_shader_version();
+  pub fn get_max_shader_version_available(&self) -> f32 {
+    return self.m_api.get_max_shader_version_available();
   }
 }
 
@@ -263,15 +280,20 @@ impl Display for Renderer {
 
 impl Drop for Renderer {
   fn drop(&mut self) {
-    log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Dropping renderer...");
-    match self.on_delete() {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Dropped renderer successfully...");
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error while dropping renderer : \
+    unsafe {
+      if S_RENDERER.is_some() {
+        log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Dropping renderer...");
+        match self.on_delete() {
+          Ok(_) => {
+            log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Dropped renderer successfully...");
+          }
+          Err(err) => {
+            log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error while dropping renderer : \
         Error => {:?}", err);
-        log!(EnumLogColor::Red, "INFO", "[Renderer] -->\t Dropped renderer unsuccessfully...");
+            log!(EnumLogColor::Red, "INFO", "[Renderer] -->\t Dropped renderer unsuccessfully...");
+          }
+        }
+        S_RENDERER = None;
       }
     }
   }

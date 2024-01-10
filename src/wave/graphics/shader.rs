@@ -25,35 +25,26 @@
 use std::fmt::{Display, Formatter};
 
 use crate::log;
-use crate::wave::graphics::open_gl::renderer::EnumOpenGLErrors;
 use crate::wave::graphics::open_gl::shader::GlShader;
 use crate::wave::graphics::renderer::{EnumApi, Renderer};
+use crate::wave::graphics::{open_gl, vulkan};
 #[cfg(feature = "Vulkan")]
 use crate::wave::graphics::vulkan::shader::VkShader;
 
 #[derive(Debug, PartialEq)]
 pub enum EnumError {
-  InvalidShaderModule,
   InvalidApi,
+  UnsupportedApiFunction,
   FileNotFound,
   PathError,
-  IoError(std::io::ErrorKind),
-  UnsupportedApiFunction,
-  ShaderNotCached,
-  ProgramCreationError,
   UnsupportedFileType,
-  ShaderFileError,
-  ShaderCachingError,
-  ShaderSyntaxError,
-  ShaderTypeError,
-  ShaderSourcingError,
-  ShaderCompilation,
-  ShaderLinkage,
-  UnsupportedUniformType,
-  UniformNotFound,
-  OpenGLError(EnumOpenGLErrors),
+  ShaderNotCached,
+  InvalidShaderSource,
+  InvalidFileOperation,
+  IoError(std::io::ErrorKind),
+  OpenGLShaderError(open_gl::shader::EnumError),
   #[cfg(feature = "Vulkan")]
-  SpirVError(shaderc::Error),
+  VulkanShaderError(vulkan::shader::EnumError),
 }
 
 impl Display for EnumError {
@@ -65,6 +56,24 @@ impl Display for EnumError {
 impl From<std::io::Error> for EnumError {
   fn from(err: std::io::Error) -> Self {
     return EnumError::IoError(err.kind());
+  }
+}
+
+impl From<open_gl::renderer::EnumError> for EnumError {
+  fn from(_value: open_gl::renderer::EnumError) -> Self {
+    return EnumError::OpenGLShaderError(open_gl::shader::EnumError::OpenGLApiError);
+  }
+}
+
+impl From<open_gl::shader::EnumError> for EnumError {
+  fn from(value: open_gl::shader::EnumError) -> Self {
+    return EnumError::OpenGLShaderError(value);
+  }
+}
+
+impl From<vulkan::shader::EnumError> for EnumError {
+  fn from(value: vulkan::shader::EnumError) -> Self {
+    return EnumError::VulkanShaderError(value);
   }
 }
 
@@ -91,7 +100,7 @@ impl Display for EnumShaderType {
 #[derive(Debug, Clone, PartialOrd, PartialEq, Hash)]
 pub enum EnumShaderSource {
   FromFile(String),
-  FromStr(String)
+  FromStr(String),
 }
 
 impl Display for EnumShaderSource {
@@ -101,6 +110,15 @@ impl Display for EnumShaderSource {
       
       EnumShaderSource::FromStr(literal_source) => write!(f, "Literal : {0}", literal_source)
     }
+  }
+}
+
+impl From<EnumShaderSource> for String {
+  fn from(value: EnumShaderSource) -> Self {
+    return match value {
+      EnumShaderSource::FromFile(file_path_str) => file_path_str,
+      EnumShaderSource::FromStr(literal_source_str) => literal_source_str,
+    };
   }
 }
 
@@ -115,6 +133,7 @@ pub trait TraitShader {
   fn to_string(&self) -> String;
   fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumError>;
   fn get_id(&self) -> u32;
+  fn get_api_handle(&self) -> &dyn std::any::Any;
   fn on_delete(&mut self) -> Result<(), EnumError>;
 }
 
@@ -122,7 +141,6 @@ pub trait TraitShader {
 pub struct ShaderStage {
   pub m_type: EnumShaderType,
   pub m_source: EnumShaderSource,
-  pub m_try_load_cache: bool,
   m_is_cached: bool,
 }
 
@@ -131,19 +149,16 @@ impl ShaderStage {
     return Self {
       m_type: EnumShaderType::Vertex,
       m_source: EnumShaderSource::FromStr(String::from("")),
-      m_try_load_cache: false,
       m_is_cached: false,
     };
   }
   
-  pub fn new(shader_type: EnumShaderType, shader_source: EnumShaderSource,
-             try_loading_from_cache: bool) -> Self {
+  pub fn new(shader_type: EnumShaderType, shader_source: EnumShaderSource) -> Self {
     return Self {
       m_type: shader_type,
       m_source: shader_source,
-      m_try_load_cache: try_loading_from_cache,
       m_is_cached: false,
-    }
+    };
   }
   
   pub fn cache_status(&self) -> &bool {
@@ -157,9 +172,7 @@ impl PartialEq<Self> for ShaderStage {
   }
 }
 
-impl Eq for ShaderStage {
-
-}
+impl Eq for ShaderStage {}
 
 pub struct Shader {
   m_api_data: Box<dyn TraitShader>,
@@ -179,12 +192,15 @@ impl Shader {
           if file_path_str.is_empty() {
             log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create shader : Invalid file \
             path given for shader source!");
-            return Err(EnumError::InvalidShaderModule);
+            return Err(EnumError::InvalidShaderSource);
           }
+          
+          // Check if file exists and is a supported format.
           let file_path = std::path::Path::new(file_path_str.as_str());
           Shader::check_file_validity(file_path)?;
           
-          if shader_stage.m_try_load_cache && Shader::check_cache(file_path).is_ok() {
+          // Try loading from cache.
+          if Shader::check_cache(file_path).is_ok() {
             shader_stage.m_is_cached = true;
             shader_stage.m_source = EnumShaderSource::FromFile(format!("cache/{0}.spv",
               file_path.file_name().unwrap().to_str().unwrap()))
@@ -194,7 +210,7 @@ impl Shader {
           if literal_string.is_empty() {
             log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create shader : Empty source \
           string given for shader source!");
-            return Err(EnumError::InvalidShaderModule);
+            return Err(EnumError::InvalidShaderSource);
           }
         }
       }
@@ -221,7 +237,7 @@ impl Shader {
   pub fn check_cache(shader_file_path: &std::path::Path) -> Result<Vec<u8>, EnumError> {
     let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
     unsafe {
-      let renderer_api_version = (*renderer).get_version();
+      let renderer_api_version = (*renderer).get_max_shader_version_available();
       if (*renderer).m_type == EnumApi::OpenGL && renderer_api_version < 4.6 {
         log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Cannot load from cached SPIR-V binary : \
           Current OpenGL renderer doesn't support the extension required 'ARB_gl_spirv', found \
@@ -296,15 +312,18 @@ impl Shader {
 
 impl Drop for Shader {
   fn drop(&mut self) {
-    log!(EnumLogColor::Purple, "INFO", "[Shader] -->\t Dropping shader...");
-    match self.on_delete() {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[Shader] -->\t Dropped shader successfully...");
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error while dropping shader : \
+    let renderer = Renderer::get();
+    if renderer.is_some() {
+      log!(EnumLogColor::Purple, "INFO", "[Shader] -->\t Dropping shader...");
+      match self.on_delete() {
+        Ok(_) => {
+          log!(EnumLogColor::Green, "INFO", "[Shader] -->\t Dropped shader successfully...");
+        }
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error while dropping shader : \
         Error => {:?}", err);
-        log!(EnumLogColor::Red, "INFO", "[Shader] -->\t Dropped shader unsuccessfully...");
+          log!(EnumLogColor::Red, "INFO", "[Shader] -->\t Dropped shader unsuccessfully...");
+        }
       }
     }
   }

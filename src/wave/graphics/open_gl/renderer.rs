@@ -22,6 +22,7 @@
  SOFTWARE.
 */
 
+use std::any::Any;
 use std::collections::HashSet;
 extern crate gl46;
 
@@ -30,8 +31,10 @@ use crate::{check_gl_call, log};
 use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::camera::PerspectiveCamera;
 use crate::wave::graphics::color::Color;
-use crate::wave::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar, GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
-use crate::wave::graphics::renderer::{EnumError, EnumFeature, TraitContext};
+use crate::wave::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar,
+  GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
+use crate::wave::graphics::{open_gl, renderer};
+use crate::wave::graphics::renderer::{EnumFeature, TraitContext};
 use crate::wave::graphics::shader::Shader;
 use crate::wave::window::Window;
 
@@ -43,10 +46,25 @@ use crate::wave::window::Window;
 
 pub(crate) static mut S_GL_4_6: Option<GlFns> = None;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum EnumOpenGLErrors {
+#[derive(Debug, Clone, Ord, Eq, PartialOrd, PartialEq, Hash)]
+pub enum EnumError {
   InvalidContext,
   InvalidOperation(GLenum),
+  MSAAError,
+  InvalidBufferOperation(open_gl::buffer::EnumError),
+  InvalidShaderOperation(open_gl::shader::EnumError)
+}
+
+impl From<open_gl::buffer::EnumError> for EnumError {
+  fn from(value: open_gl::buffer::EnumError) -> Self {
+    return EnumError::InvalidBufferOperation(value);
+  }
+}
+
+impl From<open_gl::shader::EnumError> for EnumError {
+  fn from(value: open_gl::shader::EnumError) -> Self {
+    return EnumError::InvalidShaderOperation(value);
+  }
 }
 
 #[macro_export]
@@ -60,7 +78,7 @@ macro_rules! check_gl_call {
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
           Code => 0x{1:x}", $name, error);
-          return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
+          return Err(crate::wave::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
         }
       }
     };
@@ -72,7 +90,7 @@ macro_rules! check_gl_call {
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
                Code => 0x{1:x}", $name, error);
-          return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
+          return Err(crate::wave::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
         }
       }
     };
@@ -84,7 +102,7 @@ macro_rules! check_gl_call {
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
              Code => 0x{1:x}", $name, error);
-          return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
+          return Err(crate::wave::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
         }
       }
     };
@@ -96,7 +114,7 @@ macro_rules! check_gl_call {
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t Error when executing gl call! \
            Code => 0x{1:x}", $name, error);
-          return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidOperation(error)));
+          return Err(crate::wave::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
         }
       }
     };
@@ -127,7 +145,7 @@ pub struct GlContext {
 }
 
 impl TraitContext for GlContext {
-  fn on_new(window: &mut Window) -> Result<Self, EnumError> {
+  fn on_new(window: &mut Window) -> Result<Self, renderer::EnumError> {
     // Init context.
     window.init_opengl_surface();
     gl::load_with(|f_name| window.get_api_ref().get_proc_address_raw(f_name));
@@ -141,6 +159,10 @@ impl TraitContext for GlContext {
       m_batch: GlBatchPrimitives::new(),
       m_debug_callback: Some(gl_error_callback),
     });
+  }
+  
+  fn get_api_handle(&mut self) -> &mut dyn Any {
+    return self;
   }
   
   fn get_api_version(&self) -> f32 {
@@ -157,7 +179,7 @@ impl TraitContext for GlContext {
     return to_float;
   }
   
-  fn get_shader_version(&self) -> f32 {
+  fn get_max_shader_version_available(&self) -> f32 {
     let shading_info: Vec<&str> = unsafe {
       std::ffi::CStr::from_ptr(gl::GetString(gl::SHADING_LANGUAGE_VERSION) as *const i8)
         .to_str().unwrap_or("Cannot retrieve api version information!")
@@ -168,7 +190,7 @@ impl TraitContext for GlContext {
     return shading_language_version_str.parse::<f32>().unwrap_or(0.0);
   }
   
-  fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError> {
+  fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, renderer::EnumError> {
     return match window_event {
       glfw::WindowEvent::FramebufferSize(width, height) => {
         check_gl_call!("Renderer", gl::Viewport(0, 0, width, height));
@@ -178,7 +200,7 @@ impl TraitContext for GlContext {
     }
   }
   
-  fn on_render(&mut self) -> Result<(), EnumError> {
+  fn on_render(&mut self) -> Result<(), renderer::EnumError> {
     check_gl_call!("Renderer", gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
     for index in 0usize..self.m_batch.m_shaders.len() {
       check_gl_call!("Renderer", gl::UseProgram(self.m_batch.m_shaders[index]));
@@ -188,11 +210,11 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn on_delete(&mut self) -> Result<(), EnumError> {
+  fn on_delete(&mut self) -> Result<(), renderer::EnumError> {
     return Ok(());
   }
   
-  fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError> {
+  fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), renderer::EnumError> {
     // Enable or disable features AFTER context creation since we need a context to load our openGL
     // functions.
     for feature in features {
@@ -203,7 +225,7 @@ impl TraitContext for GlContext {
     if window_opt.is_none() {
       log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot set OpenGl viewport dimensions : \
       No active window context!");
-      return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidContext));
+      return Err(renderer::EnumError::from(EnumError::InvalidContext));
     }
     
     let window = window_opt.unwrap();
@@ -217,7 +239,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn get_max_msaa_count(&self) -> Result<u8, EnumError> {
+  fn get_max_msaa_count(&self) -> Result<u8, renderer::EnumError> {
     // let framebuffer_color_sample_count: u8 = self.m_framebuffer.max_color_sample_count;
     // let framebuffer_depth_sample_count: u8 = self.m_framebuffer.max_depth_sample_count;
     //
@@ -226,7 +248,7 @@ impl TraitContext for GlContext {
     if window.is_none() {
       log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot retrieve MSAA max count supported \
       by the window context : No active window context available!");
-      return Err(EnumError::OpenGLError(EnumOpenGLErrors::InvalidContext));
+      return Err(renderer::EnumError::from(EnumError::InvalidContext));
     }
     return Ok(unsafe { (*window.unwrap()).m_samples });
   }
@@ -259,7 +281,7 @@ impl TraitContext for GlContext {
     }
   }
   
-  fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError> {
+  fn toggle(&mut self, feature: EnumFeature) -> Result<(), renderer::EnumError> {
     match feature {
       EnumFeature::Debug(enabled) => {
         if enabled {
@@ -290,7 +312,7 @@ impl TraitContext for GlContext {
           max_sample_count = self.get_max_msaa_count()?;
           if max_sample_count < 2 {
             log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot enable MSAA!");
-            return Err(EnumError::MSAAError);
+            return Err(renderer::EnumError::from(EnumError::MSAAError));
           } else if sample_count.unwrap() > max_sample_count {
             log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t Cannot enable MSAA with X{0}! \
               Defaulting to {1}...", sample_count.unwrap(), max_sample_count);
@@ -349,13 +371,13 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn batch(&mut self, camera: &PerspectiveCamera) -> Result<(), EnumError> {
+  fn setup_camera_ubo(&mut self, camera: &PerspectiveCamera) -> Result<(), renderer::EnumError> {
     // Setup common ubos across all shaders.
-    self.m_batch.m_ubo_buffers.push(GlUbo::new(EnumUboTypeSize::Camera, 0)?);
+    self.m_batch.m_ubo_buffers.push(GlUbo::new(EnumUboTypeSize::ViewProjection, 0)?);
     for shader_id in self.m_batch.m_shaders.iter() {
       self.m_batch.m_ubo_buffers[0].bind("u_camera", *shader_id)?;
     }
-    self.m_batch.m_ubo_buffers[0].set_data(EnumUboType::Camera(camera.get_projection_matrix(),
+    self.m_batch.m_ubo_buffers[0].set_data(EnumUboType::ViewProjection(camera.get_projection_matrix(),
       camera.get_view_matrix()))?;
     return Ok(());
   }
@@ -364,7 +386,7 @@ impl TraitContext for GlContext {
     todo!()
   }
   
-  fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError> {
+  fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
     if sendable_entity.is_empty() {
       log!(EnumLogColor::Yellow, "WARN", "[Renderer] --> Entity {0} sent has no \
       vertices! Not sending it...", sendable_entity)
@@ -375,31 +397,31 @@ impl TraitContext for GlContext {
     // Allocate main dynamic vbo to hold all the data provided.
     let mut vbo = GlVbo::new(sendable_entity.size(), sendable_entity.count())?;
     let mut vao = GlVao::new()?;
-    let mut ubo_model = GlUbo::new(EnumUboTypeSize::Model, 1)?;
+    let mut ubo_model = GlUbo::new(EnumUboTypeSize::Transform, 1)?;
     
     // IDs layout : (u32 for each vertex).
-    vbo.set_data(sendable_entity.m_entity_id.as_ptr() as *const GLvoid,
-      std::mem::size_of::<u32>() * sendable_entity.m_entity_id.len(), offset)?;
-    offset += std::mem::size_of::<u32>() * sendable_entity.m_entity_id.len();
+    vbo.set_data(sendable_entity.m_entity_id_array.as_ptr() as *const GLvoid,
+      std::mem::size_of::<u32>() * sendable_entity.m_entity_id_array.len(), offset)?;
+    offset += std::mem::size_of::<u32>() * sendable_entity.m_entity_id_array.len();
     
     // Positions layout : (x,y,z || x,y).
-    vbo.set_data(sendable_entity.m_vertices.as_ptr() as *const GLvoid,
-      std::mem::size_of::<f32>() * sendable_entity.m_vertices.len(), offset)?;
-    offset += std::mem::size_of::<f32>() * sendable_entity.m_vertices.len();
+    vbo.set_data(sendable_entity.m_vertex_array.as_ptr() as *const GLvoid,
+      std::mem::size_of::<f32>() * sendable_entity.m_vertex_array.len(), offset)?;
+    offset += std::mem::size_of::<f32>() * sendable_entity.m_vertex_array.len();
     
     // Normals layout : (x,y,z || x,y).
-    vbo.set_data(sendable_entity.m_normals.as_ptr() as *const GLvoid,
-      std::mem::size_of::<f32>() * sendable_entity.m_normals.len(), offset)?;
-    offset += std::mem::size_of::<f32>() * sendable_entity.m_normals.len();
+    vbo.set_data(sendable_entity.m_normal_array.as_ptr() as *const GLvoid,
+      std::mem::size_of::<f32>() * sendable_entity.m_normal_array.len(), offset)?;
+    offset += std::mem::size_of::<f32>() * sendable_entity.m_normal_array.len();
     
     // Colors layout : (r,g,b,a).
-    vbo.set_data(sendable_entity.m_colors.as_ptr() as *const GLvoid,
-      std::mem::size_of::<Color>() * sendable_entity.m_colors.len(), offset)?;
-    offset += std::mem::size_of::<Color>() * sendable_entity.m_colors.len();
+    vbo.set_data(sendable_entity.m_color_array.as_ptr() as *const GLvoid,
+      std::mem::size_of::<Color>() * sendable_entity.m_color_array.len(), offset)?;
+    offset += std::mem::size_of::<Color>() * sendable_entity.m_color_array.len();
     
     // Texture coordinates layout : (x,y).
-    vbo.set_data(sendable_entity.m_texture_coords.as_ptr() as *const GLvoid,
-      std::mem::size_of::<f32>() * sendable_entity.m_texture_coords.len(), offset)?;
+    vbo.set_data(sendable_entity.m_texture_coord_array.as_ptr() as *const GLvoid,
+      std::mem::size_of::<f32>() * sendable_entity.m_texture_coord_array.len(), offset)?;
     
     offset = 0;
     
@@ -408,38 +430,50 @@ impl TraitContext for GlContext {
     
     // IDs.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1),
-      false, offset, 0)?);
-    offset += std::mem::size_of::<u32>() * sendable_entity.m_entity_id.len();
+      false, offset, 0).map_err(|error| {
+        return EnumError::InvalidBufferOperation(error);
+    })?);
+    offset += std::mem::size_of::<u32>() * sendable_entity.m_entity_id_array.len();
     
     // Positions.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
-      false, offset, 0)?);
-    offset += std::mem::size_of::<f32>() * sendable_entity.m_vertices.len();
+      false, offset, 0).map_err(|error| {
+      return EnumError::InvalidBufferOperation(error);
+    })?);
+    offset += std::mem::size_of::<f32>() * sendable_entity.m_vertex_array.len();
     
     // Normals.
     if sendable_entity.is_flat_shaded() {
       attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
-        false, offset, 1)?);
+        false, offset, 1).map_err(|error| {
+        return EnumError::InvalidBufferOperation(error);
+      })?);
     } else {
       attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
-        false, offset, 0)?);
+        false, offset, 0).map_err(|error| {
+        return EnumError::InvalidBufferOperation(error);
+      })?);
     }
-    offset += std::mem::size_of::<f32>() * sendable_entity.m_normals.len();
+    offset += std::mem::size_of::<f32>() * sendable_entity.m_normal_array.len();
     
     // Colors.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec4,
-      false, offset, 0)?);
-    offset += std::mem::size_of::<Color>() * sendable_entity.m_colors.len();
+      false, offset, 0).map_err(|error| {
+      return EnumError::InvalidBufferOperation(error);
+    })?);
+    offset += std::mem::size_of::<Color>() * sendable_entity.m_color_array.len();
     
     // Texture coordinates.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec2,
-      false, offset, 0)?);
+      false, offset, 0).map_err(|error| {
+      return EnumError::InvalidBufferOperation(error);
+    })?);
     
     // Enable all added attributes.
     vao.enable_attributes(attributes)?;
     
     ubo_model.bind("u_model", shader_associated.get_id())?;
-    ubo_model.set_data(EnumUboType::Model(sendable_entity.get_matrix()))?;
+    ubo_model.set_data(EnumUboType::Transform(sendable_entity.get_matrix()))?;
     
     self.m_batch.m_shaders.push(shader_associated.get_id());
     self.m_batch.m_vao_buffers.push(vao);
@@ -449,7 +483,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn dequeue(&mut self, _id: &u64) -> Result<(), EnumError> {
+  fn dequeue(&mut self, _id: &u64) -> Result<(), renderer::EnumError> {
     todo!()
   }
 }
@@ -460,6 +494,7 @@ extern "system" fn gl_error_callback(error_code: GLenum, e_type: GLenum, _id: GL
   let mut final_error_msg: String = "".to_string();
   if error_code != gl::NO_ERROR {
     match error_code {
+      0x8246 => return, // Filter out performance info regarding using video memory for GL_DYNAMIC_DRAW.
       _ => { final_error_msg += &format!("Code => 0x{0:x}; ", error_code) }
     }
     

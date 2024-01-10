@@ -52,11 +52,11 @@ pub trait TraitRenderableEntity {
 #[derive(Debug, Clone)]
 pub struct REntity {
   // Mouse picking ID per vertex.
-  pub m_entity_id: Vec<u32>,
-  pub m_vertices: Vec<f32>,
-  pub m_normals: Vec<f32>,
-  pub m_colors: Vec<Color>,
-  pub m_texture_coords: Vec<f32>,
+  pub m_entity_id_array: Vec<u32>,
+  pub m_vertex_array: Vec<f32>,
+  pub m_normal_array: Vec<f32>,
+  pub m_color_array: Vec<Color>,
+  pub m_texture_coord_array: Vec<f32>,
   // UUID given by the renderer to differentiate entities in batch rendering.
   m_renderer_id: u64,
   // Transformations applied to the entity, to be eventually applied to the model matrix.
@@ -69,11 +69,11 @@ impl REntity {
   pub fn default() -> Self {
     return REntity {
       m_renderer_id: u64::MAX,
-      m_entity_id: Vec::new(),
-      m_vertices: Vec::new(),
-      m_normals: Vec::new(),
-      m_colors: Vec::new(),
-      m_texture_coords: Vec::new(),
+      m_entity_id_array: Vec::new(),
+      m_vertex_array: Vec::new(),
+      m_normal_array: Vec::new(),
+      m_color_array: Vec::new(),
+      m_texture_coord_array: Vec::new(),
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
       m_flat_shaded: false
@@ -83,11 +83,11 @@ impl REntity {
   pub fn new(is_flat_shaded: bool) -> Self {
     return REntity {
       m_renderer_id: u64::MAX,
-      m_entity_id: Vec::new(),
-      m_vertices: Vec::new(),
-      m_normals: Vec::new(),
-      m_colors: Vec::new(),
-      m_texture_coords: Vec::new(),
+      m_entity_id_array: Vec::new(),
+      m_vertex_array: Vec::new(),
+      m_normal_array: Vec::new(),
+      m_color_array: Vec::new(),
+      m_texture_coord_array: Vec::new(),
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
       m_flat_shaded: is_flat_shaded
@@ -95,19 +95,19 @@ impl REntity {
   }
   
   pub fn size(&self) -> usize {
-    return (size_of::<u32>() * self.m_entity_id.len()) +
-      (size_of::<f32>() * self.m_vertices.len()) +
-      (size_of::<f32>() * self.m_normals.len()) +
-      (size_of::<Color>() * self.m_colors.len()) +
-      (size_of::<f32>() * self.m_texture_coords.len());
+    return (size_of::<u32>() * self.m_entity_id_array.len()) +
+      (size_of::<f32>() * self.m_vertex_array.len()) +
+      (size_of::<f32>() * self.m_normal_array.len()) +
+      (size_of::<Color>() * self.m_color_array.len()) +
+      (size_of::<f32>() * self.m_texture_coord_array.len());
   }
   
   pub fn count(&self) -> usize {
-    return self.m_entity_id.len();
+    return self.m_entity_id_array.len();
   }
   
   pub fn is_empty(&self) -> bool {
-    return self.m_vertices.is_empty();
+    return self.m_vertex_array.is_empty();
   }
   
   pub fn is_flat_shaded(&self) -> bool {
@@ -121,8 +121,8 @@ impl REntity {
         new_id = rand::random::<u32>();
       }
     }
-    for index in 0..self.m_entity_id.len() {
-      self.m_entity_id[index] = new_id;
+    for index in 0..self.m_entity_id_array.len() {
+      self.m_entity_id_array[index] = new_id;
     }
   }
   
@@ -143,7 +143,7 @@ impl REntity {
   
   pub fn get_matrix(&self) -> Mat4 {
     return Mat4::apply_model(&self.m_transform[0],
-      &self.m_transform[1], &self.m_transform[2]);
+      &self.m_transform[1], &self.m_transform[2]).transpose();
   }
 }
 
@@ -152,8 +152,8 @@ impl REntity {
 impl Display for REntity {
   fn fmt(&self, format: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(format, "[REntity] --> \nSent => {0}\nIDs => {1:#?}\nPositions => {2:#?}\n\
-     Normals => {3:#?}\nColors => {4:#?}\nTexture coords => {5:#?}", self.m_sent, self.m_entity_id,
-      self.m_vertices, self.m_normals, self.m_colors, self.m_texture_coords)
+     Normals => {3:#?}\nColors => {4:#?}\nTexture coords => {5:#?}", self.m_sent, self.m_entity_id_array,
+      self.m_vertex_array, self.m_normal_array, self.m_color_array, self.m_texture_coord_array)
   }
 }
 
@@ -161,7 +161,7 @@ impl Display for REntity {
 
 impl PartialEq for REntity {
   fn eq(&self, other: &Self) -> bool {
-    return self.m_entity_id == other.m_entity_id;
+    return self.m_entity_id_array == other.m_entity_id_array;
   }
   
   fn ne(&self, other: &Self) -> bool {

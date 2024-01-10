@@ -314,7 +314,7 @@ impl Mat4 {
     let rotation_mat = Mat4::rotate_model(rotation_vec);
     let scale_mat = Mat4::scale_model(scale_vec);
     
-    return (translation_mat * (rotation_mat * scale_mat)).transpose();
+    return translation_mat * (rotation_mat * scale_mat);
   }
   
   pub fn apply_perspective(fov: f32, aspect_ratio: f32, z_near: f32, z_far: f32) -> Self {

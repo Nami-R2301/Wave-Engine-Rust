@@ -381,7 +381,7 @@ impl ExampleApp {
 pub struct EmptyApp {}
 
 impl EmptyApp {
-  pub fn new() -> Self {
+  pub fn default() -> Self {
     return EmptyApp {};
   }
 }
@@ -415,9 +415,9 @@ impl TraitApp for ExampleApp {
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
     let vertex_shader = ShaderStage::new(EnumShaderType::Vertex,
-      EnumShaderSource::FromFile(String::from("res/shaders/test.vert")), true);
+      EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
     let fragment_shader = ShaderStage::new(EnumShaderType::Fragment,
-      EnumShaderSource::FromFile(String::from("res/shaders/test.frag")), true);
+      EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
     
     let shader = Shader::new(vec![vertex_shader, fragment_shader])?;
     
@@ -431,25 +431,18 @@ impl TraitApp for ExampleApp {
     self.m_shaders[0].submit()?;
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Shaders sent to GPU successfully");
     
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Uploading camera view and projection to the GPU...");
     let aspect_ratio: f32 = unsafe {
       (*window).m_window_resolution.0 as f32 /
         (*window).m_window_resolution.1 as f32
     };
-    
     self.m_cameras.push(PerspectiveCamera::from(75.0, aspect_ratio, 0.01, 1000.0));
     let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
-    unsafe { (*renderer).batch(&self.m_cameras[0])? };
-    // self.m_cameras[0].set_view_projection();
-    // self.m_shaders[0].upload_data("u_view_projection", self.m_cameras[0].get_matrix())?;
-    // log!(EnumLogColor::Green, "INFO", "[App] -->\t Camera view and projection uploaded to GPU successfully");
+    unsafe { (*renderer).setup_camera_ubo(&self.m_cameras[0])? };
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
     self.m_renderable_assets.push(REntity::from(ResLoader::new("awp.obj")?));
     self.m_renderable_assets[0].translate(Vec3::new(&[10.0, -10.0, 50.0]));
     self.m_renderable_assets[0].rotate(Vec3::new(&[-90.0, 90.0, 0.0]));
-    // self.m_shaders[0].upload_data("u_model", &self.m_renderable_assets[0].get_matrix())?;
-    // log!("INFO", "[Shader] -->\t Uniform 'u_model_matrix' uploaded to GPU successfully");
     
     self.m_renderable_assets[0].send(&mut self.m_shaders[0])?;
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
@@ -460,6 +453,12 @@ impl TraitApp for ExampleApp {
   }
   
   fn on_delete(&mut self) -> Result<(), EnumError> {
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Freeing shaders from GPU...");
+    for shader in self.m_shaders.iter_mut() {
+      shader.on_delete()?;
+    }
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Freed shaders from GPU successfully");
+    
     return Ok(());
   }
   

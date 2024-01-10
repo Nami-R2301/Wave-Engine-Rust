@@ -76,7 +76,7 @@ fn main() -> Result<(), EnumError> {
   let my_app: Box<ExampleApp> = Box::new(ExampleApp::default());
   
   // Supply it to our engine. Engine will NOT construct app and will only init the engine
-  // with the supplied GPU API of choice as its render and windowing targets.
+  // with the supplied GPU API of choice as its renderer.
   let mut engine: Engine = Engine::new(Some(EnumApi::OpenGL), Some(my_app))?;
   
   // Execute the app in game loop and return if there's a close event or if an error occurred.

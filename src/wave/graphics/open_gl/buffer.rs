@@ -1,4 +1,28 @@
 /*
+ MIT License
+
+ Copyright (c) 2023 Nami Reghbati
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NON INFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+*/
+
+/*
 ///////////////////////////////////   OpenGL    ///////////////////////////////////
 ///////////////////////////////////             ///////////////////////////////////
 ///////////////////////////////////             ///////////////////////////////////
@@ -10,9 +34,20 @@ pub use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLintptr, GLsizei
   GLvoid};
 
 use crate::{check_gl_call, log};
-use crate::wave::graphics::open_gl::renderer::EnumOpenGLErrors;
-use crate::wave::graphics::renderer::{EnumApi, EnumError, EnumState, Renderer};
+use crate::wave::graphics::open_gl;
+use crate::wave::graphics::renderer::{EnumApi, EnumState, Renderer};
 use crate::wave::math::Mat4;
+
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Ord, Hash)]
+pub enum EnumError {
+  InvalidBufferSize,
+  InvalidBufferOffset,
+  InvalidVertexAttribute,
+  InvalidAttributeDivisor,
+  InvalidVbo,
+  InvalidVao,
+  InvalidUbo,
+}
 
 #[allow(unused)]
 pub enum EnumAttributeType {
@@ -39,7 +74,7 @@ pub struct GlVertexAttribute {
 impl GlVertexAttribute {
   pub fn new(gl_type: EnumAttributeType, should_normalize: bool, buffer_offset: usize, attribute_divisor: u8) -> Result<Self, EnumError> {
     let mut max_attrib_div: i32 = 0;
-    check_gl_call!("Buffer (Attribute divisor)", gl::GetIntegerv(gl::MAX_VERTEX_ATTRIBS, &mut max_attrib_div));
+    unsafe { gl::GetIntegerv(gl::MAX_VERTEX_ATTRIBS, &mut max_attrib_div) };
     
     if attribute_divisor > max_attrib_div as u8 {
       log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Cannot assign attribute divisor of {0} to \
@@ -147,7 +182,7 @@ pub struct GlVao {
 }
 
 impl GlVao {
-  pub fn new() -> Result<Self, EnumError> {
+  pub fn new() -> Result<Self, open_gl::renderer::EnumError> {
     let mut new_vao: GLuint = 0;
     check_gl_call!("Vao", gl::CreateVertexArrays(1, &mut new_vao));
     return Ok(GlVao {
@@ -155,25 +190,25 @@ impl GlVao {
     });
   }
   
-  pub fn on_delete(&mut self) -> Result<(), EnumError> {
+  pub fn on_delete(&mut self) -> Result<(), open_gl::renderer::EnumError> {
     self.unbind()?;
     check_gl_call!("Vao", gl::DeleteVertexArrays(1, &self.m_renderer_id));
     return Ok(());
   }
   
-  pub fn bind(&mut self) -> Result<(), EnumError> {
+  pub fn bind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
     check_gl_call!("Vao", gl::BindVertexArray(self.m_renderer_id));
     return Ok(());
   }
   
-  pub fn unbind(&mut self) -> Result<(), EnumError> {
+  pub fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
     check_gl_call!("Vao", gl::BindVertexArray(0));
     return Ok(());
   }
   
-  pub fn enable_attributes(&mut self, attributes: Vec<GlVertexAttribute>) -> Result<(), EnumError> {
+  pub fn enable_attributes(&mut self, attributes: Vec<GlVertexAttribute>) -> Result<(), open_gl::renderer::EnumError> {
     if attributes.is_empty() {
-      return Err(EnumError::InvalidVertexAttribute);
+      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidVertexAttribute));
     }
     
     let mut max_attrib_div: i32 = 0;
@@ -184,7 +219,7 @@ impl GlVao {
       if index > max_attrib_div as usize {
         log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Vertex attribute index exceeds maximum \
         vertex attributes supported!");
-        return Err(EnumError::InvalidVertexAttribute);
+        return Err(open_gl::renderer::EnumError::from(EnumError::InvalidVertexAttribute));
       }
       
       if attribute.m_gl_type == gl::UNSIGNED_INT || attribute.m_gl_type == gl::INT {
@@ -203,15 +238,16 @@ impl GlVao {
 
 impl Drop for GlVao {
   fn drop(&mut self) {
-    let renderer = Renderer::get()
-      .expect("[Buffer] -->\t Cannot drop Vao, renderer is null! Exiting...");
-    unsafe {
-      if (*renderer).m_type == EnumApi::OpenGL && (*renderer).m_state != EnumState::Shutdown {
-        match self.on_delete() {
-          Ok(_) => {}
-          Err(err) => {
-            log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VAO : \
+    let renderer = Renderer::get();
+    if renderer.is_some() {
+      unsafe {
+        if (*renderer.unwrap()).m_type == EnumApi::OpenGL && (*renderer.unwrap()).m_state != EnumState::Shutdown {
+          match self.on_delete() {
+            Ok(_) => {}
+            Err(err) => {
+              log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VAO : \
           OpenGL returned with Error => {:?}", err)
+            }
           }
         }
       }
@@ -227,7 +263,7 @@ pub struct GlVbo {
 }
 
 impl GlVbo {
-  pub fn new(alloc_size: usize, vertex_count: usize) -> Result<Self, EnumError> {
+  pub fn new(alloc_size: usize, vertex_count: usize) -> Result<Self, open_gl::renderer::EnumError> {
     let mut new_vbo: GLuint = 0;
     check_gl_call!("Vbo", gl::CreateBuffers(1, &mut new_vbo));
     check_gl_call!("Vbo", gl::BindBuffer(gl::ARRAY_BUFFER, new_vbo));
@@ -242,23 +278,23 @@ impl GlVbo {
     });
   }
   
-  pub fn on_delete(&mut self) -> Result<(), EnumError> {
+  pub fn on_delete(&mut self) -> Result<(), open_gl::renderer::EnumError> {
     self.unbind()?;
     check_gl_call!("Vbo", gl::DeleteBuffers(1, &self.m_renderer_id));
     return Ok(());
   }
   
-  pub fn bind(&mut self) -> Result<(), EnumError> {
+  pub fn bind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
     check_gl_call!("Vbo", gl::BindBuffer(gl::ARRAY_BUFFER, self.m_renderer_id));
     return Ok(());
   }
   
-  pub fn unbind(&self) -> Result<(), EnumError> {
+  pub fn unbind(&self) -> Result<(), open_gl::renderer::EnumError> {
     check_gl_call!("Vbo", gl::BindBuffer(gl::ARRAY_BUFFER, 0));
     return Ok(());
   }
   
-  pub fn set_data(&mut self, data: *const GLvoid, alloc_size: usize, byte_offset: usize) -> Result<(), EnumError> {
+  pub fn set_data(&mut self, data: *const GLvoid, alloc_size: usize, byte_offset: usize) -> Result<(), open_gl::renderer::EnumError> {
     self.bind()?;
     check_gl_call!("Vbo", gl::BufferSubData(gl::ARRAY_BUFFER, byte_offset as GLsizeiptr,
       alloc_size as GLsizeiptr, data));
@@ -267,9 +303,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), EnumError> {
+  pub fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumError> {
     if vertex_size == 0 || vertex_count == 0 {
-      return Err(EnumError::InvalidBufferSize);
+      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
     }
     let old_size: usize = self.m_size;
     
@@ -285,9 +321,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), EnumError> {
+  pub fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumError> {
     if vertex_size * vertex_count == 0 || vertex_size * vertex_count > self.m_size {
-      return Err(EnumError::InvalidBufferSize);
+      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
     }
     self.bind()?;
     if vertex_size * vertex_count == self.m_size {
@@ -307,9 +343,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub fn expand(&mut self, alloc_size: usize) -> Result<(), EnumError> {
+  pub fn expand(&mut self, alloc_size: usize) -> Result<(), open_gl::renderer::EnumError> {
     if alloc_size == 0 {
-      return Err(EnumError::InvalidBufferSize);
+      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
     }
     
     self.bind()?;
@@ -334,9 +370,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub fn shrink(&mut self, dealloc_size: usize) -> Result<(), EnumError> {
+  pub fn shrink(&mut self, dealloc_size: usize) -> Result<(), open_gl::renderer::EnumError> {
     if dealloc_size == 0 {
-      return Err(EnumError::InvalidBufferSize);
+      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
     }
     
     self.bind()?;
@@ -363,15 +399,16 @@ impl GlVbo {
 
 impl Drop for GlVbo {
   fn drop(&mut self) {
-    let renderer = Renderer::get()
-      .expect("[Buffer] -->\t Cannot drop Vbo : Renderer is None! Exiting...");
-    unsafe {
-      if (*renderer).m_type == EnumApi::OpenGL && (*renderer).m_state != EnumState::Shutdown {
-        match self.on_delete() {
-          Ok(_) => {}
-          Err(err) => {
-            log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VBO : \
+    let renderer = Renderer::get();
+    if renderer.is_some() {
+      unsafe {
+        if (*renderer.unwrap()).m_type == EnumApi::OpenGL && (*renderer.unwrap()).m_state != EnumState::Shutdown {
+          match self.on_delete() {
+            Ok(_) => {}
+            Err(err) => {
+              log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VBO : \
           OpenGL returned with Error => {:?}", err)
+            }
           }
         }
       }
@@ -379,17 +416,21 @@ impl Drop for GlVbo {
   }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnumUboType {
-  Camera(Mat4, Mat4),
-  Model(Mat4),
+  Transform(Mat4),
+  ViewProjection(Mat4, Mat4),
+  MVP(Mat4, Mat4, Mat4)
 }
 
+#[allow(dead_code)]
 #[repr(usize)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum EnumUboTypeSize {
-  Camera = Mat4::get_size() * 2,
-  Model = Mat4::get_size() * 16,
+  Transform = Mat4::get_size(),
+  ViewProjection = Mat4::get_size() * 2,
+  MVP = Mat4::get_size() * 3,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -399,7 +440,7 @@ pub struct GlUbo {
 }
 
 impl GlUbo {
-  pub fn new(size: EnumUboTypeSize, binding: u32) -> Result<Self, EnumError> {
+  pub fn new(size: EnumUboTypeSize, binding: u32) -> Result<Self, open_gl::renderer::EnumError> {
     let mut buffer_id = 0;
     
     check_gl_call!("Ubo", gl::CreateBuffers(1, &mut buffer_id));
@@ -414,10 +455,10 @@ impl GlUbo {
     });
   }
   
-  pub fn bind(&mut self, block_name: &'static str, shader_id: u32) -> Result<(), EnumError> {
+  pub fn bind(&mut self, block_name: &'static str, shader_id: u32) -> Result<(), open_gl::renderer::EnumError> {
     let renderer = Renderer::get()
       .expect("[Ubo] -->\t Cannot retrieve renderer : Renderer is None!");
-    let glsl_version = unsafe { (*renderer).get_shader_version() };
+    let glsl_version = unsafe { (*renderer).get_max_shader_version_available() };
     if glsl_version < 4.2 {
       // If glsl < #version 420, uniform binding can't be done in shaders.
       let u_block: u32 = unsafe {
@@ -428,14 +469,19 @@ impl GlUbo {
     return Ok(());
   }
   
-  pub fn unbind(&mut self) -> Result<(), EnumError> {
+  pub fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
     check_gl_call!("Ubo", gl::BindBuffer(gl::UNIFORM_BUFFER, 0));
     return Ok(());
   }
   
-  pub fn set_data(&mut self, ubo_type: EnumUboType) -> Result<(), EnumError> {
+  pub fn set_data(&mut self, ubo_type: EnumUboType) -> Result<(), open_gl::renderer::EnumError> {
     match ubo_type {
-      EnumUboType::Camera(view, projection) => {
+      EnumUboType::Transform(transform) => {
+        // Set transform matrix.
+        check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0 as GLintptr,
+          Mat4::get_size() as GLsizeiptr, transform.as_array().as_ptr() as *const std::ffi::c_void));
+      }
+      EnumUboType::ViewProjection(view, projection) => {
         // Set view matrix.
         check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0 as GLintptr,
           Mat4::get_size() as GLsizeiptr, view.as_array().as_ptr() as *const std::ffi::c_void));
@@ -444,15 +490,24 @@ impl GlUbo {
         check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, Mat4::get_size() as GLintptr,
           Mat4::get_size() as GLsizeiptr, projection.as_array().as_ptr() as *const std::ffi::c_void));
       }
-      EnumUboType::Model(model_matrix) => {
+      EnumUboType::MVP(model, view, projection) => {
+        // Set Model matrix.
         check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0 as GLintptr,
-          Mat4::get_size() as GLsizeiptr, model_matrix.as_array().as_ptr() as *const std::ffi::c_void));
+          Mat4::get_size() as GLsizeiptr, model.as_array().as_ptr() as *const std::ffi::c_void));
+        
+        // Set view matrix.
+        check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, Mat4::get_size() as GLintptr,
+          Mat4::get_size() as GLsizeiptr, view.as_array().as_ptr() as *const std::ffi::c_void));
+        
+        // Set projection matrix.
+        check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, (Mat4::get_size() * 2) as GLintptr,
+          Mat4::get_size() as GLsizeiptr, projection.as_array().as_ptr() as *const std::ffi::c_void));
       }
     }
     return Ok(());
   }
   
-  fn on_delete(&mut self) -> Result<(), EnumError> {
+  fn on_delete(&mut self) -> Result<(), open_gl::renderer::EnumError> {
     self.unbind()?;
     check_gl_call!("Ubo", gl::BindBuffer(gl::UNIFORM, 0));
     return Ok(());
@@ -461,15 +516,16 @@ impl GlUbo {
 
 impl Drop for GlUbo {
   fn drop(&mut self) {
-    let renderer = Renderer::get()
-      .expect("[Buffer] -->\t Cannot drop Vbo : Renderer is None! Exiting...");
-    unsafe {
-      if (*renderer).m_type == EnumApi::OpenGL && (*renderer).m_state != EnumState::Shutdown {
-        match self.on_delete() {
-          Ok(_) => {}
-          Err(err) => {
-            log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping UBO : \
+    let renderer = Renderer::get();
+    if renderer.is_some() {
+      unsafe {
+        if (*renderer.unwrap()).m_type == EnumApi::OpenGL && (*renderer.unwrap()).m_state != EnumState::Shutdown {
+          match self.on_delete() {
+            Ok(_) => {}
+            Err(err) => {
+              log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping UBO : \
               OpenGL returned with Error => {:?}", err)
+            }
           }
         }
       }

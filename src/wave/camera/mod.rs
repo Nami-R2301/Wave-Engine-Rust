@@ -85,7 +85,7 @@ impl PerspectiveCamera {
   }
   
   pub fn get_projection_matrix(&self) -> Mat4 {
-    return Mat4::apply_perspective(self.m_fov, self.m_aspect_ratio, self.m_z_near, self.m_z_far);
+    return Mat4::apply_perspective(self.m_fov, self.m_aspect_ratio, self.m_z_near, self.m_z_far).transpose();
   }
   
   pub fn get_view_matrix(&self) -> Mat4 {
@@ -100,7 +100,7 @@ impl PerspectiveCamera {
         [direction.x, direction.y, direction.z,        self.m_matrix[2][3]],
         
         [self.m_matrix[3][0], self.m_matrix[3][1], self.m_matrix[3][2], self.m_matrix[3][3]],
-      ]);
+      ]).transpose();
   }
   
   pub fn set_view_projection(&mut self) {

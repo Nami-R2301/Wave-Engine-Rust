@@ -358,6 +358,7 @@ impl Window {
       return Ok(());
     }
     self.m_state = EnumState::Closed;
+    unsafe { S_WINDOW_CONTEXT = None };
     return Ok(());
   }
   
@@ -460,16 +461,21 @@ impl Window {
 
 impl Drop for Window {
   fn drop(&mut self) {
-    log!(EnumLogColor::Purple, "INFO", "[Window] -->\t Dropping window...");
-    match self.on_delete() {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[Window] -->\t Dropped window successfully");
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error while dropping window : Error => {:?}",
+    unsafe {
+      if S_WINDOW_CONTEXT.is_some() {
+        log!(EnumLogColor::Purple, "INFO", "[Window] -->\t Dropping window...");
+        match self.on_delete() {
+          Ok(_) => {
+            log!(EnumLogColor::Green, "INFO", "[Window] -->\t Dropped window successfully");
+          }
+          Err(err) => {
+            log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error while dropping window : Error => {:?}",
         err);
-        log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Dropped window unsuccessfully");
+            log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Dropped window unsuccessfully");
+          }
+        }
       }
+      S_WINDOW_CONTEXT = None;
     }
   }
 }
