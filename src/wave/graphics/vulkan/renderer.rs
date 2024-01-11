@@ -532,7 +532,7 @@ impl VkContext {
     app_info.p_application_name = app_name.as_ptr();
     app_info.p_engine_name = engine_name.as_ptr();
     app_info.engine_version = vk::make_api_version(0, 0, 1, 0);
-    app_info.api_version = vk::API_VERSION_1_3;
+    app_info.api_version = vk::API_VERSION_1_2;
     
     // Add debug callback for create_instance() and destroy_instance().
     let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
@@ -626,7 +626,6 @@ impl VkContext {
       .collect();
     
     let device_queue_create_info = vk::DeviceQueueCreateInfo::builder()
-      .flags(vk::DeviceQueueCreateFlags::default())
       .queue_family_index(graphics_queue_family_index)
       .queue_priorities(&[1.0])
       .build();
@@ -688,7 +687,7 @@ impl VkContext {
     #[cfg(not(feature = "debug"))]
     {
       log!(EnumLogColor::Red, "ERROR", "[Renderer] --> Cannot setup debug callback: Debug feature not enabled!");
-      return Err(EnumError::VulkanError(EnumError::DebugError));
+      return Err(renderer::EnumError::from(EnumError::DebugError));
     }
   }
   

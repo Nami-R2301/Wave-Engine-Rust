@@ -22,8 +22,12 @@ Vulkan = []
 
 [profile.dev]
 opt-level = 0
+incremental = true
 
 [profile.release]
 opt-level = 3
 codegen-units = 1
-lto = "thin"
+#lto = "thin" // Crashes Vulkan App on Windows when turned on.
+strip = "debuginfo"
+overflow-checks = false
+panic = "abort"

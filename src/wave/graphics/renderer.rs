@@ -29,9 +29,12 @@ use std::fmt::{Display, Formatter};
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::camera::PerspectiveCamera;
-use crate::wave::graphics::{open_gl, vulkan};
+use crate::wave::graphics::{open_gl};
 use crate::wave::graphics::open_gl::renderer::GlContext;
 use crate::wave::graphics::shader::Shader;
+#[cfg(feature = "Vulkan")]
+use crate::wave::graphics::{vulkan};
+
 #[cfg(feature = "Vulkan")]
 use crate::wave::graphics::vulkan::renderer::VkContext;
 use crate::wave::window::Window;
@@ -79,6 +82,7 @@ impl From<open_gl::renderer::EnumError> for EnumError {
   }
 }
 
+#[cfg(feature = "Vulkan")]
 impl From<vulkan::renderer::EnumError> for EnumError {
   fn from(value: vulkan::renderer::EnumError) -> Self {
     return EnumError::VulkanError(value);

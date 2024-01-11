@@ -27,7 +27,10 @@ use std::fmt::{Display, Formatter};
 use crate::log;
 use crate::wave::graphics::open_gl::shader::GlShader;
 use crate::wave::graphics::renderer::{EnumApi, Renderer};
-use crate::wave::graphics::{open_gl, vulkan};
+use crate::wave::graphics::{open_gl};
+#[cfg(feature = "Vulkan")]
+use crate::wave::graphics::{vulkan};
+
 #[cfg(feature = "Vulkan")]
 use crate::wave::graphics::vulkan::shader::VkShader;
 
@@ -71,6 +74,7 @@ impl From<open_gl::shader::EnumError> for EnumError {
   }
 }
 
+#[cfg(feature = "Vulkan")]
 impl From<vulkan::shader::EnumError> for EnumError {
   fn from(value: vulkan::shader::EnumError) -> Self {
     return EnumError::VulkanShaderError(value);
