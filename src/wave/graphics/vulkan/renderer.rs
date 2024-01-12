@@ -25,24 +25,23 @@
 pub extern crate ash;
 
 use std::any::Any;
+use std::collections::HashSet;
+use std::fmt::{Display, Formatter};
+use std::mem::size_of;
 use std::ops::{BitAnd, BitOr};
+
 use ash::extensions::{ext, khr};
 pub use ash::vk::{self, PhysicalDeviceType, TaggedStructure};
-
-use std::fmt::{Display, Formatter};
-use std::collections::HashSet;
-use std::mem::size_of;
 
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
 use crate::wave::camera::PerspectiveCamera;
+use crate::wave::graphics::{renderer, vulkan};
 use crate::wave::graphics::renderer::{EnumFeature, TraitContext};
 use crate::wave::graphics::shader::Shader;
-use crate::wave::graphics::{renderer, vulkan};
 use crate::wave::graphics::vulkan::buffer::VkVbo;
 use crate::wave::graphics::vulkan::shader::VkShader;
 use crate::wave::window::Window;
-
 
 /*
 ///////////////////////////////////   Vulkan renderer    ///////////////////////////////////
@@ -65,7 +64,7 @@ pub enum EnumError {
   SwapImagesError,
   ShaderOperationError(vulkan::shader::EnumError),
   BufferOperationError(vulkan::buffer::EnumError),
-  MSAAError
+  MSAAError,
 }
 
 impl From<vulkan::buffer::EnumError> for vulkan::renderer::EnumError {
@@ -320,8 +319,7 @@ impl VkContext {
     vertex_input_create_info.vertex_attribute_description_count = 5;
     vertex_input_create_info.vertex_binding_description_count = 5;
     
-    for _shader_module in shader_modules.iter() {
-    }
+    for _shader_module in shader_modules.iter() {}
     return Ok(());
   }
   
@@ -471,7 +469,7 @@ impl VkContext {
       }) {
         log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Vulkan layer {:#?} not supported!",
           layer_name.to_str().expect("Failed to convert C String to &str in check_layer_support()"));
-        return Err(renderer::EnumError::from(EnumError::ExtensionError));
+        return Err(renderer::EnumError::from(EnumError::LayerError));
       }
     }
     return Ok(());
@@ -509,18 +507,18 @@ impl VkContext {
         format!("{0}.{1}.{2}.{3}", (version_raw >> 22).bitand(0x3ff),
           (version_raw >> 14).bitand(0x0ff), (version_raw >> 6).bitand(0x0ff),
           version_raw.bitand(0x003f))
-      },
+      }
       0x8086 => {
         #[cfg(target_os = "windows")]
         return format!("{0}.{1}", version_raw >> 14, version_raw.bitand(0x3fff));
         
         #[cfg(not(target_os = "windows"))]
         return format!("{0}.{1}.{2}", version_raw >> 22, (version_raw >> 12).bitand(0x3ff),
-        version_raw.bitand(0xfff));
-      },
+          version_raw.bitand(0xfff));
+      }
       _ => format!("{0}.{1}.{2}", version_raw >> 22, (version_raw >> 12).bitand(0x3ff),
         version_raw.bitand(0xfff))
-    }
+    };
   }
   
   fn create_instance(window: &mut Window, additional_extensions: Option<Vec<&str>>, additional_layers: Option<Vec<&str>>) -> Result<(ash::Entry, ash::Instance), renderer::EnumError> {
@@ -534,18 +532,6 @@ impl VkContext {
     app_info.engine_version = vk::make_api_version(0, 0, 1, 0);
     app_info.api_version = vk::API_VERSION_1_2;
     
-    // Add debug callback for create_instance() and destroy_instance().
-    let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
-    
-    // Validate API calls and log output.
-    let layers = VkContext::load_layers(additional_layers)?;
-    VkContext::check_layer_support(&entry, &layers)?;
-    
-    let c_layers_ptr: Vec<*const std::ffi::c_char> = layers
-      .iter()
-      .map(|c_layer| c_layer.as_ptr())
-      .collect();
-    
     let extensions = VkContext::load_extensions(window.get_api_ref(),
       additional_extensions)?;
     VkContext::check_extension_support(&entry, &extensions)?;
@@ -555,9 +541,27 @@ impl VkContext {
       .map(|c_extension| c_extension.as_ptr())
       .collect();
     
-    let mut instance_create_info = vk::InstanceCreateInfo::builder()
-      .enabled_extension_names(c_extensions_ptr.as_slice())
-      .application_info(&app_info);
+    let mut instance_create_info = vk::InstanceCreateInfo::default();
+    instance_create_info.pp_enabled_extension_names = c_extensions_ptr.as_ptr();
+    instance_create_info.enabled_extension_count = c_extensions_ptr.len() as u32;
+    instance_create_info.p_application_info = &app_info;
+    
+    // Add debug callback for create_instance() and destroy_instance().
+    #[allow(unused)]
+    let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
+    
+    // Validate API calls and log output.
+    let layers: Vec<std::ffi::CString> = VkContext::load_layers(additional_layers)?;
+    VkContext::check_layer_support(&entry, &layers)?;
+    
+    #[allow(unused)]
+    let c_layers_ptr: Vec<*const std::ffi::c_char> = layers
+      .iter()
+      .map(|c_layer| c_layer.as_ptr())
+      .collect();
+    
+    #[allow(unused)]
+    let p_next: *const std::ffi::c_void = <*const vk::DebugUtilsMessengerCreateInfoEXT>::cast(&debug_create_info);
     
     #[cfg(feature = "debug")]
     {
@@ -573,9 +577,10 @@ impl VkContext {
       
       debug_create_info.pfn_user_callback = Some(vulkan_debug_callback);
       
-      instance_create_info = instance_create_info
-        .enabled_layer_names(c_layers_ptr.as_slice())
-        .push_next(&mut debug_create_info);
+      instance_create_info.p_next = p_next;
+      
+      instance_create_info.pp_enabled_layer_names = c_layers_ptr.as_ptr();
+      instance_create_info.enabled_layer_count = c_layers_ptr.len() as u32;
     }
     
     #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -584,7 +589,7 @@ impl VkContext {
     }
     
     unsafe {
-      return match entry.create_instance(&instance_create_info.build(), None) {
+      return match entry.create_instance(&instance_create_info, None) {
         Ok(vk_instance) => {
           Ok((entry, vk_instance))
         }
@@ -625,16 +630,17 @@ impl VkContext {
       })
       .collect();
     
-    let device_queue_create_info = vk::DeviceQueueCreateInfo::builder()
-      .queue_family_index(graphics_queue_family_index)
-      .queue_priorities(&[1.0])
-      .build();
+    let mut device_queue_create_info = vk::DeviceQueueCreateInfo::default();
+    device_queue_create_info.queue_family_index = graphics_queue_family_index;
+    device_queue_create_info.queue_count = 1;
+    device_queue_create_info.p_queue_priorities = &[1.0f32] as *const f32;
     
-    let device_create_info = vk::DeviceCreateInfo::builder()
-      .queue_create_infos(&[device_queue_create_info])
-      .enabled_extension_names(&required_device_extensions_ptr)
-      .enabled_features(&physical_device_features)
-      .build();
+    let mut device_create_info = vk::DeviceCreateInfo::default();
+    device_create_info.queue_create_info_count = 1;
+    device_create_info.p_queue_create_infos = &device_queue_create_info;
+    device_create_info.enabled_extension_count = 1;
+    device_create_info.pp_enabled_extension_names = required_device_extensions_ptr.as_ptr();
+    device_create_info.p_enabled_features = &physical_device_features;
     
     let vk_device = unsafe {
       ash_instance.create_device(vk_physical_device, &device_create_info, None)
@@ -927,7 +933,7 @@ impl TraitContext for VkContext {
       m_swap_chain_khr: Default::default(),
       m_swap_chain_images: Default::default(),
       m_swap_chain_image_views: Default::default(),
-      m_dynamic_states: Vec::with_capacity(2)
+      m_dynamic_states: Vec::with_capacity(2),
     })
   }
   
@@ -956,7 +962,7 @@ impl TraitContext for VkContext {
   fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, renderer::EnumError> {
     return match window_event {
       _ => Ok(false)
-    }
+    };
   }
   
   fn on_render(&mut self) -> Result<(), renderer::EnumError> {
@@ -1082,7 +1088,7 @@ impl TraitContext for VkContext {
       vk::api_version_patch(device_properties.api_version),
       device_name_str,
       VkContext::get_driver_version(device_properties.driver_version,
-      device_properties.vendor_id), device_type_str);
+        device_properties.vendor_id), device_type_str);
     
     // Get logical device capabilities and presentation format and extent chosen for swap chain.
     let info_logical_device: String = format!("\n{0:113}{1}", "", self.m_swap_chain_properties);

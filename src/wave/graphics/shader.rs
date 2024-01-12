@@ -25,12 +25,11 @@
 use std::fmt::{Display, Formatter};
 
 use crate::log;
+use crate::wave::graphics::open_gl;
 use crate::wave::graphics::open_gl::shader::GlShader;
 use crate::wave::graphics::renderer::{EnumApi, Renderer};
-use crate::wave::graphics::{open_gl};
 #[cfg(feature = "Vulkan")]
-use crate::wave::graphics::{vulkan};
-
+use crate::wave::graphics::vulkan;
 #[cfg(feature = "Vulkan")]
 use crate::wave::graphics::vulkan::shader::VkShader;
 
@@ -158,10 +157,25 @@ impl ShaderStage {
   }
   
   pub fn new(shader_type: EnumShaderType, shader_source: EnumShaderSource) -> Self {
+    // Try loading from cache.
+    let mut is_cached = false;
+    let mut source = shader_source.clone();
+    match &shader_source {
+      EnumShaderSource::FromFile(file_path_str) => {
+        let file_path = std::path::Path::new(file_path_str);
+        if Shader::check_cache(file_path).is_ok() {
+          is_cached = true;
+          source = EnumShaderSource::FromFile(format!("cache/{0}.spv",
+            file_path.file_stem().unwrap().to_str().unwrap()));
+        }
+      }
+      EnumShaderSource::FromStr(_) => {}
+    }
+    
     return Self {
       m_type: shader_type,
-      m_source: shader_source,
-      m_is_cached: false,
+      m_source: source,
+      m_is_cached: is_cached,
     };
   }
   
@@ -202,13 +216,6 @@ impl Shader {
           // Check if file exists and is a supported format.
           let file_path = std::path::Path::new(file_path_str.as_str());
           Shader::check_file_validity(file_path)?;
-          
-          // Try loading from cache.
-          if Shader::check_cache(file_path).is_ok() {
-            shader_stage.m_is_cached = true;
-            shader_stage.m_source = EnumShaderSource::FromFile(format!("cache/{0}.spv",
-              file_path.file_name().unwrap().to_str().unwrap()))
-          }
         }
         EnumShaderSource::FromStr(literal_string) => {
           if literal_string.is_empty() {
@@ -251,14 +258,8 @@ impl Shader {
       }
     }
     
-    let cache_path_str: String;
-    if shader_file_path.extension().unwrap() == "spv" {
-      cache_path_str = format!("cache/{0}", shader_file_path.file_name().unwrap()
-        .to_str().unwrap());
-    } else {
-      cache_path_str = format!("cache/{0}.spv", shader_file_path.file_name().unwrap()
-        .to_str().unwrap());
-    }
+    let cache_path_str: String = format!("cache/{0}", shader_file_path.file_stem().unwrap()
+      .to_str().unwrap());
     let buffer = std::fs::read(cache_path_str)?;
     
     return Ok(buffer);
