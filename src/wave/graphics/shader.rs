@@ -324,6 +324,7 @@ impl Drop for Shader {
         Ok(_) => {
           log!(EnumLogColor::Green, "INFO", "[Shader] -->\t Dropped shader successfully...");
         }
+        #[allow(unused)]
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error while dropping shader : \
         Error => {:?}", err);

@@ -26,8 +26,8 @@ use std::fmt::{Display, Formatter};
 use std::io::BufRead;
 
 use crate::log;
-use crate::wave::assets::renderable_assets::REntity;
-use crate::wave::graphics::color::Color;
+use crate::wave::assets::renderable_assets::{Vertex, REntity};
+use crate::wave::math::{Vec2, Vec3};
 
 /*
 ///////////////////////////////////   Asset Loader  ///////////////////////////////////
@@ -173,8 +173,9 @@ impl ResLoader {
             _ => {}
           }
         }
-        Ok(ResLoader::reorganize_data_soa(&vertices, &indices, &normals, &texture_coords))
+        Ok(ResLoader::reorganize_data_aos(&vertices, &indices, &normals, &texture_coords))
       }
+      #[allow(unused)]
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[ResLoader] -->\t Cannot open file! Error => {0}", err);
         Err(EnumError::InvalidPath)
@@ -320,87 +321,85 @@ impl ResLoader {
   /// ```text
   ///
   /// ```
-  fn reorganize_data_soa(vertices: &Vec<f32>, indices: &Vec<usize>, normals: &Vec<f32>,
-                         texture_coords: &Vec<f32>) -> REntity {
-    let mut object: REntity = REntity::default();
-    
-    for index in (0..indices.len()).step_by(3) {
-      object.m_entity_id_array.push(0);
-      
-      object.m_vertex_array.push(vertices[indices[index] * 3]);
-      object.m_vertex_array.push(vertices[(indices[index] * 3) + 1]);
-      
-      // If our vertex is in 3D space.
-      if vertices.len() % 3 == 0 {
-        object.m_vertex_array.push(vertices[(indices[index] * 3) + 2]);
-      }
-      
-      // If we have texture coordinates, add them.
-      if indices[index + 1] != usize::MAX - 1 {
-        if texture_coords[indices[index + 1] * 2] != f32::MIN {
-          object.m_texture_coord_array.push(texture_coords[indices[index + 1] * 2]);
-          object.m_texture_coord_array.push(texture_coords[(indices[index + 1] * 2) + 1]);
-        }
-      }
-      
-      // If we have normals, add them.
-      if indices[index + 2] != usize::MAX - 1 {
-        if normals[indices[index + 2] * 3] != f32::MIN {
-          object.m_normal_array.push(normals[indices[index + 2] * 3]);
-          object.m_normal_array.push(normals[(indices[index + 2] * 3) + 1]);
-          
-          // If our normal is in 3D space.
-          if normals[(indices[index + 2] * 3) + 2] != f32::MIN {
-            object.m_normal_array.push(normals[(indices[index + 2] * 3) + 2]);
-          }
-        }
-      }
-      
-      // Assign a color (RGBA) for each vertex. Default color for vertices : Green.
-      object.m_color_array.push(Color::default());
-    }
-    object.register();  // Assign a random entity ID common for all vertices.
-    return object;
-  }
+  // fn reorganize_data_soa(vertices: &Vec<f32>, indices: &Vec<usize>, normals: &Vec<f32>,
+  //                        texture_coords: &Vec<f32>) -> REntity {
+  //   let mut object: REntity = REntity::default();
+  //
+  //   for index in (0..indices.len()).step_by(3) {
+  //     object.m_entity_id_array.push(0);
+  //
+  //     object.m_vertex_array.push(vertices[indices[index] * 3]);
+  //     object.m_vertex_array.push(vertices[(indices[index] * 3) + 1]);
+  //
+  //     // If our vertex is in 3D space.
+  //     if vertices.len() % 3 == 0 {
+  //       object.m_vertex_array.push(vertices[(indices[index] * 3) + 2]);
+  //     }
+  //
+  //     // If we have texture coordinates, add them.
+  //     if indices[index + 1] != usize::MAX - 1 {
+  //       if texture_coords[indices[index + 1] * 2] != f32::MIN {
+  //         object.m_texture_coord_array.push(texture_coords[indices[index + 1] * 2]);
+  //         object.m_texture_coord_array.push(texture_coords[(indices[index + 1] * 2) + 1]);
+  //       }
+  //     }
+  //
+  //     // If we have normals, add them.
+  //     if indices[index + 2] != usize::MAX - 1 {
+  //       if normals[indices[index + 2] * 3] != f32::MIN {
+  //         object.m_normal_array.push(normals[indices[index + 2] * 3]);
+  //         object.m_normal_array.push(normals[(indices[index + 2] * 3) + 1]);
+  //
+  //         // If our normal is in 3D space.
+  //         if normals[(indices[index + 2] * 3) + 2] != f32::MIN {
+  //           object.m_normal_array.push(normals[(indices[index + 2] * 3) + 2]);
+  //         }
+  //       }
+  //     }
+  //
+  //     // Assign a color (RGBA) for each vertex. Default color for vertices : Green.
+  //     object.m_color_array.push(Color::default());
+  //   }
+  //   object.register();  // Assign a random entity ID common for all vertices.
+  //   return object;
+  // }
   
   fn reorganize_data_aos(vertices: &Vec<f32>, indices: &Vec<usize>, normals: &Vec<f32>,
                          texture_coords: &Vec<f32>) -> REntity {
     let mut object: REntity = REntity::default();
     
     for index in (0..indices.len()).step_by(3) {
-      object.m_entity_id_array.push(0);
+      let mut vertex: Vertex = Vertex::default();
       
-      object.m_vertex_array.push(vertices[indices[index] * 3]);
-      object.m_vertex_array.push(vertices[(indices[index] * 3) + 1]);
+      vertex.m_position = Vec3::new(&[vertices[indices[index] * 3],
+        vertices[(indices[index] * 3) + 1], 0.0]);
       
       // If our vertex is in 3D space.
       if vertices.len() % 3 == 0 {
-        object.m_vertex_array.push(vertices[(indices[index] * 3) + 2]);
+        vertex.m_position.z = vertices[(indices[index] * 3) + 2];
       }
       
       // If we have texture coordinates, add them.
       if indices[index + 1] != usize::MAX - 1 {
         if texture_coords[indices[index + 1] * 2] != f32::MIN {
-          object.m_texture_coord_array.push(texture_coords[indices[index + 1] * 2]);
-          object.m_texture_coord_array.push(texture_coords[(indices[index + 1] * 2) + 1]);
+          vertex.m_texture_coords = Vec2::new(&[texture_coords[indices[index + 1] * 2],
+            texture_coords[(indices[index + 1] * 2) + 1]]);
         }
       }
       
       // If we have normals, add them.
       if indices[index + 2] != usize::MAX - 1 {
         if normals[indices[index + 2] * 3] != f32::MIN {
-          object.m_normal_array.push(normals[indices[index + 2] * 3]);
-          object.m_normal_array.push(normals[(indices[index + 2] * 3) + 1]);
+          vertex.m_normal = Vec3::new(&[normals[indices[index + 2] * 3],
+            normals[(indices[index + 2] * 3) + 1], 0.0]);
           
           // If our normal is in 3D space.
           if normals[(indices[index + 2] * 3) + 2] != f32::MIN {
-            object.m_normal_array.push(normals[(indices[index + 2] * 3) + 2]);
+            vertex.m_normal.z = normals[(indices[index + 2] * 3) + 2];
           }
         }
       }
-      
-      // Assign a color (RGBA) for each vertex. Default color for vertices : Green.
-      object.m_color_array.push(Color::default());
+      object.m_data.push(vertex);
     }
     object.register();  // Assign a random entity ID common for all vertices.
     return object;

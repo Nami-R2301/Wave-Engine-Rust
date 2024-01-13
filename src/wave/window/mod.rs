@@ -87,6 +87,7 @@ impl Display for EnumError {
 }
 
 impl From<input::EnumError> for EnumError {
+  #[allow(unused)]
   fn from(input_error: input::EnumError) -> Self {
     log!(EnumLogColor::Red, "ERROR", "{0}", input_error);
     return EnumError::WindowInputError;
@@ -468,6 +469,7 @@ impl Drop for Window {
           Ok(_) => {
             log!(EnumLogColor::Green, "INFO", "[Window] -->\t Dropped window successfully");
           }
+          #[allow(unused)]
           Err(err) => {
             log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error while dropping window : Error => {:?}",
         err);

@@ -63,16 +63,18 @@ pub enum EnumAttributeType {
   Mat4,
 }
 
+#[allow(unused)]
 pub struct GlVertexAttribute {
   pub m_gl_type: GLenum,
   pub m_count: i32,
+  pub m_buffer_size: usize,
   pub m_buffer_offset: usize,
   pub m_normalized: u8,
   pub m_attribute_divisor: u8,
 }
 
 impl GlVertexAttribute {
-  pub fn new(gl_type: EnumAttributeType, should_normalize: bool, buffer_offset: usize, attribute_divisor: u8) -> Result<Self, EnumError> {
+  pub fn new(gl_type: EnumAttributeType, should_normalize: bool, vbo_offset: usize, attribute_divisor: u8) -> Result<Self, EnumError> {
     let mut max_attrib_div: i32 = 0;
     unsafe { gl::GetIntegerv(gl::MAX_VERTEX_ATTRIBS, &mut max_attrib_div) };
     
@@ -87,7 +89,8 @@ impl GlVertexAttribute {
         GlVertexAttribute {
           m_gl_type: gl::UNSIGNED_SHORT,
           m_count: count,
-          m_buffer_offset: buffer_offset,
+          m_buffer_size: 4,
+          m_buffer_offset: vbo_offset,
           m_normalized: should_normalize as u8,
           m_attribute_divisor: attribute_divisor,
         }
@@ -96,7 +99,8 @@ impl GlVertexAttribute {
         GlVertexAttribute {
           m_gl_type: gl::SHORT,
           m_count: count,
-          m_buffer_offset: buffer_offset,
+          m_buffer_size: 4,
+          m_buffer_offset: 0,
           m_normalized: should_normalize as u8,
           m_attribute_divisor: attribute_divisor,
         }
@@ -105,7 +109,8 @@ impl GlVertexAttribute {
         GlVertexAttribute {
           m_gl_type: gl::UNSIGNED_INT,
           m_count: count,
-          m_buffer_offset: buffer_offset,
+          m_buffer_size: 4,
+          m_buffer_offset: vbo_offset,
           m_normalized: should_normalize as u8,
           m_attribute_divisor: attribute_divisor,
         }
@@ -114,7 +119,8 @@ impl GlVertexAttribute {
         GlVertexAttribute {
           m_gl_type: gl::INT,
           m_count: count,
-          m_buffer_offset: buffer_offset,
+          m_buffer_size: 4,
+          m_buffer_offset: vbo_offset,
           m_normalized: should_normalize as u8,
           m_attribute_divisor: attribute_divisor,
         }
@@ -123,7 +129,8 @@ impl GlVertexAttribute {
         GlVertexAttribute {
           m_gl_type: gl::FLOAT,
           m_count: count,
-          m_buffer_offset: buffer_offset,
+          m_buffer_size: 4,
+          m_buffer_offset: vbo_offset,
           m_normalized: should_normalize as u8,
           m_attribute_divisor: attribute_divisor,
         }
@@ -132,7 +139,8 @@ impl GlVertexAttribute {
         GlVertexAttribute {
           m_gl_type: gl::DOUBLE,
           m_count: count,
-          m_buffer_offset: buffer_offset,
+          m_buffer_size: 8,
+          m_buffer_offset: vbo_offset,
           m_normalized: should_normalize as u8,
           m_attribute_divisor: attribute_divisor,
         }
@@ -141,7 +149,8 @@ impl GlVertexAttribute {
         GlVertexAttribute {
           m_gl_type: gl::FLOAT,
           m_count: 2,
-          m_buffer_offset: buffer_offset,
+          m_buffer_size: 4 * 2,
+          m_buffer_offset: vbo_offset,
           m_normalized: should_normalize as u8,
           m_attribute_divisor: attribute_divisor,
         }
@@ -150,7 +159,8 @@ impl GlVertexAttribute {
         GlVertexAttribute {
           m_gl_type: gl::FLOAT,
           m_count: 3,
-          m_buffer_offset: buffer_offset,
+          m_buffer_size: 4 * 3,
+          m_buffer_offset: vbo_offset,
           m_normalized: should_normalize as u8,
           m_attribute_divisor: attribute_divisor,
         }
@@ -159,7 +169,8 @@ impl GlVertexAttribute {
         GlVertexAttribute {
           m_gl_type: gl::FLOAT,
           m_count: 4,
-          m_buffer_offset: buffer_offset,
+          m_buffer_size: 4 * 4,
+          m_buffer_offset: vbo_offset,
           m_normalized: should_normalize as u8,
           m_attribute_divisor: attribute_divisor,
         }
@@ -168,7 +179,8 @@ impl GlVertexAttribute {
         GlVertexAttribute {
           m_gl_type: gl::FLOAT,
           m_count: 4 * 4,
-          m_buffer_offset: buffer_offset,
+          m_buffer_size: 4 * 4 * 4,
+          m_buffer_offset: vbo_offset,
           m_normalized: should_normalize as u8,
           m_attribute_divisor: attribute_divisor,
         }
@@ -177,6 +189,7 @@ impl GlVertexAttribute {
   }
 }
 
+#[allow(unused)]
 pub struct GlVao {
   m_renderer_id: u32,
 }
@@ -206,7 +219,7 @@ impl GlVao {
     return Ok(());
   }
   
-  pub fn enable_attributes(&mut self, attributes: Vec<GlVertexAttribute>) -> Result<(), open_gl::renderer::EnumError> {
+  pub fn enable_attributes(&mut self, mut attributes: Vec<GlVertexAttribute>) -> Result<(), open_gl::renderer::EnumError> {
     if attributes.is_empty() {
       return Err(open_gl::renderer::EnumError::from(EnumError::InvalidVertexAttribute));
     }
@@ -215,6 +228,14 @@ impl GlVao {
     check_gl_call!("Buffer (Attribute divisor)", gl::GetIntegerv(gl::MAX_VERTEX_ATTRIBS, &mut max_attrib_div));
     
     self.bind()?;
+    let mut stride = 0;
+    let mut offset = 0;
+    for attribute in attributes.iter_mut() {
+      attribute.m_buffer_offset += offset;
+      offset += attribute.m_buffer_size;
+      stride += attribute.m_buffer_size;
+    }
+    
     for (index, attribute) in attributes.iter().enumerate() {
       if index > max_attrib_div as usize {
         log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Vertex attribute index exceeds maximum \
@@ -224,10 +245,10 @@ impl GlVao {
       
       if attribute.m_gl_type == gl::UNSIGNED_INT || attribute.m_gl_type == gl::INT {
         check_gl_call!("Renderer", gl::VertexAttribIPointer(index as u32, attribute.m_count,
-          attribute.m_gl_type, 0, attribute.m_buffer_offset as *const GLvoid));
+          attribute.m_gl_type, stride as GLsizei, attribute.m_buffer_offset as *const GLvoid));
       } else {
         check_gl_call!("Renderer", gl::VertexAttribPointer(index as u32, attribute.m_count,
-          attribute.m_gl_type, attribute.m_normalized, 0, attribute.m_buffer_offset as *const GLvoid));
+          attribute.m_gl_type, attribute.m_normalized, stride as GLsizei, attribute.m_buffer_offset as *const GLvoid));
       }
       check_gl_call!("Renderer", gl::EnableVertexAttribArray(index as u32));
     }
@@ -244,9 +265,10 @@ impl Drop for GlVao {
         if (*renderer.unwrap()).m_type == EnumApi::OpenGL && (*renderer.unwrap()).m_state != EnumState::Shutdown {
           match self.on_delete() {
             Ok(_) => {}
+            #[allow(unused)]
             Err(err) => {
               log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VAO : \
-          OpenGL returned with Error => {:?}", err)
+                OpenGL returned with Error => {:?}", err)
             }
           }
         }
@@ -255,6 +277,7 @@ impl Drop for GlVao {
   }
 }
 
+#[allow(unused)]
 pub struct GlVbo {
   pub m_renderer_id: u32,
   pub m_capacity: usize,
@@ -263,17 +286,17 @@ pub struct GlVbo {
 }
 
 impl GlVbo {
-  pub fn new(alloc_size: usize, vertex_count: usize) -> Result<Self, open_gl::renderer::EnumError> {
+  pub fn new(size_per_vertex: usize, vertex_count: usize) -> Result<Self, open_gl::renderer::EnumError> {
     let mut new_vbo: GLuint = 0;
     check_gl_call!("Vbo", gl::CreateBuffers(1, &mut new_vbo));
     check_gl_call!("Vbo", gl::BindBuffer(gl::ARRAY_BUFFER, new_vbo));
-    check_gl_call!("Vbo", gl::BufferData(gl::ARRAY_BUFFER, alloc_size as GLsizeiptr,
+    check_gl_call!("Vbo", gl::BufferData(gl::ARRAY_BUFFER, (size_per_vertex * vertex_count) as GLsizeiptr,
       std::ptr::null(), gl::DYNAMIC_DRAW));
     
     return Ok(GlVbo {
       m_renderer_id: new_vbo,
-      m_capacity: alloc_size,
-      m_size: alloc_size,
+      m_capacity: size_per_vertex * vertex_count,
+      m_size: size_per_vertex * vertex_count,
       m_count: vertex_count,
     });
   }
@@ -405,9 +428,10 @@ impl Drop for GlVbo {
         if (*renderer.unwrap()).m_type == EnumApi::OpenGL && (*renderer.unwrap()).m_state != EnumState::Shutdown {
           match self.on_delete() {
             Ok(_) => {}
+            #[allow(unused)]
             Err(err) => {
               log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping VBO : \
-          OpenGL returned with Error => {:?}", err)
+                OpenGL returned with Error => {:?}", err)
             }
           }
         }
@@ -416,7 +440,7 @@ impl Drop for GlVbo {
   }
 }
 
-#[allow(dead_code)]
+#[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnumUboType {
   Transform(Mat4),
@@ -424,7 +448,7 @@ pub enum EnumUboType {
   MVP(Mat4, Mat4, Mat4)
 }
 
-#[allow(dead_code)]
+#[allow(unused)]
 #[repr(usize)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum EnumUboTypeSize {
@@ -433,6 +457,7 @@ pub enum EnumUboTypeSize {
   MVP = Mat4::get_size() * 3,
 }
 
+#[allow(unused)]
 #[derive(Debug, PartialEq, Eq)]
 pub struct GlUbo {
   m_buffer_id: u32,
@@ -479,29 +504,29 @@ impl GlUbo {
       EnumUboType::Transform(transform) => {
         // Set transform matrix.
         check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0 as GLintptr,
-          Mat4::get_size() as GLsizeiptr, transform.as_array().as_ptr() as *const std::ffi::c_void));
+          Mat4::get_size() as GLsizeiptr, transform.transpose().as_array().as_ptr() as *const std::ffi::c_void));
       }
       EnumUboType::ViewProjection(view, projection) => {
         // Set view matrix.
         check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0 as GLintptr,
-          Mat4::get_size() as GLsizeiptr, view.as_array().as_ptr() as *const std::ffi::c_void));
+          Mat4::get_size() as GLsizeiptr, view.transpose().as_array().as_ptr() as *const std::ffi::c_void));
         
         // Set projection matrix.
         check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, Mat4::get_size() as GLintptr,
-          Mat4::get_size() as GLsizeiptr, projection.as_array().as_ptr() as *const std::ffi::c_void));
+          Mat4::get_size() as GLsizeiptr, projection.transpose().as_array().as_ptr() as *const std::ffi::c_void));
       }
       EnumUboType::MVP(model, view, projection) => {
         // Set Model matrix.
         check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0 as GLintptr,
-          Mat4::get_size() as GLsizeiptr, model.as_array().as_ptr() as *const std::ffi::c_void));
+          Mat4::get_size() as GLsizeiptr, model.transpose().as_array().as_ptr() as *const std::ffi::c_void));
         
         // Set view matrix.
         check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, Mat4::get_size() as GLintptr,
-          Mat4::get_size() as GLsizeiptr, view.as_array().as_ptr() as *const std::ffi::c_void));
+          Mat4::get_size() as GLsizeiptr, view.transpose().as_array().as_ptr() as *const std::ffi::c_void));
         
         // Set projection matrix.
         check_gl_call!("Ubo", gl::BufferSubData(gl::UNIFORM_BUFFER, (Mat4::get_size() * 2) as GLintptr,
-          Mat4::get_size() as GLsizeiptr, projection.as_array().as_ptr() as *const std::ffi::c_void));
+          Mat4::get_size() as GLsizeiptr, projection.transpose().as_array().as_ptr() as *const std::ffi::c_void));
       }
     }
     return Ok(());
@@ -522,6 +547,7 @@ impl Drop for GlUbo {
         if (*renderer.unwrap()).m_type == EnumApi::OpenGL && (*renderer.unwrap()).m_state != EnumState::Shutdown {
           match self.on_delete() {
             Ok(_) => {}
+            #[allow(unused)]
             Err(err) => {
               log!(EnumLogColor::Red, "ERROR", "[Buffer] -->\t Error while dropping UBO : \
               OpenGL returned with Error => {:?}", err)

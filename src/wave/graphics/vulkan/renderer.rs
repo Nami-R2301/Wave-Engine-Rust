@@ -28,6 +28,7 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::mem::size_of;
+#[allow(unused)]
 use std::ops::{BitAnd, BitOr};
 
 use ash::extensions::{ext, khr};
@@ -35,7 +36,7 @@ pub use ash::vk::{self, PhysicalDeviceType, TaggedStructure};
 
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
-use crate::wave::camera::PerspectiveCamera;
+use crate::wave::camera::{Camera};
 use crate::wave::graphics::{renderer, vulkan};
 use crate::wave::graphics::renderer::{EnumFeature, TraitContext};
 use crate::wave::graphics::shader::Shader;
@@ -169,6 +170,7 @@ impl Display for VkSwapChainProperties {
 }
 
 pub struct VkContext {
+  #[allow(unused)]
   m_entry: ash::Entry,
   m_instance: ash::Instance,
   m_physical_device: vk::PhysicalDevice,
@@ -250,6 +252,7 @@ impl VkContext {
     
     match swap_chain_khr {
       Ok(_) => {}
+      #[allow(unused)]
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Could not create swap chain, Vulkan \
       returned with : {:?}", err);
@@ -287,6 +290,7 @@ impl VkContext {
         Ok(image_view) => {
           self.m_swap_chain_image_views.push(image_view);
         }
+        #[allow(unused)]
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot create image view : \
           Vulkan returned with Err => {:?}", err);
@@ -593,6 +597,7 @@ impl VkContext {
         Ok(vk_instance) => {
           Ok((entry, vk_instance))
         }
+        #[allow(unused)]
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[Renderer] --> \t Vulkan Error : {:#?}", err);
           
@@ -663,6 +668,7 @@ impl VkContext {
   /// A tuple containing the created debug messenger and debug extension if
   /// successful, otherwise an [renderer::EnumError] on any error encountered.
   ///
+  #[allow(unused)]
   fn set_debug(entry: &ash::Entry, instance: &ash::Instance) -> Result<(ext::DebugUtils, vk::DebugUtilsMessengerEXT), renderer::EnumError> {
     #[cfg(feature = "debug")]
     {
@@ -1124,6 +1130,7 @@ impl TraitContext for VkContext {
       EnumFeature::CullFacing(_) => {}
       EnumFeature::Wireframe(_) => {}
       EnumFeature::MSAA(sample_count) => {
+        #[allow(unused)]
         let mut max_sample_count: u8 = 1;
         if sample_count.is_some() {
           max_sample_count = self.get_max_msaa_count()?;
@@ -1147,7 +1154,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn setup_camera_ubo(&mut self, _camera: &PerspectiveCamera) -> Result<(), renderer::EnumError> {
+  fn setup_camera_ubo(&mut self, _camera: &Camera) -> Result<(), renderer::EnumError> {
     return Ok(());
   }
   

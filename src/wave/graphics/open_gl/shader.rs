@@ -159,6 +159,7 @@ impl TraitShader for GlShader {
       
       unsafe { gl::GetShaderiv(*shader_id, gl::COMPILE_STATUS, &mut compiled_successfully) };
       if compiled_successfully as GLboolean == gl::FALSE {
+        #[allow(unused)]
         let shader_type_str: String;
         // For debug purposes.
         match shader_stage.m_type {

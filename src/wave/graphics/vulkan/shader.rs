@@ -223,6 +223,7 @@ impl VkShader {
           .expect("[Shader] -->\t Cannot retrieve Vulkan instance : VkContext is None!");
       return match vk_context.get_handle().create_shader_module(&shader_module_create_info, None) {
         Ok(shader_module) => Ok(shader_module),
+        #[allow(unused)]
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create Vulkan shader module : \
           Vulkan returned with error => {err:#?}");

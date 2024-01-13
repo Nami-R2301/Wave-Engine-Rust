@@ -37,6 +37,7 @@ pub enum EnumError {
   InvalidVertexStride
 }
 
+#[allow(unused)]
 pub struct VkVertexAttribute {
   m_attr_desc: vk::VertexInputAttributeDescription
 }
@@ -88,6 +89,7 @@ impl VkVertexAttribute {
   }
 }
 
+#[allow(unused)]
 pub struct VkVbo {
   m_input_desc: vk::VertexInputBindingDescription,
   m_size: usize,
@@ -138,6 +140,7 @@ impl VkVbo {
   }
 }
 
+#[allow(unused)]
 pub struct VkVao {
   m_attr_desc_array: Vec<VkVertexAttribute>
 }

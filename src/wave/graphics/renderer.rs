@@ -28,7 +28,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::log;
 use crate::wave::assets::renderable_assets::REntity;
-use crate::wave::camera::PerspectiveCamera;
+use crate::wave::camera::{Camera};
 use crate::wave::graphics::{open_gl};
 use crate::wave::graphics::open_gl::renderer::GlContext;
 use crate::wave::graphics::shader::Shader;
@@ -145,7 +145,7 @@ pub trait TraitContext {
   fn get_max_msaa_count(&self) -> Result<u8, EnumError>;
   fn to_string(&self) -> String;
   fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError>;
-  fn setup_camera_ubo(&mut self, camera: &PerspectiveCamera) -> Result<(), EnumError>;
+  fn setup_camera_ubo(&mut self, camera: &Camera) -> Result<(), EnumError>;
   fn flush(&mut self);
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn dequeue(&mut self, id: &u64) -> Result<(), EnumError>;
@@ -216,7 +216,7 @@ impl Renderer {
     self.m_features = features_desired;
   }
   
-  pub fn setup_camera_ubo(&mut self, camera: &PerspectiveCamera) -> Result<(), EnumError> {
+  pub fn setup_camera_ubo(&mut self, camera: &Camera) -> Result<(), EnumError> {
     return self.m_api.setup_camera_ubo(camera);
   }
   
@@ -291,6 +291,7 @@ impl Drop for Renderer {
           Ok(_) => {
             log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Dropped renderer successfully...");
           }
+          #[allow(unused)]
           Err(err) => {
             log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error while dropping renderer : \
         Error => {:?}", err);

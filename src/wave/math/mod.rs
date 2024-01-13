@@ -166,15 +166,35 @@ impl Mat4 {
   pub fn default() -> Self {
     return Self {
       m_value_ptr: Vec4 {
-        x: Vec4::default(),
-        y: Vec4::default(),
-        z: Vec4::default(),
-        w: Vec4::default(),
+        x: Vec4 {
+          x: 1.0,
+          y: 0.0,
+          z: 0.0,
+          w: 0.0,
+        },
+        y: Vec4 {
+          x: 0.0,
+          y: 1.0,
+          z: 0.0,
+          w: 0.0,
+        },
+        z: Vec4 {
+          x: 0.0,
+          y: 0.0,
+          z: 1.0,
+          w: 0.0,
+        },
+        w: Vec4 {
+          x: 0.0,
+          y: 0.0,
+          z: 0.0,
+          w: 1.0,
+        },
       }
     }
   }
   pub fn new(initialize_identity_value: f32) -> Self {
-    if initialize_identity_value != 0.0 {
+    if initialize_identity_value != 1.0 {
       return Self {
         m_value_ptr: Vec4 {
           x: Vec4 {
@@ -204,14 +224,7 @@ impl Mat4 {
         },
       };
     }
-    return Self {
-      m_value_ptr: Vec4 {
-        x: Vec4::default(),
-        y: Vec4::default(),
-        z: Vec4::default(),
-        w: Vec4::default(),
-      },
-    };
+    return Mat4::default();
   }
   
   pub fn new_shared(initialize_identity_value: f32) -> Box<Mat4> {
@@ -262,7 +275,7 @@ impl Mat4 {
   }
   
   pub fn translate_model(translation_vec: &Vec3<f32>) -> Self {
-    let mut result = Mat4::new(1.0);
+    let mut result = Mat4::default();
     result[0][3] = translation_vec.x;
     result[1][3] = translation_vec.y;
     result[2][3] = translation_vec.z;
@@ -270,9 +283,9 @@ impl Mat4 {
   }
   
   pub fn rotate_model(rotation_vec: &Vec3<f32>) -> Self {
-    let mut rotation_x: Mat4 = Mat4::new(1.0);
-    let mut rotation_y: Mat4 = Mat4::new(1.0);
-    let mut rotation_z: Mat4 = Mat4::new(1.0);
+    let mut rotation_x: Mat4 = Mat4::default();
+    let mut rotation_y: Mat4 = Mat4::default();
+    let mut rotation_z: Mat4 = Mat4::default();
     
     let mut rotation_vec_clone = Vec3::default();
     rotation_vec_clone.x = rotation_vec.x.to_radians();

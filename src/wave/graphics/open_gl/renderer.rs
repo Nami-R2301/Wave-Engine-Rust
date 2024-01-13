@@ -29,8 +29,7 @@ extern crate gl46;
 use gl46::GlFns;
 use crate::{check_gl_call, log};
 use crate::wave::assets::renderable_assets::REntity;
-use crate::wave::camera::PerspectiveCamera;
-use crate::wave::graphics::color::Color;
+use crate::wave::camera::{Camera};
 use crate::wave::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar,
   GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
 use crate::wave::graphics::{open_gl, renderer};
@@ -307,6 +306,7 @@ impl TraitContext for GlContext {
           enabled.then(|| return "enabled").unwrap_or("disabled"));
       }
       EnumFeature::MSAA(sample_count) => {
+        #[allow(unused)]
         let mut max_sample_count: u8 = 0;
         if sample_count.is_some() {
           max_sample_count = self.get_max_msaa_count()?;
@@ -371,14 +371,14 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn setup_camera_ubo(&mut self, camera: &PerspectiveCamera) -> Result<(), renderer::EnumError> {
+  fn setup_camera_ubo(&mut self, camera: &Camera) -> Result<(), renderer::EnumError> {
     // Setup common ubos across all shaders.
     self.m_batch.m_ubo_buffers.push(GlUbo::new(EnumUboTypeSize::ViewProjection, 0)?);
     for shader_id in self.m_batch.m_shaders.iter() {
       self.m_batch.m_ubo_buffers[0].bind("u_camera", *shader_id)?;
     }
-    self.m_batch.m_ubo_buffers[0].set_data(EnumUboType::ViewProjection(camera.get_projection_matrix(),
-      camera.get_view_matrix()))?;
+    self.m_batch.m_ubo_buffers[0].set_data(EnumUboType::ViewProjection(camera.get_view_matrix(),
+      camera.get_projection_matrix()))?;
     return Ok(());
   }
   
@@ -392,80 +392,53 @@ impl TraitContext for GlContext {
       vertices! Not sending it...", sendable_entity)
     }
     
-    let mut offset: usize = 0;
+    let offset: usize = 0;
     
     // Allocate main dynamic vbo to hold all the data provided.
     let mut vbo = GlVbo::new(sendable_entity.size(), sendable_entity.count())?;
     let mut vao = GlVao::new()?;
     let mut ubo_model = GlUbo::new(EnumUboTypeSize::Transform, 1)?;
     
-    // IDs layout : (u32 for each vertex).
-    vbo.set_data(sendable_entity.m_entity_id_array.as_ptr() as *const GLvoid,
-      std::mem::size_of::<u32>() * sendable_entity.m_entity_id_array.len(), offset)?;
-    offset += std::mem::size_of::<u32>() * sendable_entity.m_entity_id_array.len();
-    
-    // Positions layout : (x,y,z || x,y).
-    vbo.set_data(sendable_entity.m_vertex_array.as_ptr() as *const GLvoid,
-      std::mem::size_of::<f32>() * sendable_entity.m_vertex_array.len(), offset)?;
-    offset += std::mem::size_of::<f32>() * sendable_entity.m_vertex_array.len();
-    
-    // Normals layout : (x,y,z || x,y).
-    vbo.set_data(sendable_entity.m_normal_array.as_ptr() as *const GLvoid,
-      std::mem::size_of::<f32>() * sendable_entity.m_normal_array.len(), offset)?;
-    offset += std::mem::size_of::<f32>() * sendable_entity.m_normal_array.len();
-    
-    // Colors layout : (r,g,b,a).
-    vbo.set_data(sendable_entity.m_color_array.as_ptr() as *const GLvoid,
-      std::mem::size_of::<Color>() * sendable_entity.m_color_array.len(), offset)?;
-    offset += std::mem::size_of::<Color>() * sendable_entity.m_color_array.len();
-    
-    // Texture coordinates layout : (x,y).
-    vbo.set_data(sendable_entity.m_texture_coord_array.as_ptr() as *const GLvoid,
-      std::mem::size_of::<f32>() * sendable_entity.m_texture_coord_array.len(), offset)?;
-    
-    offset = 0;
+    vbo.set_data(sendable_entity.m_data.as_ptr() as *const GLvoid,
+      sendable_entity.size() * sendable_entity.count(), offset)?;
     
     // Establish vao attributes.
     let mut attributes: Vec<GlVertexAttribute> = Vec::with_capacity(5);
     
     // IDs.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1),
-      false, offset, 0).map_err(|error| {
+      false, 0, 0).map_err(|error| {
         return EnumError::InvalidBufferOperation(error);
     })?);
-    offset += std::mem::size_of::<u32>() * sendable_entity.m_entity_id_array.len();
     
     // Positions.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
-      false, offset, 0).map_err(|error| {
+      false, 0,0).map_err(|error| {
       return EnumError::InvalidBufferOperation(error);
     })?);
-    offset += std::mem::size_of::<f32>() * sendable_entity.m_vertex_array.len();
     
     // Normals.
     if sendable_entity.is_flat_shaded() {
       attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
-        false, offset, 1).map_err(|error| {
+        false, 0,1).map_err(|error| {
         return EnumError::InvalidBufferOperation(error);
       })?);
     } else {
       attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3,
-        false, offset, 0).map_err(|error| {
+        false, 0,0).map_err(|error| {
         return EnumError::InvalidBufferOperation(error);
       })?);
     }
-    offset += std::mem::size_of::<f32>() * sendable_entity.m_normal_array.len();
     
     // Colors.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec4,
-      false, offset, 0).map_err(|error| {
+      false, 0,0).map_err(|error| {
       return EnumError::InvalidBufferOperation(error);
     })?);
-    offset += std::mem::size_of::<Color>() * sendable_entity.m_color_array.len();
     
     // Texture coordinates.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec2,
-      false, offset, 0).map_err(|error| {
+      false,  0,0).map_err(|error| {
       return EnumError::InvalidBufferOperation(error);
     })?);
     

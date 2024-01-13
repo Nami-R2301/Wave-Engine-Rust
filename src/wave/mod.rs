@@ -26,7 +26,7 @@ use once_cell::sync::Lazy;
 
 use crate::log;
 use crate::wave::assets::renderable_assets::{REntity, TraitRenderableEntity};
-use crate::wave::camera::PerspectiveCamera;
+use crate::wave::camera::{Camera, EnumCameraType};
 use crate::wave::graphics::renderer::{self, EnumApi, Renderer, S_RENDERER};
 use crate::wave::graphics::shader::{self, EnumShaderSource, EnumShaderType, Shader, ShaderStage};
 use crate::wave::input::{EnumKey, EnumModifier, Input};
@@ -346,6 +346,7 @@ impl Drop for Engine {
         self.m_state = EnumState::ShutDown;
         log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Dropped engine successfully");
       }
+      #[allow(unused)]
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Error while dropping engine : Engine \
         returned with error => {:?} while trying to delete app!", err);
@@ -365,7 +366,7 @@ impl Drop for Engine {
 pub struct ExampleApp {
   m_shaders: Vec<Shader>,
   m_renderable_assets: Vec<REntity>,
-  m_cameras: Vec<PerspectiveCamera>,
+  m_cameras: Vec<Camera>,
 }
 
 impl ExampleApp {
@@ -435,7 +436,7 @@ impl TraitApp for ExampleApp {
       (*window).m_window_resolution.0 as f32 /
         (*window).m_window_resolution.1 as f32
     };
-    self.m_cameras.push(PerspectiveCamera::from(75.0, aspect_ratio, 0.01, 1000.0));
+    self.m_cameras.push(Camera::new(EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
     let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
     unsafe { (*renderer).setup_camera_ubo(&self.m_cameras[0])? };
     

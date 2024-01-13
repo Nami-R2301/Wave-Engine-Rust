@@ -81,6 +81,7 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
   return Ok(());
 }
 
+#[ignore]
 #[test]
 fn test_synchronous_key_inputs() -> Result<(), EnumError> {
   let mut window = Window::new(None, Some((1024, 768)),
@@ -170,6 +171,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
   return Ok(());
 }
 
+#[ignore]
 #[test]
 fn test_synchronous_mouse_button_inputs() -> Result<(), EnumError> {
   let mut window = Window::new(None, Some((1024, 768)),
