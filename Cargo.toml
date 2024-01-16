@@ -14,6 +14,10 @@ glfw = {version = "0.54.0", features = ["vulkan"]}
 once_cell = "1.19.0"
 shaderc = "0.8.3"
 
+[[bin]]
+name = "wave_editor"
+path = "src/wave_editor/main.rs"
+
 [features]
 default = []
 debug = []

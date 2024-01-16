@@ -22,8 +22,5 @@
  SOFTWARE.
 */
 
-// Mimic crate:: macros from src -- DO NOT REMOVE THIS.
-use wave_engine::{log, trace, file_name, function_name};
-
-#[cfg(test)]
-pub mod wave_core;
+pub mod test_shader;
+pub mod test_vulkan;

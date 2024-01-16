@@ -22,8 +22,9 @@
  SOFTWARE.
 */
 
-// Mimic crate:: macros from src -- DO NOT REMOVE THIS.
-use wave_engine::{log, trace, file_name, function_name};
+use wave_engine::wave_core::Engine;  // Mimic crate::wave::Engine from src -- DO NOT REMOVE THIS.
 
-#[cfg(test)]
-pub mod wave_core;
+pub mod math;
+pub mod utils;
+pub mod graphics;
+pub mod input;

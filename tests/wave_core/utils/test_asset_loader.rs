@@ -22,8 +22,21 @@
  SOFTWARE.
 */
 
-// Mimic crate:: macros from src -- DO NOT REMOVE THIS.
-use wave_engine::{log, trace, file_name, function_name};
+use wave_engine::wave_core::assets::renderable_assets::REntity;
+use wave_engine::wave_core::assets::asset_loader::ResLoader;
 
-#[cfg(test)]
-pub mod wave_core;
+#[test]
+fn test_obj_loader() {
+  let cube = ResLoader::new("cube.obj");
+  
+  match cube {
+    Ok(gl_vertices) => {
+      let gl_renderable_entity: REntity = REntity::from(gl_vertices);
+      assert_ne!(gl_renderable_entity.m_data.first().unwrap().m_id, u32::MAX);
+      assert_eq!(gl_renderable_entity.m_data.len(), 36);  // Vec3 (x,y,z).
+    }
+    Err(_) => {
+      assert!(false);
+    }
+  }
+}

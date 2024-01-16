@@ -22,8 +22,6 @@
  SOFTWARE.
 */
 
-// Mimic crate:: macros from src -- DO NOT REMOVE THIS.
-use wave_engine::{log, trace, file_name, function_name};
+pub mod asset_loader;
+pub mod renderable_assets;
 
-#[cfg(test)]
-pub mod wave_core;
