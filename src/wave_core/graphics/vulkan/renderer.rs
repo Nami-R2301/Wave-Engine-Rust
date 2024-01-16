@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-pub(crate) extern crate ash;
+pub extern crate ash;
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -167,7 +167,7 @@ impl Display for VkSwapChainProperties {
   }
 }
 
-pub(crate) struct VkContext {
+pub struct VkContext {
   m_state: EnumState,
   #[allow(unused)]
   m_entry: ash::Entry,
@@ -188,7 +188,7 @@ pub(crate) struct VkContext {
 }
 
 impl VkContext {
-  pub(crate) fn create_swap_chain(&mut self, vsync_preferred: bool) -> Result<(), renderer::EnumError> {
+  pub fn create_swap_chain(&mut self, vsync_preferred: bool) -> Result<(), renderer::EnumError> {
     // Setup swap chain.
     let mut swap_chain_properties = VkContext::query_swap_properties(&self.m_surface, self.m_physical_device, self.m_surface_khr)?;
     let extent = VkContext::pick_swap_extent(&swap_chain_properties.m_capabilities, None)?;
@@ -267,7 +267,7 @@ impl VkContext {
     return Ok(());
   }
   
-  pub(crate) fn create_swap_image_views(&mut self) -> Result<(), renderer::EnumError> {
+  pub fn create_swap_image_views(&mut self) -> Result<(), renderer::EnumError> {
     self.m_swap_chain_image_views.reserve_exact(self.m_swap_chain_images.len());
     
     for &swap_image in self.m_swap_chain_images.iter() {
@@ -302,7 +302,7 @@ impl VkContext {
     return Ok(());
   }
   
-  pub(crate) fn create_pipeline(&mut self, shader_modules: &Vec<vk::ShaderModule>, sendable_entity: &REntity) -> Result<(), EnumError> {
+  pub fn create_pipeline(&mut self, shader_modules: &Vec<vk::ShaderModule>, sendable_entity: &REntity) -> Result<(), EnumError> {
     // Setup dynamic states.
     self.m_dynamic_states.push(vk::DynamicState::VIEWPORT);
     self.m_dynamic_states.push(vk::DynamicState::SCISSOR);
@@ -330,11 +330,11 @@ impl VkContext {
     return Ok(());
   }
   
-  pub(crate) fn get_handle(&mut self) -> &mut ash::Device {
+  pub fn get_handle(&mut self) -> &mut ash::Device {
     return &mut self.m_logical_device;
   }
   
-  pub(crate) fn get_limits(&self) -> vk::PhysicalDeviceLimits {
+  pub fn get_limits(&self) -> vk::PhysicalDeviceLimits {
     return unsafe {
       self.m_instance.get_physical_device_properties(self.m_physical_device).limits
     };
@@ -352,7 +352,7 @@ impl VkContext {
   /// A list of nul-terminated strings of extension names to enable during instance creation if
   /// successful, otherwise an [renderer::EnumError] on any error encountered.
   ///
-  pub(crate) fn load_extensions(window_context: &glfw::Glfw, additional_extensions: Option<Vec<&str>>) -> Result<Vec<std::ffi::CString>, renderer::EnumError> {
+  pub fn load_extensions(window_context: &glfw::Glfw, additional_extensions: Option<Vec<&str>>) -> Result<Vec<std::ffi::CString>, renderer::EnumError> {
     
     // Get required extensions.
     let window_extensions = window_context.get_required_instance_extensions();
@@ -401,7 +401,7 @@ impl VkContext {
   /// A list of nul-terminated strings of layer names to enable during instance creation if
   /// successful, otherwise an [renderer::EnumError] on any error encountered.
   ///
-  pub(crate) fn load_layers(additional_layers: Option<Vec<&str>>) -> Result<Vec<std::ffi::CString>, renderer::EnumError> {
+  pub fn load_layers(additional_layers: Option<Vec<&str>>) -> Result<Vec<std::ffi::CString>, renderer::EnumError> {
     // Get required layers.
     let mut c_layers = vec![std::ffi::CString::new("VK_LAYER_KHRONOS_validation")
       .expect("Failed to create C string in load_layers()")];
@@ -429,7 +429,7 @@ impl VkContext {
   ///   * `Result<(), renderer::EnumError>`: Nothing if successful,
   /// otherwise an [renderer::EnumError::VulkanError(EnumVulkanErrors::NotSupported)] if any of the supplied extension names is not supported.
   ///
-  pub(crate) fn check_extension_support(entry: &ash::Entry, extension_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumError> {
+  pub fn check_extension_support(entry: &ash::Entry, extension_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumError> {
     if entry.enumerate_instance_extension_properties(None).is_err() {
       return Err(renderer::EnumError::from(EnumError::ExtensionError));
     }
@@ -461,7 +461,7 @@ impl VkContext {
   ///   * `Result<(), renderer::EnumError>`: Nothing if successful,
   /// otherwise an [renderer::EnumError::VulkanError(EnumVulkanErrors::NotSupported)] if any of the supplied layer names is not supported.
   ///
-  pub(crate) fn check_layer_support(entry: &ash::Entry, layer_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumError> {
+  pub fn check_layer_support(entry: &ash::Entry, layer_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumError> {
     if entry.enumerate_instance_extension_properties(None).is_err() {
       return Err(renderer::EnumError::from(EnumError::ExtensionError));
     }
@@ -482,7 +482,7 @@ impl VkContext {
     return Ok(());
   }
   
-  pub(crate) fn check_device_extension_support(ash_instance: &ash::Instance, vk_physical_device: &vk::PhysicalDevice, extension_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumError> {
+  pub fn check_device_extension_support(ash_instance: &ash::Instance, vk_physical_device: &vk::PhysicalDevice, extension_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumError> {
     let extension_properties = unsafe {
       ash_instance.enumerate_device_extension_properties(*vk_physical_device)
     };

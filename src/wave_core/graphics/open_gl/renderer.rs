@@ -139,7 +139,7 @@ impl GlBatchPrimitives {
 
 
 pub struct GlContext {
-  pub m_state: EnumState,
+  pub(crate) m_state: EnumState,
   m_batch: GlBatchPrimitives,
   m_debug_callback: gl::types::GLDEBUGPROC,
 }
