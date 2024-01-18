@@ -28,6 +28,6 @@ Vulkan = []
 opt-level = 0
 
 [profile.release]
-opt-level = 0
+opt-level = 3
 incremental = false
 lto = false

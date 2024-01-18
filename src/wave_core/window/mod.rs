@@ -150,21 +150,12 @@ impl Window {
     
     // If user has not chosen an api, choose accordingly.
     if api_preference.is_none() {
-      #[cfg(not(feature = "Vulkan"))]
-      {
-        // OpenGL hints.
-        context_ref.window_hint(glfw::WindowHint::RefreshRate(refresh_count_desired));
-        context_ref.window_hint(glfw::WindowHint::Samples(sample_count_desired));
-        #[cfg(feature = "debug")]
-        context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
-      }
-      
-      #[cfg(feature = "Vulkan")]
-      context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
     } else {
       match api_preference.unwrap() {
         EnumApi::OpenGL => {
           // OpenGL hints.
+          context_ref.window_hint(glfw::WindowHint::ContextVersion(4, 6));
+          context_ref.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
           context_ref.window_hint(glfw::WindowHint::RefreshRate(refresh_count_desired));
           context_ref.window_hint(glfw::WindowHint::Samples(sample_count_desired));
           

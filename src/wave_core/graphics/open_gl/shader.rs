@@ -331,11 +331,34 @@ impl GlShader {
         EnumShaderSource::FromStr(_) => todo!(),
         EnumShaderSource::FromFile(file_path_str) => {
           let buffer: Vec<u8> = std::fs::read(file_path_str)?;
-          log!(EnumLogColor::Yellow, "DEBUG", "[GlShader] -->\t Attempting to read cache of {0}!", file_path_str);
           
           check_gl_call!("GlShader", gl::ShaderBinary(1, shader_id,
               gl46::gl_enumerations::GL_SHADER_BINARY_FORMAT_SPIR_V.0,
               buffer.as_ptr() as *mut std::ffi::c_void, buffer.len() as GLsizei));
+          
+          let mut loaded_successfully: GLint = 0;
+          check_gl_call!("GlShader", gl::GetShaderiv(*shader_id, gl46::gl_enumerations::GL_SPIR_V_BINARY.0, &mut loaded_successfully));
+          
+          if loaded_successfully == 0 {
+            let mut buffer_length: GLint = 0;
+            let mut info_length: GLint = 0;
+            
+            check_gl_call!("GlShader", gl::GetShaderiv(*shader_id, gl::INFO_LOG_LENGTH, &mut buffer_length));
+            let mut buffer_c: Vec<u8> = Vec::with_capacity(buffer_length as usize);
+            
+            check_gl_call!("GlShader", gl::GetShaderInfoLog(*shader_id, buffer_length,
+                  &mut info_length, buffer_c.as_mut_ptr() as *mut GLchar));
+            
+            unsafe { buffer_c.set_len(info_length as usize) };
+            
+            let c_string = std::ffi::CString::new(buffer_c.as_slice())
+              .expect("[GlShader] -->\t Cannot convert bytes to CString!");
+            
+            log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Error, could not compile {0}! \
+                \nInfo => {1}", file_path_str, c_string.to_str().unwrap_or("Error"));
+            
+            return Err(shader::EnumError::ShaderBinaryError);
+          }
           
           // Specialize the shader (specify the entry point)
           check_gl_call!("GlShader", gl4_6.SpecializeShader(*shader_id, entry_point.as_ptr(), 0, std::ptr::null(), std::ptr::null()));
