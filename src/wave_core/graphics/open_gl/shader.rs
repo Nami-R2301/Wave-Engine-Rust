@@ -23,16 +23,17 @@
 */
 
 use std::any::Any;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 
 use gl::types::{GLenum, GLsizei};
 
 use crate::{check_gl_call, log};
 use crate::wave_core::graphics::open_gl::buffer::{GLboolean, GLchar, GLfloat, GLint, GLuint};
-use crate::wave_core::graphics::open_gl::renderer::S_GL_4_6;
-use crate::wave_core::graphics::renderer::{EnumApi, Renderer};
+use crate::wave_core::graphics::open_gl::renderer::{S_GL_4_6};
+use crate::wave_core::graphics::renderer::{EnumApi, Renderer, S_RENDERER};
 use crate::wave_core::graphics::shader::{self, EnumShaderSource, EnumShaderType, ShaderStage, TraitShader};
 use crate::wave_core::math::Mat4;
+use crate::wave_core::utils::into_rust_string;
 
 /*
 ///////////////////////////////////   OpenGL shader    ///////////////////////////////////
@@ -51,6 +52,7 @@ pub enum EnumError {
   ShaderCompilationError,
   ShaderLinkageError,
   ShaderModuleError,
+  ShaderBinaryError,
   UnsupportedUniformType,
   UniformNotFound,
   OpenGLApiError,
@@ -60,7 +62,7 @@ pub enum EnumError {
 pub struct GlShader {
   pub m_program_id: u32,
   m_shader_ids: HashMap<EnumShaderType, GLuint>,
-  m_shader_stages: HashSet<ShaderStage>,
+  m_shader_stages: Vec<ShaderStage>,
   m_uniform_cache: HashMap<&'static str, GLint>,
 }
 
@@ -69,17 +71,16 @@ impl TraitShader for GlShader {
     return Self {
       m_program_id: 0,
       m_shader_ids: HashMap::with_capacity(3),
-      m_shader_stages: HashSet::with_capacity(3),
+      m_shader_stages: Vec::with_capacity(3),
       m_uniform_cache: Default::default(),
     };
   }
   
   fn new(shader_stages: Vec<ShaderStage>) -> Result<Self, shader::EnumError> {
-    let hash_set = HashSet::from_iter(shader_stages.into_iter());
     return Ok(GlShader {
       m_program_id: 0,
-      m_shader_ids: HashMap::with_capacity(hash_set.len()),
-      m_shader_stages: hash_set,
+      m_shader_ids: HashMap::with_capacity(shader_stages.len()),
+      m_shader_stages: shader_stages,
       m_uniform_cache: Default::default(),
     });
   }
@@ -100,7 +101,7 @@ impl TraitShader for GlShader {
       match &shader_stage.m_source {
         EnumShaderSource::FromFile(file_path_str) => {
           let file_path = std::path::Path::new(file_path_str);
-          if *shader_stage.cache_status() {
+          if shader_stage.cache_status() {
             self.m_shader_ids.insert(shader_stage.m_type, shader_id);
             continue;
           }
@@ -123,28 +124,16 @@ impl TraitShader for GlShader {
   }
   
   fn compile(&mut self) -> Result<(), shader::EnumError> {
+    let mut cached_shader_array: Vec<ShaderStage> = Vec::with_capacity(self.m_shader_stages.len());
+    
     for shader_stage in self.m_shader_stages.iter() {
       let shader_id = self.m_shader_ids.get(&shader_stage.m_type)
         .expect(format!("[GlShader] -->\t Cannot find shader ID for {0}", shader_stage.m_type).as_str());
-      if *shader_stage.cache_status() {
-        match &shader_stage.m_source {
-          EnumShaderSource::FromFile(file_path_str) => {
-            log!(EnumLogColor::Blue, "INFO", "[GlShader] -->\t Cached shader {0} found, \
-              skipping compilation.", shader_stage.m_source);
-            
-            let mut buffer: Vec<u8> = std::fs::read(file_path_str)?;
-            check_gl_call!("GlShader", gl::ShaderBinary(1, shader_id,
-              gl46::gl_enumerations::GL_SHADER_BINARY_FORMAT_SPIR_V.0,
-              buffer.as_mut_ptr() as *mut std::ffi::c_void,
-              buffer.len() as GLsizei));
-            
-            // Specialize the shader (specify the entry point)
-            check_gl_call!("GlShader", S_GL_4_6.as_ref().unwrap()
-              .SpecializeShader(*shader_id, "main".as_ptr(), 0, std::ptr::null(), std::ptr::null()));
-            continue;
-          }
-          EnumShaderSource::FromStr(_) => todo!()
-        }
+      if shader_stage.cache_status() {
+        log!(EnumLogColor::Blue, "WARN", "[GlShader] -->\t Cached shader {0} found, \
+            not compiling it.", shader_stage.m_source);
+        cached_shader_array.push(shader_stage.clone());
+        continue;
       } else {
         log!(EnumLogColor::Yellow, "WARN", "[GlShader] -->\t Cached shader {0} not found, \
             compiling it.", shader_stage.m_source);
@@ -182,8 +171,7 @@ impl TraitShader for GlShader {
         let mut buffer: Vec<GLchar> = Vec::with_capacity(buffer_length as usize);
         
         unsafe {
-          gl::GetShaderInfoLog(*shader_id, buffer_length, &mut buffer_length,
-            buffer.as_mut_ptr())
+          gl::GetShaderInfoLog(*shader_id, buffer_length, &mut buffer_length, buffer.as_mut_ptr())
         };
         
         log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Error, could not compile {0}!\n \
@@ -192,6 +180,10 @@ impl TraitShader for GlShader {
       });
         return Err(shader::EnumError::from(EnumError::ShaderSyntaxError));
       }
+    }
+    
+    if !cached_shader_array.is_empty() {
+      self.compile_binary(cached_shader_array)?;
     }
     
     return Ok(());
@@ -324,6 +316,54 @@ impl TraitShader for GlShader {
 impl GlShader {
   pub fn bind(&self) -> Result<(), shader::EnumError> {
     check_gl_call!("GlShader", gl::UseProgram(self.m_program_id));
+    return Ok(());
+  }
+  
+  fn compile_binary(&mut self, shader_stages: Vec<ShaderStage>) -> Result<(), shader::EnumError> {
+    let gl4_6 = unsafe { S_GL_4_6.as_ref().unwrap() };
+    let entry_point = "main";
+    
+    for shader_stage in shader_stages.into_iter() {
+      let shader_id = self.m_shader_ids.get(&shader_stage.m_type)
+        .expect(format!("[GlShader] -->\t Cannot find shader ID for {0}", shader_stage.m_type).as_str());
+      
+      match &shader_stage.m_source {
+        EnumShaderSource::FromStr(_) => todo!(),
+        EnumShaderSource::FromFile(file_path_str) => {
+          let buffer: Vec<u8> = std::fs::read(file_path_str)?;
+          log!(EnumLogColor::Yellow, "DEBUG", "[GlShader] -->\t Attempting to read cache of {0}!", file_path_str);
+          
+          check_gl_call!("GlShader", gl::ShaderBinary(1, shader_id,
+              gl46::gl_enumerations::GL_SHADER_BINARY_FORMAT_SPIR_V.0,
+              buffer.as_ptr() as *mut std::ffi::c_void, buffer.len() as GLsizei));
+          
+          // Specialize the shader (specify the entry point)
+          check_gl_call!("GlShader", gl4_6.SpecializeShader(*shader_id, entry_point.as_ptr(), 0, std::ptr::null(), std::ptr::null()));
+          
+          let mut buffer_length: GLint = 0;
+          let mut info_length: GLint = 0;
+          let mut compiled_successfully: GLint = 0;
+          check_gl_call!("GlShader", gl::GetShaderiv(*shader_id, gl::COMPILE_STATUS, &mut compiled_successfully));
+          
+          if compiled_successfully == 0 {
+            check_gl_call!("GlShader", gl::GetShaderiv(*shader_id, gl::INFO_LOG_LENGTH, &mut buffer_length));
+            let mut buffer_c: Vec<u8> = Vec::with_capacity(buffer_length as usize);
+            
+            check_gl_call!("GlShader", gl::GetShaderInfoLog(*shader_id, buffer_length,
+                  &mut info_length, buffer_c.as_mut_ptr() as *mut GLchar));
+            
+            unsafe { buffer_c.set_len(info_length as usize) };
+            
+            let rust_str = into_rust_string(buffer_c.as_slice()).expect("Cannot convert bytes to Rust str");
+            
+            log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Error, could not compile {0}! \
+                \nInfo => {1}", file_path_str, rust_str);
+            
+            return Err(shader::EnumError::ShaderBinaryError);
+          }
+        }
+      }
+    }
     return Ok(());
   }
 }

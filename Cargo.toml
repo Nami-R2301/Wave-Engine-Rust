@@ -28,7 +28,6 @@ Vulkan = []
 opt-level = 0
 
 [profile.release]
-opt-level = 3
-codegen-units = 1
-overflow-checks = false
-panic = "abort"
+opt-level = 0
+incremental = false
+lto = false

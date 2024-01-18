@@ -36,7 +36,7 @@ pub(crate) use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLintptr, 
 use crate::{check_gl_call, log};
 use crate::wave_core::assets::renderable_assets::REntity;
 use crate::wave_core::graphics::{open_gl};
-use crate::wave_core::graphics::renderer::Renderer;
+use crate::wave_core::graphics::renderer::{Renderer, S_RENDERER};
 use crate::wave_core::math::Mat4;
 
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Ord, Hash)]

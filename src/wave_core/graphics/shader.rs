@@ -53,6 +53,7 @@ pub enum EnumError {
   PathError,
   UnsupportedFileType,
   ShaderNotCached,
+  ShaderBinaryError,
   InvalidShaderSource,
   InvalidFileOperation,
   IoError(std::io::ErrorKind),
@@ -177,8 +178,13 @@ impl ShaderStage {
         let file_path = std::path::Path::new(file_path_str);
         if Shader::check_cache(file_path).is_ok() {
           is_cached = true;
-          source = EnumShaderSource::FromFile(format!("cache/{0}.spv",
-            file_path.file_stem().unwrap().to_str().unwrap()));
+          if file_path.extension().unwrap() == "spv" {
+            source = EnumShaderSource::FromFile(format!("cache/{0}",
+              file_path.file_name().unwrap().to_str().unwrap()));
+          } else {
+            source = EnumShaderSource::FromFile(format!("cache/{0}.spv",
+              file_path.file_name().unwrap().to_str().unwrap()));
+          }
         }
       }
       EnumShaderSource::FromStr(_) => {}
@@ -191,8 +197,8 @@ impl ShaderStage {
     };
   }
   
-  pub fn cache_status(&self) -> &bool {
-    return &self.m_is_cached;
+  pub fn cache_status(&self) -> bool {
+    return self.m_is_cached;
   }
 }
 
@@ -272,8 +278,14 @@ impl Shader {
       }
     }
     
-    let cache_path_str: String = format!("cache/{0}", shader_file_path.file_stem().unwrap()
-      .to_str().unwrap());
+    let cache_path_str: String;
+    if shader_file_path.extension().unwrap() == "spv" {
+      cache_path_str = format!("cache/{0}", shader_file_path.file_name().unwrap()
+        .to_str().unwrap());
+    } else {
+      cache_path_str = format!("cache/{0}.spv", shader_file_path.file_name().unwrap()
+        .to_str().unwrap());
+    }
     let buffer = std::fs::read(cache_path_str)?;
     
     return Ok(buffer);
@@ -320,7 +332,8 @@ impl Shader {
   }
   
   pub fn to_string(&self) -> String {
-    return self.m_api_data.to_string();
+    return format!("[Shader] -->\t Program ID =>\t {1}\n{0:113}[Api] |Shader stage| (Source, Cached?) : {2}",
+      "", self.get_id(), self.m_api_data.to_string());
   }
   
   pub fn on_delete(&mut self) -> Result<(), EnumError> {
@@ -368,7 +381,6 @@ impl Drop for Shader {
 
 impl Display for Shader {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "[Shader] -->\t Program ID => {1}\n{0:113}[Api] |Shader stage| (Source, Cached?) : {2}",
-      "", self.m_api_data.get_id(), self.to_string())
+    write!(f, "{0}", self.to_string())
   }
 }

@@ -540,6 +540,15 @@ pub mod logger {
   }
 }
 
+pub fn into_rust_string(bytes: &[u8]) -> Option<String> {
+  let bytes_without_null = match bytes.iter().position(|&b| b == 0) {
+    Some(ix) => &bytes[..ix],
+    None => bytes,
+  };
+  
+  return String::from_utf8(Vec::from(bytes_without_null)).ok();
+}
+
 /*
 ///////////////////////////////////   TIME    ///////////////////////////////////
 ///////////////////////////////////           ///////////////////////////////////

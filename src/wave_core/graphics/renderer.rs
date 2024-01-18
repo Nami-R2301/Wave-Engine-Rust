@@ -42,6 +42,14 @@ use crate::wave_core::window::Window;
 pub(crate) static mut S_RENDERER: Option<*mut Renderer> = None;
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub enum EnumCallCheckingType {
+  None,
+  Async,
+  Sync,
+  SyncAndAsync
+}
+
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub enum EnumState {
   NotCreated,
   Created,
@@ -56,7 +64,7 @@ pub enum EnumApi {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumFeature {
-  Debug(bool),
+  ApiCallChecking(EnumCallCheckingType),
   DepthTest(bool),
   CullFacing(Option<i64>),
   Wireframe(bool),
@@ -288,7 +296,7 @@ impl Renderer {
 
 impl Display for Renderer {
   fn fmt(&self, format: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(format, "State => {0:#?}\n{1:113}{2}", self.m_state, "", self.m_api.to_string())
+    write!(format, "\nState =>\t\t {0:#?};\n{1}", self.m_state, self.m_api.to_string())
   }
 }
 

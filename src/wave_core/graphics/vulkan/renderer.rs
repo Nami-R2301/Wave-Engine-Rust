@@ -37,7 +37,7 @@ use crate::log;
 use crate::wave_core::assets::renderable_assets::{EnumVertexMemberOffset, REntity};
 use crate::wave_core::camera::Camera;
 use crate::wave_core::graphics::{renderer, vulkan};
-use crate::wave_core::graphics::renderer::{EnumFeature, EnumState, TraitContext};
+use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumFeature, EnumState, TraitContext};
 use crate::wave_core::graphics::shader::Shader;
 use crate::wave_core::graphics::vulkan::buffer::{VkVbo, VkVertexAttribute};
 use crate::wave_core::graphics::vulkan::shader::VkShader;
@@ -130,7 +130,7 @@ impl VkSwapChainProperties {
 
 impl Display for VkSwapChainProperties {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    let mut present_mode_str: String = String::from("Details : ");
+    let mut present_mode_str: String = String::from("");
     match self.m_ideal_present_mode {
       vk::PresentModeKHR::IMMEDIATE => {
         present_mode_str += "Submit as fast as possible";
@@ -149,13 +149,13 @@ impl Display for VkSwapChainProperties {
       }
     }
     
-    write!(f, "Swap chain info :\n{0:115}\
-    Supported usage => {1:?}\n{0:115}\
-    Min image count => {2:?}\n{0:115}\
-    Max image count => {3:?}\n{0:115}\
-    Surface format picked (color depth) => {4:?}\n{0:115}\
-    Presentation mode picked (buffer swapping) => {5:?}\n{0:117}{6}\n{0:115}\
-    Extent (resolution) => Width: {7}, Height: {8}", "",
+    write!(f, "Swap chain info =>\t \
+    Supported usage => {1:?};\n{0:25}\
+    Min image count => {2:?};\n{0:25}\
+    Max image count => {3:?};\n{0:25}\
+    Surface format picked (color depth) => {4:?};\n{0:25}\
+    Presentation mode picked (buffer swapping) => {5:?} --{6};\n{0:25}\
+    Extent (resolution) => Width: {7}, Height: {8};", "",
       self.m_capabilities.supported_usage_flags,
       self.m_capabilities.min_image_count,
       self.m_capabilities.max_image_count,
@@ -219,17 +219,12 @@ impl VkContext {
     swap_chain_create_info.present_mode = present_mode;
     swap_chain_create_info.image_array_layers = 1;
     swap_chain_create_info.image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
+    swap_chain_create_info.queue_family_index_count = 1;
+    swap_chain_create_info.p_queue_family_indices =
+      [self.m_queue_family_indices.m_graphics_family_index.unwrap()].as_ptr();
     
     // Specify how to handle swap chain images that will be used across multiple queue families.
-    if self.m_queue_family_indices.m_graphics_family_index != self.m_queue_family_indices.m_present_family_index {
-      swap_chain_create_info.image_sharing_mode = vk::SharingMode::CONCURRENT;
-      swap_chain_create_info.queue_family_index_count = 2;
-      swap_chain_create_info.p_queue_family_indices =
-        [self.m_queue_family_indices.m_graphics_family_index.unwrap(),
-          self.m_queue_family_indices.m_present_family_index.unwrap()].as_ptr();
-    } else {
-      swap_chain_create_info.image_sharing_mode = vk::SharingMode::EXCLUSIVE;
-    }
+    swap_chain_create_info.image_sharing_mode = vk::SharingMode::EXCLUSIVE;
     
     // Specify that a certain transform should be applied to images in the swap chain if it is supported.
     swap_chain_create_info.pre_transform = swap_chain_properties.m_capabilities.current_transform;
@@ -1063,10 +1058,9 @@ impl TraitContext for VkContext {
       _ => { device_type_str = "Other".to_string() }
     };
     
-    let info_physical_device: String = format!("Api => Vulkan,\n{0:<113}\
-    Api version => {1}.{2}.{3}\n{0:<113}\
-    Device name => {4}\n{0:<113}Driver version => {5}\n{0:<113}Device type => {6}",
-      "",
+    let info_physical_device: String = format!("Api =>\t\t\t Vulkan;\n\
+    Api version =>\t\t {0}.{1}.{2};\n\
+    Device name =>\t\t {3};\nDriver version =>\t {4};\nDevice type =>\t\t {5};",
       vk::api_version_major(device_properties.api_version),
       vk::api_version_minor(device_properties.api_version),
       vk::api_version_patch(device_properties.api_version),
@@ -1075,15 +1069,15 @@ impl TraitContext for VkContext {
         device_properties.vendor_id), device_type_str);
     
     // Get logical device capabilities and presentation format and extent chosen for swap chain.
-    let info_logical_device: String = format!("\n{0:113}{1}", "", self.m_swap_chain_properties);
+    let info_logical_device: String = format!("\n{0}", self.m_swap_chain_properties);
     
     return info_physical_device + info_logical_device.as_str();
   }
   
   fn toggle(&mut self, feature: EnumFeature) -> Result<(), renderer::EnumError> {
     match feature {
-      EnumFeature::Debug(enabled) => {
-        if enabled {
+      EnumFeature::ApiCallChecking(debug_type) => {
+        if debug_type != EnumCallCheckingType::None {
           // Toggle on debugging.
           #[cfg(feature = "debug")]
           {
@@ -1100,7 +1094,7 @@ impl TraitContext for VkContext {
           self.m_debug_report_callback = None;
         }
         log!(EnumLogColor::Blue, "INFO", "[VkContext] -->\t Debug mode {0}",
-          enabled
+          (debug_type != EnumCallCheckingType::None)
           .then(|| return "enabled")
           .unwrap_or("disabled"));
       }
@@ -1204,20 +1198,33 @@ impl TraitContext for VkContext {
 
 #[cfg(all(feature = "Vulkan", feature = "debug"))]
 unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSeverityFlagsEXT,
-                                                type_: vk::DebugUtilsMessageTypeFlagsEXT,
+                                                _type: vk::DebugUtilsMessageTypeFlagsEXT,
                                                 p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
                                                 _: *mut std::ffi::c_void) -> vk::Bool32 {
   use vk::DebugUtilsMessageSeverityFlagsEXT as Flag;
   
   let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
+  let message_str =  message.to_str().unwrap_or("Error converting &CStr to &str!")
+    .split("|")
+    .collect::<Vec<&str>>();
+  let mut message_info: (&str, &str) = ("Empty", "Empty");
+  if message_str.len() > 2 {
+    message_info = message_str[2].split_once(":").unwrap();
+  }
   match flag {
     Flag::VERBOSE => {}
     Flag::INFO => {}
     // Flag::INFO => log!("INFO", "{:?} -->\t {:#?}", type_, message),
-    Flag::WARNING => log!(EnumLogColor::Yellow, "WARN", "Vulkan -->\t Type : {0:?}\nMessage :\n{1}\n",
-      type_, message.to_str().unwrap_or("Error converting &CStr to &str!")),
-    _ => log!(EnumLogColor::Red, "ERROR", "Vulkan -->\t Type : {0:?}\nMessage :\n{1}\n", type_,
-      message.to_str().unwrap_or("Error converting &CStr to &str!")),
+    Flag::WARNING => log!(EnumLogColor::Yellow, "WARN", "[Driver] -->\t Vulkan Driver Notification \
+    :\nType =>\t\t  {0}\nID =>\t\t {1}\nFunction =>\t {2}\nMessage =>\t {3}\n",
+      message_str[0], message_str[1], message_info.0, message_info.1),
+    _ => {
+      log!(EnumLogColor::Red, "ERROR", "[Driver] -->\t Vulkan Driver Notification \
+    :\nType =>\t\t  {0}\nID =>\t\t {1}\nFunction =>\t {2}\nMessage =>\t {3}\n",
+      message_str[0], message_str[1], message_info.0, message_info.1);
+      panic!("{}", format!("[VkContext] -->\t Fatal driver error encountered :\n{0}\n",
+        message_info.1));
+    },
   }
   
   return vk::FALSE;

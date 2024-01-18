@@ -31,7 +31,6 @@
 extern crate shaderc;
 
 use std::any::Any;
-use std::collections::HashSet;
 use crate::log;
 use crate::wave_core::graphics::renderer::{EnumApi, Renderer};
 use crate::wave_core::graphics::vulkan::renderer::{vk, VkContext};
@@ -68,7 +67,7 @@ impl From<EnumShaderType> for vk::ShaderStageFlags {
 #[derive(Debug, Clone)]
 pub struct VkShader {
   m_id: u32,
-  m_shader_stages: HashSet<ShaderStage>,
+  m_shader_stages: Vec<ShaderStage>,
   m_vk_shader_modules: Vec<vk::ShaderModule>
 }
 
@@ -76,7 +75,7 @@ impl TraitShader for VkShader {
   fn default() -> Self where Self: Sized {
     return Self {
       m_id: 0,
-      m_shader_stages: HashSet::with_capacity(3),
+      m_shader_stages: Vec::with_capacity(3),
       m_vk_shader_modules: Vec::with_capacity(3)
     };
   }
@@ -85,7 +84,7 @@ impl TraitShader for VkShader {
     let shader_stages_len = shader_stages.len();
     return Ok(VkShader {
       m_id: 0,
-      m_shader_stages: HashSet::from_iter(shader_stages.into_iter()),
+      m_shader_stages: shader_stages,
       m_vk_shader_modules: Vec::with_capacity(shader_stages_len)
     });
   }
@@ -103,10 +102,25 @@ impl TraitShader for VkShader {
   }
   
   fn compile(&mut self) -> Result<(), shader::EnumError> {
+    let entry_point = "main";
+    let compiler = shaderc::Compiler::new().unwrap();
+    let mut options = shaderc::CompileOptions::new().unwrap();
+    options.set_optimization_level(shaderc::OptimizationLevel::Performance);
+    
+    // Force converting unbound uniforms to SPIR-V compatible uniforms (aka bound ones).
+    options.set_auto_bind_uniforms(true);
+    
+    // #[cfg(feature = "debug")]
+    options.set_generate_debug_info();
+    
+    // Switch from left handed coordinates (OpenGL) to right handed (Vulkan, DirectX).
+    options.set_invert_y(true);
+    options.set_warnings_as_errors();
+    
     for shader_stage in self.m_shader_stages.iter() {
       let shader_binary: Vec<u8>;
       
-      if *shader_stage.cache_status() {
+      if shader_stage.cache_status() {
         log!(EnumLogColor::Blue, "INFO", "[VkShader] -->\t Cached shader {0} found, \
          skipping compilation.", shader_stage.m_source);
         let file_path_str = String::from(shader_stage.m_source.clone());
@@ -116,28 +130,13 @@ impl TraitShader for VkShader {
         log!(EnumLogColor::Yellow, "WARN", "[VkShader] -->\t Cached shader {0} not found, \
             compiling it.", shader_stage.m_source);
         
-        let compiler = shaderc::Compiler::new().unwrap();
-        let mut options = shaderc::CompileOptions::new().unwrap();
-        #[cfg(not(feature = "debug"))]
-        options.set_optimization_level(shaderc::OptimizationLevel::Performance);
-        
-        // Force converting unbound uniforms to SPIR-V compatible uniforms (aka bound ones).
-        options.set_auto_bind_uniforms(true);
-        
-        #[cfg(feature = "debug")]
-        options.set_generate_debug_info();
-        
-        // Switch from left handed coordinates (OpenGL) to right handed (Vulkan, DirectX).
-        options.set_invert_y(true);
-        options.set_warnings_as_errors();
-        
         match &shader_stage.m_source {
           EnumShaderSource::FromFile(file_path_str) => {
             let file_path = std::path::Path::new(file_path_str);
             let file_contents = std::fs::read_to_string(file_path_str)?;
             
             match compiler.compile_into_spirv(file_contents.as_str(),
-              shaderc::ShaderKind::from(shader_stage.m_type), file_path_str, "main",
+              shaderc::ShaderKind::from(shader_stage.m_type), file_path_str, entry_point,
               Some(&options)) {
               Ok(compiled_file) => {
                 Shader::cache(file_path, compiled_file.as_binary_u8().to_vec())?;

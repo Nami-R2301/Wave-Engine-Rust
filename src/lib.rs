@@ -29,7 +29,7 @@ pub mod wave_core {
   use crate::log;
   use crate::wave_core::assets::renderable_assets::{REntity, TraitRenderableEntity};
   use crate::wave_core::camera::{Camera, EnumCameraType};
-  use crate::wave_core::graphics::renderer::{self, EnumApi, Renderer, S_RENDERER};
+  use crate::wave_core::graphics::renderer::{self, EnumApi, EnumCallCheckingType, Renderer, S_RENDERER};
   use crate::wave_core::graphics::shader::{self, EnumShaderSource, EnumShaderType, Shader, ShaderStage};
   use crate::wave_core::input::{EnumKey, EnumModifier, Input};
   use crate::wave_core::math::Vec3;
@@ -191,7 +191,8 @@ pub mod wave_core {
       self.m_renderer.renderer_hint(renderer::EnumFeature::CullFacing(Some(gl::BACK as i64)));
       
       self.m_renderer.renderer_hint(renderer::EnumFeature::DepthTest(true));
-      self.m_renderer.renderer_hint(renderer::EnumFeature::Debug(true));
+      #[cfg(feature = "debug")]
+      self.m_renderer.renderer_hint(renderer::EnumFeature::ApiCallChecking(EnumCallCheckingType::Async));
       self.m_renderer.renderer_hint(renderer::EnumFeature::Wireframe(true));
       self.m_renderer.renderer_hint(renderer::EnumFeature::MSAA(None));
       
