@@ -268,12 +268,10 @@ impl Shader {
   pub fn check_cache(shader_file_path: &std::path::Path) -> Result<Vec<u8>, EnumError> {
     let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
     unsafe {
-      let renderer_api_version = (*renderer).get_max_shader_version_available();
-      if (*renderer).m_type == EnumApi::OpenGL && renderer_api_version < 4.6 {
+      if (*renderer).m_type == EnumApi::OpenGL && !(*renderer).check_extension("GL_ARB_gl_spirv") {
         log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Cannot load from cached SPIR-V binary : \
-          Current OpenGL renderer doesn't support the extension required 'ARB_gl_spirv', found \
-          starting OpenGL version 4.6 and higher, current available version : {1}!\n{0:113}\
-          Attempting to load from glsl shader directly...", "", renderer_api_version);
+          \n{0:113}Current OpenGL renderer doesn't support the extension required 'GL_ARB_gl_spirv'\
+          \n{0:113}Attempting to load from glsl shader directly...", "");
         return Err(EnumError::InvalidApi);
       }
     }

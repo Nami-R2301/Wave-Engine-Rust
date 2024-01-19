@@ -149,6 +149,7 @@ pub(crate) trait TraitContext {
   fn get_api_handle(&mut self) -> &mut dyn Any;
   fn get_api_version(&self) -> f32;
   fn get_max_shader_version_available(&self) -> f32;
+  fn check_extension(&self, desired_extension: &str) -> bool;
   fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError>;
   fn on_render(&mut self) -> Result<(), EnumError>;
   fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError>;
@@ -233,6 +234,10 @@ impl Renderer {
   
   pub fn submit(&mut self) -> Result<(), EnumError> {
     return Ok(self.m_api.submit(&self.m_features)?);
+  }
+  
+  pub fn check_extension(&self, desired_extension: &str) -> bool {
+    return self.m_api.check_extension(desired_extension);
   }
   
   pub fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError> {

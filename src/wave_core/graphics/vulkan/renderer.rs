@@ -1042,6 +1042,10 @@ impl TraitContext for VkContext {
     return Err(renderer::EnumError::from(EnumError::NotSupported));
   }
   
+  fn check_extension(&self, _desired_extension: &str) -> bool {
+    todo!()
+  }
+  
   fn to_string(&self) -> String {
     let device_properties = unsafe {
       self.m_instance.get_physical_device_properties(self.m_physical_device)

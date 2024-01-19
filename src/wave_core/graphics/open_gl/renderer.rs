@@ -23,10 +23,10 @@
 */
 
 use std::any::Any;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 extern crate gl46;
 
-use gl46::GlFns;
+use gl46::{GlFns};
 use crate::{log};
 use crate::wave_core::assets::renderable_assets::{EnumVertexMemberOffset, REntity};
 use crate::wave_core::camera::{Camera};
@@ -136,6 +136,9 @@ macro_rules! check_gl_call {
 
 #[derive(Debug, Clone, Ord, Eq, PartialOrd, PartialEq, Hash)]
 pub enum EnumError {
+  CStringError,
+  ApiFunctionLoadingError,
+  UnsupportedApiFunction,
   InvalidContext,
   InvalidOperation(GLenum),
   MSAAError,
@@ -175,6 +178,7 @@ impl GlBatchPrimitives {
 
 
 pub struct GlContext {
+  pub(crate) m_ext: HashMap<String, ()>,
   pub(crate) m_state: EnumState,
   m_batch: GlBatchPrimitives,
   m_debug_callback: gl::types::GLDEBUGPROC,
@@ -186,12 +190,28 @@ impl TraitContext for GlContext {
     window.init_opengl_surface();
     gl::load_with(|f_name| window.get_api_ref().get_proc_address_raw(f_name));
     unsafe {
-      S_GL_4_6 = Some(GlFns::load_from(&|f_name| {
+      match GlFns::load_from(&|f_name| {
         let string = std::ffi::CStr::from_ptr(f_name as *const std::ffi::c_char);
         window.get_api_ref().get_proc_address_raw(string.to_str().unwrap())
-      }).unwrap());
+      }) {
+        Ok(gl_fns) => {
+          S_GL_4_6 = Some(gl_fns);
+        }
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot load one or more OpenGL API \
+          functions! Error => {err}");
+          return Err(renderer::EnumError::from(EnumError::ApiFunctionLoadingError));
+        }
+      }
     }
+    let extensions = GlContext::load_extensions()?;
+    let mut hash_map = HashMap::with_capacity(extensions.len());
+    for ext in extensions.into_iter() {
+      hash_map.insert(ext, ());
+    }
+    
     return Ok(GlContext {
+      m_ext: hash_map,
       m_state: EnumState::Created,
       m_batch: GlBatchPrimitives::new(),
       m_debug_callback: Some(gl_error_callback),
@@ -225,6 +245,11 @@ impl TraitContext for GlContext {
     };
     let shading_language_version_str = shading_info.first().unwrap();
     return shading_language_version_str.parse::<f32>().unwrap_or(0.0);
+  }
+  
+  fn check_extension(&self, desired_extension: &str) -> bool {
+    let str = String::from(desired_extension);
+    return self.m_ext.contains_key(&str);
   }
   
   fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, renderer::EnumError> {
@@ -527,6 +552,29 @@ impl TraitContext for GlContext {
     
     self.m_state = EnumState::Deleted;
     return Ok(());
+  }
+}
+
+impl GlContext {
+  fn load_extensions() -> Result<Vec<String>, EnumError> {
+    let mut ext_count = 0;
+    unsafe { gl::GetIntegerv(gl::NUM_EXTENSIONS, &mut ext_count) };
+    let mut gl_extensions_available: Vec<String> = Vec::with_capacity(ext_count as usize);
+    
+    for index in 0..ext_count {
+      let gl_ext = unsafe { gl::GetStringi(gl::EXTENSIONS, index as GLuint) };
+      match unsafe { std::ffi::CStr::from_ptr(gl_ext.cast()).to_str() } {
+        Ok(gl_ext_name) => {
+          gl_extensions_available.push(String::from(gl_ext_name));
+        }
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot convert OpenGL extension name \
+          pointer to Rust str! Error => {err:?}");
+          return Err(EnumError::CStringError);
+        }
+      }
+    }
+    return Ok(gl_extensions_available);
   }
 }
 
