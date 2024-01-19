@@ -153,7 +153,7 @@ pub mod wave_core {
       
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Opening window...");
       // Setup window context.
-      let mut window = Window::new(api_preference, Some((1920, 1080)),
+      let mut window = Window::new(api_preference, Some((640, 480)),
         None, None, EnumWindowMode::Windowed)?;
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Opened window successfully");
       

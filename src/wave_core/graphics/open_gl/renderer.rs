@@ -355,8 +355,10 @@ impl TraitContext for GlContext {
             gl::Enable(gl::DEBUG_OUTPUT);
             // Disable sync messages.
             gl::Disable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
-            gl::DebugMessageCallback(self.m_debug_callback, std::ptr::null());
-            gl::DebugMessageControl(gl::DONT_CARE, gl::DONT_CARE, gl::DONT_CARE, 0, std::ptr::null(), gl::TRUE);
+            if gl::DebugMessageCallback::is_loaded() {
+              gl::DebugMessageCallback(self.m_debug_callback, std::ptr::null());
+              gl::DebugMessageControl(gl::DONT_CARE, gl::DONT_CARE, gl::DONT_CARE, 0, std::ptr::null(), gl::TRUE);
+            }
           }
           EnumCallCheckingType::SyncAndAsync => unsafe {
             gl::Enable(gl::DEBUG_OUTPUT);
