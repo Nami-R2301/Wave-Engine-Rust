@@ -44,8 +44,17 @@ pub enum EnumState {
   Deleted,
 }
 
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub enum EnumShaderLanguageType {
+  Glsl,
+  GlslSpirV,
+  SpirV,
+  Binary,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum EnumError {
+  NoShaderStagesProvided,
   NoActiveRendererError,
   InvalidApi,
   UnsupportedApiFunction,
@@ -97,18 +106,18 @@ impl std::error::Error for EnumError {}
 
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Hash)]
-pub enum EnumShaderType {
+pub enum EnumShaderStage {
   Vertex = gl::VERTEX_SHADER,
   Fragment = gl::FRAGMENT_SHADER,
   Compute = gl::COMPUTE_SHADER,
 }
 
-impl Display for EnumShaderType {
+impl Display for EnumShaderStage {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     match self {
-      EnumShaderType::Vertex => write!(f, "Vertex"),
-      EnumShaderType::Fragment => write!(f, "Fragment"),
-      EnumShaderType::Compute => write!(f, "Compute")
+      EnumShaderStage::Vertex => write!(f, "Vertex"),
+      EnumShaderStage::Fragment => write!(f, "Fragment"),
+      EnumShaderStage::Compute => write!(f, "Compute")
     }
   }
 }
@@ -155,45 +164,25 @@ pub trait TraitShader {
 
 #[derive(Debug, Clone, Hash)]
 pub struct ShaderStage {
-  pub m_type: EnumShaderType,
-  pub m_source: EnumShaderSource,
+  pub(crate) m_stage: EnumShaderStage,
+  pub(crate) m_source: EnumShaderSource,
   m_is_cached: bool,
 }
 
 impl ShaderStage {
   pub fn default() -> Self {
     return Self {
-      m_type: EnumShaderType::Vertex,
+      m_stage: EnumShaderStage::Vertex,
       m_source: EnumShaderSource::FromStr(String::from("")),
       m_is_cached: false,
     };
   }
   
-  pub fn new(shader_type: EnumShaderType, shader_source: EnumShaderSource) -> Self {
-    // Try loading from cache.
-    let mut is_cached = false;
-    let mut source = shader_source.clone();
-    match &shader_source {
-      EnumShaderSource::FromFile(file_path_str) => {
-        let file_path = std::path::Path::new(file_path_str);
-        if Shader::check_cache(file_path).is_ok() {
-          is_cached = true;
-          if file_path.extension().unwrap() == "spv" {
-            source = EnumShaderSource::FromFile(format!("cache/{0}",
-              file_path.file_name().unwrap().to_str().unwrap()));
-          } else {
-            source = EnumShaderSource::FromFile(format!("cache/{0}.spv",
-              file_path.file_name().unwrap().to_str().unwrap()));
-          }
-        }
-      }
-      EnumShaderSource::FromStr(_) => {}
-    }
-    
+  pub fn new(shader_type: EnumShaderStage, shader_source: EnumShaderSource) -> Self {
     return Self {
-      m_type: shader_type,
-      m_source: source,
-      m_is_cached: is_cached,
+      m_stage: shader_type,
+      m_source: shader_source,
+      m_is_cached: false,
     };
   }
   
@@ -204,7 +193,7 @@ impl ShaderStage {
 
 impl PartialEq<Self> for ShaderStage {
   fn eq(&self, other: &Self) -> bool {
-    return self.m_type == other.m_type && self.m_source == other.m_source;
+    return self.m_stage == other.m_stage && self.m_source == other.m_source;
   }
 }
 
@@ -212,18 +201,29 @@ impl Eq for ShaderStage {}
 
 pub struct Shader {
   m_state: EnumState,
-  m_api_data: Box<dyn TraitShader>
+  m_shader_lang: EnumShaderLanguageType,
+  m_api_data: Box<dyn TraitShader>,
 }
 
 impl Shader {
   pub fn default() -> Self {
     return Self {
       m_state: EnumState::NotCreated,
+      m_shader_lang: EnumShaderLanguageType::Glsl,
       m_api_data: Box::new(GlShader::default()),
     };
   }
   
   pub fn new(mut shader_stages: Vec<ShaderStage>) -> Result<Self, EnumError> {
+    if shader_stages.is_empty() {
+      log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create shader : No shader stages \
+        provided!");
+      return Err(EnumError::NoShaderStagesProvided)
+    }
+    
+    let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
+    let mut shader_program: Shader = Shader::default();
+    
     for shader_stage in shader_stages.iter_mut() {
       match &shader_stage.m_source {
         EnumShaderSource::FromFile(file_path_str) => {
@@ -236,6 +236,18 @@ impl Shader {
           // Check if file exists and is a supported format.
           let file_path = std::path::Path::new(file_path_str.as_str());
           Shader::check_file_validity(file_path)?;
+          // Try loading from cache.
+          if Shader::check_cache(file_path).is_ok() {
+            shader_stage.m_is_cached = true;
+            
+            if file_path.extension().unwrap() == "spv" {
+              shader_stage.m_source = EnumShaderSource::FromFile(format!("cache/{0}",
+                file_path.file_name().unwrap().to_str().unwrap()));
+            } else {
+              shader_stage.m_source = EnumShaderSource::FromFile(format!("cache/{0}.spv",
+                file_path.file_name().unwrap().to_str().unwrap()));
+            }
+          }
         }
         EnumShaderSource::FromStr(literal_string) => {
           if literal_string.is_empty() {
@@ -247,22 +259,22 @@ impl Shader {
       }
     }
     
-    let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
-    let mut shader: Shader = Shader::default();
+    shader_program.set_language(shader_stages.get(0).unwrap())?;
     
     match unsafe { (*renderer).m_type } {
       EnumApi::OpenGL => {
-        shader.m_api_data = Box::new(GlShader::new(shader_stages)?);
+        shader_program.m_api_data = Box::new(GlShader::new(shader_stages)?);
       }
       #[cfg(feature = "Vulkan")]
       EnumApi::Vulkan => {
-        shader.m_api_data = Box::new(VkShader::new(shader_stages)?);
+        shader_program.m_api_data = Box::new(VkShader::new(shader_stages)?);
       }
       #[cfg(not(feature = "Vulkan"))]
       EnumApi::Vulkan => {}
     }
-    shader.m_state = EnumState::Created;
-    return Ok(shader);
+    
+    shader_program.m_state = EnumState::Created;
+    return Ok(shader_program);
   }
   
   pub fn check_cache(shader_file_path: &std::path::Path) -> Result<Vec<u8>, EnumError> {
@@ -296,6 +308,78 @@ impl Shader {
     return Ok(());
   }
   
+  fn set_language(&mut self, shader_stage: &ShaderStage) -> Result<(), EnumError> {
+    return match &shader_stage.m_source {
+      EnumShaderSource::FromFile(file_path_str) => {
+        let file_path = std::path::Path::new(&file_path_str);
+        
+        if file_path.exists() && file_path.extension().unwrap() == "bin" {
+          self.m_shader_lang = EnumShaderLanguageType::Binary;
+          return Ok(());
+        }
+        
+        if file_path.exists() && file_path.extension().unwrap() == "spv" {
+          self.m_shader_lang = EnumShaderLanguageType::SpirV;
+          return Ok(());
+        }
+        
+        let file_contents = std::fs::read_to_string(&file_path_str)?;
+        
+        // If we have a GLSL shader with preprocessor instructions compatible with SPIR-V.
+        if file_contents.contains("GL_SPIRV") || file_contents.contains("VULKAN") {
+          let version_number_str = file_contents.split_once("#version")
+            .expect("[Shader] -->\t Cannot split GLSL #version and version number in set_language()!");
+          let version_number_f: u16 = version_number_str.1.get(1..4)
+            .expect("[Shader] -->\t Cannot get GLSL version number in set_language()!")
+            .parse()
+            .expect(&format!("[Shader] -->\t Cannot parse GLSL version number {0} in set_language()!",
+              version_number_str.1.get(1..4).unwrap()));
+          
+          log!("DEBUG", "[Shader] -->\t GLSL version from file {0} => {1}",
+          file_path_str, version_number_f);
+          
+          if version_number_f >= 410 && file_contents.contains("uniform") {
+            // Compatible GLSL-SPIR-V shader found, setting the appropriate language.
+            self.m_shader_lang = EnumShaderLanguageType::GlslSpirV;
+            return Ok(());
+          }
+          
+          if version_number_f < 410 && file_contents.contains("uniform") {
+            // Missing obligatory uniform block bindings imposed by SPIR-V compliance, since it is
+            // a glsl 4.1 feature, thus we fallback to glsl.
+            self.m_shader_lang = EnumShaderLanguageType::Glsl;
+          }
+        }
+        Ok(())
+      }
+      EnumShaderSource::FromStr(source_str) => {
+        let version_number_str = source_str.split_once("#version")
+          .expect("[Shader] -->\t Cannot split GLSL #version and version number in set_language()!");
+        let version_number_f: u16 = version_number_str.1.parse()
+          .expect("[Shader] -->\t Cannot parse GLSL version number in set_language()!");
+        
+        log!("DEBUG", "[Shader] -->\t GLSL version from literal {0} => {1}",
+          source_str, version_number_f);
+        
+        // If we have a GLSL shader with preprocessor instructions compatible with SPIR-V.
+        if source_str.contains("GL_SPIRV") || source_str.contains("VULKAN") {
+          if version_number_f >= 410 && source_str.contains("uniform") {
+            // Compatible GLSL-SPIR-V shader found, setting the appropriate language.
+            self.m_shader_lang = EnumShaderLanguageType::GlslSpirV;
+            return Ok(());
+          }
+          
+          if version_number_f < 410 && source_str.contains("uniform") {
+            // Missing obligatory uniform block bindings imposed by SPIR-V compliance, since it is
+            // a glsl 4.1 feature, thus we fallback to glsl.
+            self.m_shader_lang = EnumShaderLanguageType::Glsl;
+          }
+        }
+        Ok(())
+      }
+    };
+  }
+  
   fn check_file_validity(file_path: &std::path::Path) -> Result<(), EnumError> {
     if !file_path.exists() {
       log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot open shader file : File {0:?} \
@@ -327,6 +411,10 @@ impl Shader {
   
   pub fn get_id(&self) -> u32 {
     return self.m_api_data.get_id();
+  }
+  
+  pub fn get_lang(&self) -> EnumShaderLanguageType {
+    return self.m_shader_lang;
   }
   
   pub fn to_string(&self) -> String {

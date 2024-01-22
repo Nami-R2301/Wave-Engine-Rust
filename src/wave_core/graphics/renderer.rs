@@ -156,7 +156,7 @@ pub(crate) trait TraitContext {
   fn get_max_msaa_count(&self) -> Result<u8, EnumError>;
   fn to_string(&self) -> String;
   fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError>;
-  fn setup_camera_ubo(&mut self, camera: &Camera) -> Result<(), EnumError>;
+  fn setup_camera(&mut self, camera: &Camera) -> Result<(), EnumError>;
   fn flush(&mut self);
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn dequeue(&mut self, id: &u64) -> Result<(), EnumError>;
@@ -228,8 +228,8 @@ impl Renderer {
     self.m_features = features_desired;
   }
   
-  pub fn setup_camera_ubo(&mut self, camera: &Camera) -> Result<(), EnumError> {
-    return self.m_api.setup_camera_ubo(camera);
+  pub fn setup_camera(&mut self, camera: &Camera) -> Result<(), EnumError> {
+    return self.m_api.setup_camera(camera);
   }
   
   pub fn submit(&mut self) -> Result<(), EnumError> {

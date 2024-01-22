@@ -1130,7 +1130,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn setup_camera_ubo(&mut self, _camera: &Camera) -> Result<(), renderer::EnumError> {
+  fn setup_camera(&mut self, _camera: &Camera) -> Result<(), renderer::EnumError> {
     return Ok(());
   }
   
@@ -1199,7 +1199,6 @@ impl TraitContext for VkContext {
 }
 
 
-
 #[cfg(all(feature = "Vulkan", feature = "debug"))]
 unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSeverityFlagsEXT,
                                                 _type: vk::DebugUtilsMessageTypeFlagsEXT,
@@ -1207,28 +1206,38 @@ unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSever
                                                 _: *mut std::ffi::c_void) -> vk::Bool32 {
   use vk::DebugUtilsMessageSeverityFlagsEXT as Flag;
   
-  let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
-  let message_str =  message.to_str().unwrap_or("Error converting &CStr to &str!")
-    .split("|")
-    .collect::<Vec<&str>>();
-  let mut message_info: (&str, &str) = ("Empty", "Empty");
-  if message_str.len() > 2 {
-    message_info = message_str[2].split_once(":").unwrap();
-  }
   match flag {
     Flag::VERBOSE => {}
     Flag::INFO => {}
     // Flag::INFO => log!("INFO", "{:?} -->\t {:#?}", type_, message),
-    Flag::WARNING => log!(EnumLogColor::Yellow, "WARN", "[Driver] -->\t Vulkan Driver Notification \
+    Flag::WARNING => {
+      let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
+      let message_str = message.to_str().unwrap_or("Error converting &CStr to &str!")
+        .split("|")
+        .collect::<Vec<&str>>();
+      let mut message_info: (&str, &str) = ("Empty", "Empty");
+      if message_str.len() > 2 {
+        message_info = message_str[2].split_once(":").unwrap_or(("Empty", message_str[2]));
+      }
+      log!(EnumLogColor::Yellow, "WARN", "[Driver] -->\t Vulkan Driver Notification \
     :\nType =>\t\t  {0}\nID =>\t\t {1}\nFunction =>\t {2}\nMessage =>\t {3}\n",
-      message_str[0], message_str[1], message_info.0, message_info.1),
+      message_str[0], message_str[1], message_info.0, message_info.1)
+    }
     _ => {
+      let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
+      let message_str = message.to_str().unwrap_or("Error converting &CStr to &str!")
+        .split("|")
+        .collect::<Vec<&str>>();
+      let mut message_info: (&str, &str) = ("Empty", "Empty");
+      if message_str.len() > 2 {
+        message_info = message_str[2].split_once(":").unwrap_or(("Empty", message_str[2]));
+      }
       log!(EnumLogColor::Red, "ERROR", "[Driver] -->\t Vulkan Driver Notification \
     :\nType =>\t\t  {0}\nID =>\t\t {1}\nFunction =>\t {2}\nMessage =>\t {3}\n",
       message_str[0], message_str[1], message_info.0, message_info.1);
       panic!("{}", format!("[VkContext] -->\t Fatal driver error encountered :\n{0}\n",
         message_info.1));
-    },
+    }
   }
   
   return vk::FALSE;

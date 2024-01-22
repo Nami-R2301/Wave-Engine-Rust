@@ -30,7 +30,7 @@ pub mod wave_core {
   use crate::wave_core::assets::renderable_assets::{REntity, TraitRenderableEntity};
   use crate::wave_core::camera::{Camera, EnumCameraType};
   use crate::wave_core::graphics::renderer::{self, EnumApi, EnumCallCheckingType, Renderer, S_RENDERER};
-  use crate::wave_core::graphics::shader::{self, EnumShaderSource, EnumShaderType, Shader, ShaderStage};
+  use crate::wave_core::graphics::shader::{self, EnumShaderSource, EnumShaderStage, Shader, ShaderStage};
   use crate::wave_core::input::{EnumKey, EnumModifier, Input};
   use crate::wave_core::math::Vec3;
   use crate::wave_core::assets::asset_loader::ResLoader;
@@ -153,7 +153,7 @@ pub mod wave_core {
       
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Opening window...");
       // Setup window context.
-      let mut window = Window::new(api_preference, Some((640, 480)),
+      let mut window = Window::new(api_preference, Some((1920, 1080)),
         None, None, EnumWindowMode::Windowed)?;
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Opened window successfully");
       
@@ -192,7 +192,7 @@ pub mod wave_core {
       
       self.m_renderer.renderer_hint(renderer::EnumFeature::DepthTest(true));
       #[cfg(feature = "debug")]
-      self.m_renderer.renderer_hint(renderer::EnumFeature::ApiCallChecking(EnumCallCheckingType::Async));
+      self.m_renderer.renderer_hint(renderer::EnumFeature::ApiCallChecking(EnumCallCheckingType::SyncAndAsync));
       self.m_renderer.renderer_hint(renderer::EnumFeature::Wireframe(true));
       self.m_renderer.renderer_hint(renderer::EnumFeature::MSAA(None));
       
@@ -418,10 +418,10 @@ pub mod wave_core {
       
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
       
-      let vertex_shader = ShaderStage::new(EnumShaderType::Vertex,
-        EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
-      let fragment_shader = ShaderStage::new(EnumShaderType::Fragment,
-        EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
+      let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
+        EnumShaderSource::FromFile(String::from("res/shaders/gl_x_spv_test.vert")));
+      let fragment_shader = ShaderStage::new(EnumShaderStage::Fragment,
+        EnumShaderSource::FromFile(String::from("res/shaders/gl_x_spv_test.frag")));
       
       let shader = Shader::new(vec![vertex_shader, fragment_shader])?;
       
@@ -439,9 +439,6 @@ pub mod wave_core {
         (*window).m_window_resolution.0 as f32 /
           (*window).m_window_resolution.1 as f32
       };
-      self.m_cameras.push(Camera::new(EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
-      let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
-      unsafe { (*renderer).setup_camera_ubo(&self.m_cameras[0])? };
       
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
       self.m_renderable_assets.push(REntity::from(ResLoader::new("awp.obj")?));
@@ -450,6 +447,10 @@ pub mod wave_core {
       
       self.m_renderable_assets[0].send(&mut self.m_shaders[0])?;
       log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
+      
+      self.m_cameras.push(Camera::new(EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
+      let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
+      unsafe { (*renderer).setup_camera(&self.m_cameras[0])? };
       
       // Show our window when we are done.
       unsafe { (*window).show() };

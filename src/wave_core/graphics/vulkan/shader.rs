@@ -31,10 +31,11 @@
 extern crate shaderc;
 
 use std::any::Any;
+
 use crate::log;
 use crate::wave_core::graphics::renderer::{EnumApi, Renderer};
+use crate::wave_core::graphics::shader::{self, EnumShaderSource, EnumShaderStage, Shader, ShaderStage, TraitShader};
 use crate::wave_core::graphics::vulkan::renderer::{vk, VkContext};
-use crate::wave_core::graphics::shader::{self, EnumShaderSource, EnumShaderType, Shader, ShaderStage, TraitShader};
 
 #[derive(Debug, PartialEq)]
 pub enum EnumError {
@@ -44,22 +45,22 @@ pub enum EnumError {
   ShaderPipelineCreationError,
 }
 
-impl From<EnumShaderType> for shaderc::ShaderKind {
-  fn from(value: EnumShaderType) -> Self {
+impl From<EnumShaderStage> for shaderc::ShaderKind {
+  fn from(value: EnumShaderStage) -> Self {
     return match value {
-      EnumShaderType::Vertex => shaderc::ShaderKind::Vertex,
-      EnumShaderType::Fragment => shaderc::ShaderKind::Fragment,
-      EnumShaderType::Compute => shaderc::ShaderKind::Compute,
+      EnumShaderStage::Vertex => shaderc::ShaderKind::Vertex,
+      EnumShaderStage::Fragment => shaderc::ShaderKind::Fragment,
+      EnumShaderStage::Compute => shaderc::ShaderKind::Compute,
     };
   }
 }
 
-impl From<EnumShaderType> for vk::ShaderStageFlags {
-  fn from(value: EnumShaderType) -> Self {
+impl From<EnumShaderStage> for vk::ShaderStageFlags {
+  fn from(value: EnumShaderStage) -> Self {
     return match value {
-      EnumShaderType::Vertex => vk::ShaderStageFlags::VERTEX,
-      EnumShaderType::Fragment => vk::ShaderStageFlags::FRAGMENT,
-      EnumShaderType::Compute => vk::ShaderStageFlags::COMPUTE,
+      EnumShaderStage::Vertex => vk::ShaderStageFlags::VERTEX,
+      EnumShaderStage::Fragment => vk::ShaderStageFlags::FRAGMENT,
+      EnumShaderStage::Compute => vk::ShaderStageFlags::COMPUTE,
     };
   }
 }
@@ -68,7 +69,7 @@ impl From<EnumShaderType> for vk::ShaderStageFlags {
 pub struct VkShader {
   m_id: u32,
   m_shader_stages: Vec<ShaderStage>,
-  m_vk_shader_modules: Vec<vk::ShaderModule>
+  m_vk_shader_modules: Vec<vk::ShaderModule>,
 }
 
 impl TraitShader for VkShader {
@@ -76,7 +77,7 @@ impl TraitShader for VkShader {
     return Self {
       m_id: 0,
       m_shader_stages: Vec::with_capacity(3),
-      m_vk_shader_modules: Vec::with_capacity(3)
+      m_vk_shader_modules: Vec::with_capacity(3),
     };
   }
   
@@ -85,7 +86,7 @@ impl TraitShader for VkShader {
     return Ok(VkShader {
       m_id: 0,
       m_shader_stages: shader_stages,
-      m_vk_shader_modules: Vec::with_capacity(shader_stages_len)
+      m_vk_shader_modules: Vec::with_capacity(shader_stages_len),
     });
   }
   
@@ -105,12 +106,12 @@ impl TraitShader for VkShader {
     let entry_point = "main";
     let compiler = shaderc::Compiler::new().unwrap();
     let mut options = shaderc::CompileOptions::new().unwrap();
-    options.set_optimization_level(shaderc::OptimizationLevel::Performance);
+    // options.set_optimization_level(shaderc::OptimizationLevel::Performance);
     
     // Force converting unbound uniforms to SPIR-V compatible uniforms (aka bound ones).
     options.set_auto_bind_uniforms(true);
     
-    // #[cfg(feature = "debug")]
+    #[cfg(feature = "debug")]
     options.set_generate_debug_info();
     
     // Switch from left handed coordinates (OpenGL) to right handed (Vulkan, DirectX).
@@ -123,35 +124,32 @@ impl TraitShader for VkShader {
       if shader_stage.cache_status() {
         log!(EnumLogColor::Blue, "INFO", "[VkShader] -->\t Cached shader {0} found, \
          skipping compilation.", shader_stage.m_source);
-        let file_path_str = String::from(shader_stage.m_source.clone());
-        let file_path = std::path::Path::new(&file_path_str);
-        shader_binary = Shader::check_cache(file_path)?;
-      } else {
-        log!(EnumLogColor::Yellow, "WARN", "[VkShader] -->\t Cached shader {0} not found, \
-            compiling it.", shader_stage.m_source);
-        
-        match &shader_stage.m_source {
-          EnumShaderSource::FromFile(file_path_str) => {
-            let file_path = std::path::Path::new(file_path_str);
-            let file_contents = std::fs::read_to_string(file_path_str)?;
-            
-            match compiler.compile_into_spirv(file_contents.as_str(),
-              shaderc::ShaderKind::from(shader_stage.m_type), file_path_str, entry_point,
-              Some(&options)) {
-              Ok(compiled_file) => {
-                Shader::cache(file_path, compiled_file.as_binary_u8().to_vec())?;
-                shader_binary = compiled_file.as_binary_u8().to_vec();
-              }
-              Err(err) => {
-                log!(EnumLogColor::Red, "ERROR", "[VkShader] -->\t Cannot compile vertex shader into SPIR-V : \
-                    Error => \n{0:?}", err);
-                return Err(shader::EnumError::from(EnumError::SpirVCompilationError(err)));
-              }
-            };
-          }
-          EnumShaderSource::FromStr(_) => todo!()
-        };
+        continue;
       }
+      log!(EnumLogColor::Yellow, "WARN", "[VkShader] -->\t Cached shader {0} not found, \
+            compiling it.", shader_stage.m_source);
+      
+      match &shader_stage.m_source {
+        EnumShaderSource::FromFile(file_path_str) => {
+          let file_path = std::path::Path::new(file_path_str);
+          let file_contents = std::fs::read_to_string(file_path_str)?;
+          
+          match compiler.compile_into_spirv(file_contents.as_str(),
+            shaderc::ShaderKind::from(shader_stage.m_stage), file_path_str, entry_point,
+            Some(&options)) {
+            Ok(compiled_file) => {
+              Shader::cache(file_path, compiled_file.as_binary_u8().to_vec())?;
+              shader_binary = compiled_file.as_binary_u8().to_vec();
+            }
+            Err(err) => {
+              log!(EnumLogColor::Red, "ERROR", "[VkShader] -->\t Cannot compile {0} shader into \
+                  SPIR-V : Error => \n{err}", shader_stage.m_stage);
+              return Err(shader::EnumError::from(EnumError::SpirVCompilationError(err)));
+            }
+          };
+        }
+        EnumShaderSource::FromStr(_) => todo!()
+      };
       let shader_module = VkShader::create_vk_shader(&shader_binary)?;
       self.m_vk_shader_modules.push(shader_module);
     }
@@ -169,7 +167,7 @@ impl TraitShader for VkShader {
     
     for shader_stage in self.m_shader_stages.iter() {
       format += format!("\n{0:115}[Vulkan] |{1}| ({2}, {3})",
-        "", shader_stage.m_type, shader_stage.m_source, shader_stage.cache_status()).as_str();
+        "", shader_stage.m_stage, shader_stage.m_source, shader_stage.cache_status()).as_str();
     }
     return format;
   }
@@ -201,7 +199,6 @@ impl TraitShader for VkShader {
 }
 
 impl VkShader {
-  
   pub fn get_vk_shaders(&self) -> &Vec<vk::ShaderModule> {
     return &self.m_vk_shader_modules;
   }

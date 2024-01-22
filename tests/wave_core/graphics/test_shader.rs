@@ -23,7 +23,7 @@
 */
 
 use wave_engine::wave_core::{EmptyApp, Engine, EnumError};
-use wave_engine::wave_core::graphics::shader::{EnumShaderSource, EnumShaderType, Shader, ShaderStage};
+use wave_engine::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStage, Shader, ShaderStage};
 
 use wave_engine::wave_core::math::Mat4;
 
@@ -33,9 +33,9 @@ fn test_shader_send() -> Result<(), EnumError> {
   let mut engine = Engine::new(None, Some(Box::new(EmptyApp::default())))?;
   engine.on_new()?;
   
-  let vertex_shader = ShaderStage::new(EnumShaderType::Vertex,
+  let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
     EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
-  let fragment_shader = ShaderStage::new(EnumShaderType::Fragment,
+  let fragment_shader = ShaderStage::new(EnumShaderStage::Fragment,
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
   let mut result = Shader::new(vec![vertex_shader, fragment_shader])?;
@@ -53,9 +53,9 @@ fn test_load_uniforms() -> Result<(), EnumError> {
   let mut engine = Engine::new(None, Some(Box::new(EmptyApp::default())))?;
   engine.on_new()?;
   
-  let vertex_shader = ShaderStage::new(EnumShaderType::Vertex,
+  let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
     EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
-  let fragment_shader = ShaderStage::new(EnumShaderType::Fragment,
+  let fragment_shader = ShaderStage::new(EnumShaderStage::Fragment,
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
   let mut new_shader = Shader::new(vec![vertex_shader, fragment_shader])?;

@@ -467,10 +467,9 @@ pub mod logger {
       let log_message: String = format!($($format_and_arguments)*);
       let mut log_file_ptr = Engine::get_log_file();
       
-      writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
-                          expect("\x1b[31m[Logger] --> Unable to log statement!");
-      writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).
-                          expect("\x1b[31m[Logger] --> Unable to log statement!");
+      let _ = writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message);
+      let _ = std::io::stdout().flush();
+      let _ = writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message);
     }};
 
     ($log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{
@@ -489,10 +488,9 @@ pub mod logger {
 
       let log_message: String = format!($($format_and_arguments)*);
       let mut log_file_ptr = Engine::get_log_file();
-      writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message).
-                          expect("\x1b[31m[Logger] --> Unable to log statement!");
-      writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message).
-                          expect("\x1b[31m[Logger] --> Unable to log statement!");
+      let _ = writeln!(log_file_ptr, "{0}\x1b[0m", format_string.clone() + &log_message);
+      let _ = std::io::stdout().flush();
+      let _ = writeln!(std::io::stdout(), "{0}\x1b[0m", format_string + &log_message);
     }};
   }
   

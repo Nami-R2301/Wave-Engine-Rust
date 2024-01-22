@@ -22,19 +22,21 @@
  SOFTWARE.
 */
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
 extern crate gl46;
 
-use gl46::{GlFns};
-use crate::{log};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+
+use gl46::GlFns;
+
+use crate::log;
 use crate::wave_core::assets::renderable_assets::{EnumVertexMemberOffset, REntity};
-use crate::wave_core::camera::{Camera};
+use crate::wave_core::camera::Camera;
+use crate::wave_core::graphics::{open_gl, renderer};
 use crate::wave_core::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar,
   GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
-use crate::wave_core::graphics::{open_gl, renderer};
 use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumFeature, EnumState, S_RENDERER, TraitContext};
-use crate::wave_core::graphics::shader::Shader;
+use crate::wave_core::graphics::shader::{EnumShaderLanguageType, Shader};
 use crate::wave_core::window::Window;
 
 /*
@@ -62,7 +64,7 @@ macro_rules! check_gl_call {
           let error = unsafe { gl::GetError() };
           if error != gl::NO_ERROR {
             log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
-            Code =>\t\t 0x{2:x}", $name, stringify!($gl_function), error);
+            Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
             return Err(crate::wave_core::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
           }
         } else {
@@ -71,7 +73,7 @@ macro_rules! check_gl_call {
           let error = unsafe { gl::GetError() };
           if error != gl::NO_ERROR {
             log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
-            Code =>\t\t 0x{2:x}", $name, stringify!($gl_function), error);
+            Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
             return Err(crate::wave_core::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
           }
         }
@@ -90,7 +92,7 @@ macro_rules! check_gl_call {
         let error = unsafe { gl::GetError() };
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
-            Code =>\t\t 0x{2:x}", $name, stringify!($gl_function), error);
+            Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
           return Err(crate::wave_core::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
         }
       } else {
@@ -99,7 +101,7 @@ macro_rules! check_gl_call {
         let error = unsafe { gl::GetError() };
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
-            Code =>\t\t 0x{2:x}", $name, stringify!($gl_function), error);
+            Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
           return Err(crate::wave_core::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
         }
       }
@@ -117,8 +119,8 @@ macro_rules! check_gl_call {
         .m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::SyncAndAsync))) } {        $var = unsafe { $gl_function };
         let error = unsafe { gl::GetError() };
         if error != gl::NO_ERROR {
-          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall => {1:?}\n \
-            Code => 0x{2:x}", $name, stringify!($gl_function), error);
+         log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
+            Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
           return Err(crate::wave_core::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
         }
       } else {
@@ -126,8 +128,8 @@ macro_rules! check_gl_call {
         $var = unsafe { $gl_function };
         let error = unsafe { gl::GetError() };
         if error != gl::NO_ERROR {
-          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall => {1:?}\n \
-             Code => 0x{2:x}", $name, stringify!($gl_function), error);
+          log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
+            Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
           return Err(crate::wave_core::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
         }
       }
@@ -143,7 +145,7 @@ pub enum EnumError {
   InvalidOperation(GLenum),
   MSAAError,
   InvalidBufferOperation(open_gl::buffer::EnumError),
-  InvalidShaderOperation(open_gl::shader::EnumError)
+  InvalidShaderOperation(open_gl::shader::EnumError),
 }
 
 impl From<open_gl::buffer::EnumError> for EnumError {
@@ -159,10 +161,10 @@ impl From<open_gl::shader::EnumError> for EnumError {
 }
 
 struct GlBatchPrimitives {
-  m_shaders: Vec<u32>,
+  m_shaders: Vec<*mut Shader>,
   m_vao_buffers: Vec<GlVao>,
   m_vbo_buffers: Vec<GlVbo>,
-  m_ubo_buffers: Vec<GlUbo>
+  m_ubo_buffers: Vec<GlUbo>,
 }
 
 impl GlBatchPrimitives {
@@ -171,7 +173,7 @@ impl GlBatchPrimitives {
       m_shaders: Vec::new(),
       m_vao_buffers: Vec::new(),
       m_vbo_buffers: Vec::new(),
-      m_ubo_buffers: Vec::new()
+      m_ubo_buffers: Vec::new(),
     };
   }
 }
@@ -259,13 +261,13 @@ impl TraitContext for GlContext {
         Ok(true)
       }
       _ => { Ok(false) }
-    }
+    };
   }
   
   fn on_render(&mut self) -> Result<(), renderer::EnumError> {
     check_gl_call!("Renderer", gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
     for index in 0usize..self.m_batch.m_shaders.len() {
-      check_gl_call!("Renderer", gl::UseProgram(self.m_batch.m_shaders[index]));
+      check_gl_call!("Renderer", gl::UseProgram((*self.m_batch.m_shaders[index]).get_id()));
       self.m_batch.m_vao_buffers[index].bind()?;
       check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0, self.m_batch.m_vbo_buffers[index].m_count as GLsizei));
     }
@@ -381,7 +383,7 @@ impl TraitContext for GlContext {
       }
       EnumFeature::MSAA(sample_count) => {
         #[allow(unused)]
-        let mut max_sample_count: u8 = 0;
+          let mut max_sample_count: u8 = 0;
         if sample_count.is_some() {
           max_sample_count = self.get_max_msaa_count()?;
           if max_sample_count < 2 {
@@ -445,14 +447,21 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn setup_camera_ubo(&mut self, camera: &Camera) -> Result<(), renderer::EnumError> {
-    // Setup common ubos across all shaders.
-    self.m_batch.m_ubo_buffers.push(GlUbo::new(EnumUboTypeSize::ViewProjection, 0)?);
-    for shader_id in self.m_batch.m_shaders.iter() {
-      self.m_batch.m_ubo_buffers[0].bind("u_camera", *shader_id)?;
+  fn setup_camera(&mut self, camera: &Camera) -> Result<(), renderer::EnumError> {
+    // Setup view-projection uniform across all classic GLSL shaders.
+    for &mut shader in self.m_batch.m_shaders.iter_mut()
+      .filter(|&&mut shader| unsafe { (*shader).get_lang() == EnumShaderLanguageType::Glsl }) {
+      unsafe {
+        (*shader).upload_data("u_view_projection",
+          &(camera.get_projection_matrix() * camera.get_view_matrix()).transpose()).map_err(|_| {
+          return renderer::EnumError::OpenGLError(EnumError::from(open_gl::shader::EnumError::UniformNotFound));
+        })?;
+      }
     }
-    self.m_batch.m_ubo_buffers[0].set_data(EnumUboType::ViewProjection(camera.get_view_matrix(),
-      camera.get_projection_matrix()))?;
+    // Setup view-projection ubo if we are reading a uniform block imposed by SPIR-V.
+    let mut ubo = GlUbo::new(EnumUboTypeSize::ViewProjection, 0)?;
+    ubo.set_data(EnumUboType::ViewProjection(camera.get_view_matrix(), camera.get_projection_matrix()))?;
+    self.m_batch.m_ubo_buffers.push(ubo);
     return Ok(());
   }
   
@@ -471,7 +480,6 @@ impl TraitContext for GlContext {
     // Allocate main dynamic vbo to hold all the data provided.
     let mut vbo = GlVbo::new(REntity::size_of(), sendable_entity.vertex_count())?;
     let mut vao = GlVao::new()?;
-    let mut ubo_model = GlUbo::new(EnumUboTypeSize::Transform, 1)?;
     
     vbo.set_data(sendable_entity.m_data.as_ptr() as *const GLvoid,
       REntity::size_of() * sendable_entity.vertex_count(), offset)?;
@@ -485,36 +493,47 @@ impl TraitContext for GlContext {
     
     // Positions.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3, false,
-      EnumVertexMemberOffset::AtPos as usize,0)?);
+      EnumVertexMemberOffset::AtPos as usize, 0)?);
     
     // Normals.
     if sendable_entity.is_flat_shaded() {
       attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3, false,
-        EnumVertexMemberOffset::AtNormal as usize,1)?);
+        EnumVertexMemberOffset::AtNormal as usize, 1)?);
     } else {
       attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3, false,
-        EnumVertexMemberOffset::AtNormal as usize,0)?);
+        EnumVertexMemberOffset::AtNormal as usize, 0)?);
     }
     
     // Colors.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec4, false,
-      EnumVertexMemberOffset::AtColor as usize,0)?);
+      EnumVertexMemberOffset::AtColor as usize, 0)?);
     
     // Texture coordinates.
     attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec2, false,
-      EnumVertexMemberOffset::AtTexCoords as usize,0)?);
+      EnumVertexMemberOffset::AtTexCoords as usize, 0)?);
     
     // Enable all added attributes.
     vao.enable_attributes(attributes)?;
     
-    ubo_model.bind("u_model", shader_associated.get_id())?;
-    ubo_model.set_data(EnumUboType::Transform(sendable_entity.get_matrix()))?;
-    
-    self.m_batch.m_shaders.push(shader_associated.get_id());
+    self.m_batch.m_shaders.push(shader_associated);
     self.m_batch.m_vao_buffers.push(vao);
     self.m_batch.m_vbo_buffers.push(vbo);
-    self.m_batch.m_ubo_buffers.push(ubo_model);
     
+    // Only set ubo for view and projection if we are reading a uniform block imposed by SPIR-V.
+    if shader_associated.get_lang() == EnumShaderLanguageType::SpirV || shader_associated.get_lang()
+      == EnumShaderLanguageType::GlslSpirV {
+      let mut ubo_model = GlUbo::new(EnumUboTypeSize::Transform, 1)?;
+      ubo_model.bind("u_model", shader_associated.get_id())?;
+      ubo_model.set_data(EnumUboType::Transform(sendable_entity.get_matrix()))?;
+      self.m_batch.m_ubo_buffers.push(ubo_model);
+      return Ok(());
+    }
+    // Otherwise, we are dealing with a classic GLSL file and only have to upload a single uniform
+    // (push constant) to the shader.
+    shader_associated.upload_data("u_model", &sendable_entity.get_matrix().transpose())
+      .map_err(|_| {
+        return renderer::EnumError::OpenGLError(EnumError::from(open_gl::shader::EnumError::UniformNotFound));
+      })?;
     return Ok(());
   }
   
@@ -589,48 +608,48 @@ extern "system" fn gl_error_callback(error_code: GLenum, e_type: GLenum, _id: GL
     match e_type {
       gl::DEBUG_TYPE_ERROR => {
         final_error_msg += "\nType =>\t\t Error;"
-      },
+      }
       gl::DEBUG_TYPE_DEPRECATED_BEHAVIOR => {
         final_error_msg += "\nType =>\t\t Deprecated behavior;"
-      },
+      }
       gl::DEBUG_TYPE_UNDEFINED_BEHAVIOR => {
         final_error_msg += "\nType =>\t\t Undefined behavior;"
-      },
+      }
       gl::DEBUG_TYPE_PORTABILITY => {
         final_error_msg += "\nType =>\t\t Portability;"
-      },
+      }
       gl::DEBUG_TYPE_PERFORMANCE => {
         final_error_msg += "\nType =>\t\t Performance;"
-      },
+      }
       gl::DEBUG_TYPE_MARKER => {
         final_error_msg += "\nType =>\t\t Marker;"
-      },
+      }
       gl::DEBUG_TYPE_PUSH_GROUP => {
         final_error_msg += "\nType =>\t\t Push group;"
-      },
+      }
       gl::DEBUG_TYPE_POP_GROUP => {
         final_error_msg += "\nType =>\t\t Pop group;"
-      },
+      }
       // Ignore other types.
-      gl::DEBUG_TYPE_OTHER => { return; },
+      gl::DEBUG_TYPE_OTHER => { return; }
       _ => {
         final_error_msg += "\nType =>\t\t Error;"
-      },
+      }
     }
     
     match severity {
       gl::DEBUG_SEVERITY_HIGH => {
         final_error_msg += "\nSeverity =>\t High (Fatal);"
-      },
+      }
       gl::DEBUG_SEVERITY_MEDIUM => {
         final_error_msg += "\nSeverity =>\t Medium;"
-      },
+      }
       gl::DEBUG_SEVERITY_LOW => {
         final_error_msg += "\nSeverity =>\t Low;"
-      },
+      }
       gl::DEBUG_SEVERITY_NOTIFICATION => {
         final_error_msg += "\nSeverity =>\t Info;"
-      },
+      }
       _ => {
         final_error_msg += "\nSeverity =>\t Unknown;"
       }
