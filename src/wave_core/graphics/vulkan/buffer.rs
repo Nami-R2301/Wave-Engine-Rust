@@ -62,13 +62,13 @@ impl VkVertexAttribute {
     };
   }
   
+  #[allow(unused)]
   pub(crate) fn new(binding: u32, location: u32, format: vk::Format, offset: u32) -> Result<Self, EnumError> {
     let vk_renderer = unsafe {
-      (*Renderer::get()
-        .expect("[VkBuffer] --> Cannot create VkVertexAttribute : Renderer is None!"))
+      ((*Renderer::get_active())
         .get_api_handle()
         .downcast_mut::<VkContext>()
-        .expect("[VkBuffer] --> Cannot create VkVertexAttribute : Renderer is not Vulkan!")
+        .expect("[VkBuffer] --> Cannot create VkVertexAttribute : Renderer is not Vulkan!"))
     };
     
     let physical_device_limits: vk::PhysicalDeviceLimits = vk_renderer.get_limits();
@@ -122,14 +122,15 @@ impl VkVbo {
       m_buffer_info: Default::default(),
     };
   }
+  
+  #[allow(unused)]
   pub(crate) fn new(alloc_size: usize, binding: u32, stride: u32, input_rate: vk::VertexInputRate,
              device: &mut ash::Device, concurrent_queues: Option<&[u32]>) -> Result<Self, EnumError> {
     let vk_renderer = unsafe {
-      (*Renderer::get()
-        .expect("[VkBuffer] --> Cannot create VkVbo : Renderer is None!"))
+      ((*Renderer::get_active())
         .get_api_handle()
         .downcast_mut::<VkContext>()
-        .expect("[VkBuffer] --> Cannot create VkVbo : Renderer is not Vulkan!")
+        .expect("[VkBuffer] --> Cannot create VkVbo : Renderer is not Vulkan!"))
     };
     
     let physical_device_limits: vk::PhysicalDeviceLimits = vk_renderer.get_limits();
@@ -187,10 +188,12 @@ impl VkVbo {
     }
   }
   
+  #[allow(unused)]
   pub(crate) fn bind(&mut self) -> Result<(), EnumError> {
     todo!()
   }
   
+  #[allow(unused)]
   pub(crate) fn unbind(&mut self) -> Result<(), EnumError> {
     todo!()
   }
@@ -224,6 +227,7 @@ impl VkVao {
     };
   }
   
+  #[allow(unused)]
   pub(crate) fn new(attributes: Vec<VkVertexAttribute>, vbo_array: &[VkVbo]) -> Result<Self, EnumError> {
     for vbo in vbo_array {
       if !attributes.iter().all(|&ref element| element.m_attr_desc.binding == vbo.m_input_desc.binding) {

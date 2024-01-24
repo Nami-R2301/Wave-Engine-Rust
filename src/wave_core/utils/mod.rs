@@ -569,6 +569,13 @@ impl Time {
     };
   }
   
+  pub fn now() -> Self {
+    return Time {
+      m_nano_seconds: chrono::Utc::now().timestamp_nanos_opt()
+        .expect("Cannot convert local time to nano seconds") as f64
+    };
+  }
+  
   pub fn from(local_time: DateTime<chrono::Utc>) -> Self {
     return Time {
       m_nano_seconds: local_time.timestamp_nanos_opt()

@@ -31,14 +31,14 @@ use ash::vk;
 use glfw::Context;
 
 use crate::log;
-use crate::wave_core::graphics::renderer::{EnumApi, Renderer};
-use crate::wave_core::input::{self, Input};
+use crate::wave_core::graphics::renderer::{EnumApi};
+use crate::wave_core::input::{self};
 
 pub(crate) static mut S_WINDOW_CONTEXT: Option<*mut glfw::Glfw> = None;
-pub static mut S_WINDOW: Option<*mut Window> = None;
+pub(crate) static mut S_WINDOW: Option<*mut Window> = None;
 
-static mut S_PREVIOUS_WIDTH: u32 = 640;
-static mut S_PREVIOUS_HEIGHT: u32 = 480;
+pub(crate) static mut S_PREVIOUS_WIDTH: u32 = 640;
+pub(crate) static mut S_PREVIOUS_HEIGHT: u32 = 480;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumState {
@@ -290,59 +290,8 @@ impl Window {
     return Ok(true);
   }
   
-  pub fn on_event(&mut self) -> Result<bool, EnumError> {
+  pub fn on_event(&mut self) {
     self.m_api_window.glfw.poll_events();
-    let mut window_event_happened = false;
-    for (_, event) in glfw::flush_messages(&self.m_api_window_events) {
-      window_event_happened = true;
-      // Asynchronous event polling.
-      match event {
-        glfw::WindowEvent::Key(key, _scancode, action, mods) => {
-          match (key, action, mods) {
-            (glfw::Key::Escape, glfw::Action::Press, _) => {
-              self.m_api_window.set_should_close(true);
-              log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
-            }
-            (glfw::Key::R, glfw::Action::Press, _) => {
-              // Resize should force the window to "refresh"
-              let (window_width, window_height) = self.m_api_window.get_size();
-              self.m_api_window.set_size(window_width + 1, window_height);
-              self.m_api_window.set_size(window_width, window_height);
-            }
-            (glfw::Key::Enter, glfw::Action::Press, glfw::Modifiers::Alt) => {}
-            _ => {}
-          }
-        }
-        glfw::WindowEvent::MouseButton(_btn, _action, _mods) => {
-          // log!("INFO", "Button: {:?}, Action: {:?}, Modifiers: [{:?}]", btn, action, mods);
-        }
-        glfw::WindowEvent::FramebufferSize(width, height) => {
-          log!("INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
-          let renderer = Renderer::get()
-            .expect("Cannot process window event (Framebuffer size) : No active renderer context!");
-          
-          unsafe {
-            (*renderer).on_events(glfw::WindowEvent::FramebufferSize(width, height))
-              .expect("Error while processing events for renderer!");
-            
-            S_PREVIOUS_WIDTH = self.m_window_resolution.0 as u32;
-            S_PREVIOUS_HEIGHT = self.m_window_resolution.1 as u32;
-          }
-          self.m_window_resolution = (width, height);
-        }
-        glfw::WindowEvent::Pos(pos_x, pos_y) => {
-          if self.m_is_windowed {
-            self.m_window_pos = (pos_x, pos_y);
-          }
-        }
-        _ => {}
-      };
-    };
-    if window_event_happened {
-      Input::on_update();
-      return Ok(true);
-    }
-    return Ok(false);
   }
   
   pub fn on_delete(&mut self) -> Result<(), EnumError> {
@@ -446,8 +395,9 @@ impl Window {
     return (self.m_window_resolution.0 as u32, self.m_window_resolution.1 as u32);
   }
   
-  pub fn get() -> Option<*mut Window> {
-    unsafe { return S_WINDOW; };
+  pub fn get_active() -> *mut Window {
+    unsafe { return S_WINDOW.expect("[Window] -->\t Cannot retrieve window : No active window \
+      contexts!"); };
   }
 }
 

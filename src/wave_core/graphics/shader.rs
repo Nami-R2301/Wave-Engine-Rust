@@ -27,7 +27,7 @@ use std::fmt::{Display, Formatter};
 use crate::log;
 use crate::wave_core::graphics::open_gl;
 use crate::wave_core::graphics::open_gl::shader::GlShader;
-use crate::wave_core::graphics::renderer::{EnumApi, Renderer, S_RENDERER};
+use crate::wave_core::graphics::renderer::{EnumApi, Renderer};
 #[cfg(feature = "Vulkan")]
 use crate::wave_core::graphics::vulkan;
 #[cfg(feature = "Vulkan")]
@@ -218,10 +218,10 @@ impl Shader {
     if shader_stages.is_empty() {
       log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create shader : No shader stages \
         provided!");
-      return Err(EnumError::NoShaderStagesProvided)
+      return Err(EnumError::NoShaderStagesProvided);
     }
     
-    let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
+    let renderer = Renderer::get_active();
     let mut shader_program: Shader = Shader::default();
     
     for shader_stage in shader_stages.iter_mut() {
@@ -278,7 +278,7 @@ impl Shader {
   }
   
   pub fn check_cache(shader_file_path: &std::path::Path) -> Result<Vec<u8>, EnumError> {
-    let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
+    let renderer = Renderer::get_active();
     unsafe {
       if (*renderer).m_type == EnumApi::OpenGL && !(*renderer).check_extension("GL_ARB_gl_spirv") {
         log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Cannot load from cached SPIR-V binary : \
@@ -326,7 +326,7 @@ impl Shader {
         let file_contents = std::fs::read_to_string(&file_path_str)?;
         
         // If we have a GLSL shader with preprocessor instructions compatible with SPIR-V.
-        if file_contents.contains("GL_SPIRV") || file_contents.contains("VULKAN") {
+        if file_contents.contains("GL_SPIRV") || file_contents.contains("Vulkan") {
           let version_number_str = file_contents.split_once("#version")
             .expect("[Shader] -->\t Cannot split GLSL #version and version number in set_language()!");
           let version_number_f: u16 = version_number_str.1.get(1..4)
@@ -362,7 +362,7 @@ impl Shader {
           source_str, version_number_f);
         
         // If we have a GLSL shader with preprocessor instructions compatible with SPIR-V.
-        if source_str.contains("GL_SPIRV") || source_str.contains("VULKAN") {
+        if source_str.contains("GL_SPIRV") || source_str.contains("Vulkan") {
           if version_number_f >= 410 && source_str.contains("uniform") {
             // Compatible GLSL-SPIR-V shader found, setting the appropriate language.
             self.m_shader_lang = EnumShaderLanguageType::GlslSpirV;
@@ -429,16 +429,7 @@ impl Shader {
       return Ok(());
     }
     
-    unsafe {
-      if S_RENDERER.is_none() {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot delete renderer : No active renderer!");
-        return Err(EnumError::NoActiveRendererError);
-      }
-    }
-    
-    let renderer = Renderer::get()
-      .expect("[Shader] -->\t Cannot drop GlShader : No active renderer!");
-    
+    let renderer = Renderer::get_active();
     self.m_api_data.on_delete(renderer)?;
     self.m_state = EnumState::Deleted;
     return Ok(());
@@ -447,19 +438,16 @@ impl Shader {
 
 impl Drop for Shader {
   fn drop(&mut self) {
-    let renderer = Renderer::get();
-    if renderer.is_some() {
-      log!(EnumLogColor::Purple, "INFO", "[Shader] -->\t Dropping shader...");
-      match self.on_delete() {
-        Ok(_) => {
-          log!(EnumLogColor::Green, "INFO", "[Shader] -->\t Dropped shader successfully...");
-        }
-        #[allow(unused)]
-        Err(err) => {
-          log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error while dropping shader : \
+    log!(EnumLogColor::Purple, "INFO", "[Shader] -->\t Dropping shader...");
+    match self.on_delete() {
+      Ok(_) => {
+        log!(EnumLogColor::Green, "INFO", "[Shader] -->\t Dropped shader successfully...");
+      }
+      #[allow(unused)]
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error while dropping shader : \
         Error => {:?}", err);
-          log!(EnumLogColor::Red, "INFO", "[Shader] -->\t Dropped shader unsuccessfully...");
-        }
+        log!(EnumLogColor::Red, "INFO", "[Shader] -->\t Dropped shader unsuccessfully...");
       }
     }
   }

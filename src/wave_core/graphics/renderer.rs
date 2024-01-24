@@ -46,14 +46,14 @@ pub enum EnumCallCheckingType {
   None,
   Async,
   Sync,
-  SyncAndAsync
+  SyncAndAsync,
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub enum EnumState {
   NotCreated,
   Created,
-  Deleted
+  Deleted,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -90,7 +90,7 @@ pub enum EnumError {
   OpenGLError(open_gl::renderer::EnumError),
   OpenGLInvalidBufferOperation(open_gl::buffer::EnumError),
   #[cfg(feature = "Vulkan")]
-  VulkanInvalidBufferOperation(vulkan::buffer::EnumError)
+  VulkanInvalidBufferOperation(vulkan::buffer::EnumError),
 }
 
 impl From<open_gl::renderer::EnumError> for EnumError {
@@ -153,7 +153,7 @@ pub(crate) trait TraitContext {
   fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError>;
   fn on_render(&mut self) -> Result<(), EnumError>;
   fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError>;
-  fn get_max_msaa_count(&self) -> Result<u8, EnumError>;
+  fn get_max_msaa_count(&self) -> u8;
   fn to_string(&self) -> String;
   fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError>;
   fn setup_camera(&mut self, camera: &Camera) -> Result<(), EnumError>;
@@ -185,7 +185,7 @@ impl Renderer {
       #[cfg(not(feature = "Vulkan"))]
       return Ok(Renderer {
         m_type: EnumApi::OpenGL,
-        m_state: EnumState::Ok,
+        m_state: EnumState::Created,
         m_features: HashSet::new(),
         m_api: Box::new(GlContext::on_new(window)?),
       });
@@ -201,21 +201,21 @@ impl Renderer {
         })
       }
       EnumApi::Vulkan => {
-        #[cfg(not(feature = "Vulkan"))]
-        {
-          log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot create renderer : Vulkan feature \
-        not enabled!\nMake sure to turn on Vulkan rendering by enabling it in the Cargo.toml \
-        file under features!");
-          return Err(EnumError::UnsupportedApi);
-        }
-        
         #[cfg(feature = "Vulkan")]
-        Ok(Renderer {
+        return Ok(Renderer {
           m_type: EnumApi::Vulkan,
           m_state: EnumState::Created,
           m_features: HashSet::new(),
           m_api: Box::new(VkContext::on_new(window)?),
-        })
+        });
+        
+        #[cfg(not(feature = "Vulkan"))]
+        {
+          log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot create renderer : Vulkan feature \
+            not enabled!\nMake sure to turn on Vulkan rendering by enabling it in the Cargo.toml \
+            file under features!");
+          Err(EnumError::UnsupportedApi)
+        }
       }
     };
   }
@@ -264,16 +264,9 @@ impl Renderer {
       return Ok(());
     }
     
-    unsafe {
-      if S_RENDERER.is_none() {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot delete renderer : No active renderer!");
-        return Err(EnumError::NoActiveRendererError);
-      }
-    }
     // Free up resources.
     self.m_api.on_delete()?;
     self.m_state = EnumState::Deleted;
-    unsafe { S_RENDERER = None };
     log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Freed resources successfully");
     return Ok(());
   }
@@ -286,8 +279,11 @@ impl Renderer {
     return self.m_api.dequeue(id);
   }
   
-  pub fn get() -> Option<*mut Renderer> {
-    return unsafe { S_RENDERER };
+  pub fn get_active() -> *mut Renderer {
+    return unsafe {
+      S_RENDERER.expect("[Renderer] -->\t Cannot retreive active renderer : \
+        No active renderers!")
+    };
   }
   
   pub fn get_version(&self) -> f32 {
@@ -309,21 +305,19 @@ impl Drop for Renderer {
   fn drop(&mut self) {
     if self.m_state != EnumState::Deleted && self.m_state != EnumState::NotCreated {
       unsafe {
-        if S_RENDERER.is_some() {
-          log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Dropping renderer...");
-          match self.on_delete() {
-            Ok(_) => {
-              log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Dropped renderer successfully...");
-            }
-            #[allow(unused)]
-            Err(err) => {
-              log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error while dropping renderer : \
-        Error => {:?}", err);
-              log!(EnumLogColor::Red, "INFO", "[Renderer] -->\t Dropped renderer unsuccessfully...");
-            }
+        log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Dropping renderer...");
+        match self.on_delete() {
+          Ok(_) => {
+            log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Dropped renderer successfully...");
           }
-          S_RENDERER = None;
+          #[allow(unused)]
+          Err(err) => {
+            log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error while dropping renderer : \
+        Error => {:?}", err);
+            log!(EnumLogColor::Red, "INFO", "[Renderer] -->\t Dropped renderer unsuccessfully...");
+          }
         }
+        S_RENDERER = None;
       }
     }
   }

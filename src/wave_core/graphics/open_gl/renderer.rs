@@ -199,9 +199,9 @@ impl TraitContext for GlContext {
         Ok(gl_fns) => {
           S_GL_4_6 = Some(gl_fns);
         }
-        Err(err) => {
+        Err(_err) => {
           log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot load one or more OpenGL API \
-          functions! Error => {err}");
+          functions! Error => {_err}");
           return Err(renderer::EnumError::from(EnumError::ApiFunctionLoadingError));
         }
       }
@@ -281,14 +281,9 @@ impl TraitContext for GlContext {
       self.toggle(*feature)?;
     }
     
-    let window_opt = Window::get();
-    if window_opt.is_none() {
-      log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot set OpenGl viewport dimensions : \
-      No active window context!");
-      return Err(renderer::EnumError::from(EnumError::InvalidContext));
-    }
+    let window = Window::get_active();
     
-    let window = window_opt.unwrap();
+    let window = window;
     let window_framebuffer_size = unsafe {
       (*window).get_framebuffer_size()
     };
@@ -299,18 +294,13 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn get_max_msaa_count(&self) -> Result<u8, renderer::EnumError> {
+  fn get_max_msaa_count(&self) -> u8 {
     // let framebuffer_color_sample_count: u8 = self.m_framebuffer.max_color_sample_count;
     // let framebuffer_depth_sample_count: u8 = self.m_framebuffer.max_depth_sample_count;
     //
     // return framebuffer_color_sample_count.min(framebuffer_depth_sample_count);
-    let window = Window::get();
-    if window.is_none() {
-      log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot retrieve MSAA max count supported \
-      by the window context : No active window context available!");
-      return Err(renderer::EnumError::from(EnumError::InvalidContext));
-    }
-    return Ok(unsafe { (*window.unwrap()).m_samples });
+    let window = Window::get_active();
+    return unsafe { (*window).m_samples };
   }
   
   fn to_string(&self) -> String {
@@ -383,9 +373,9 @@ impl TraitContext for GlContext {
       }
       EnumFeature::MSAA(sample_count) => {
         #[allow(unused)]
-          let mut max_sample_count: u8 = 0;
+          let mut max_sample_count: u8 = 1;
         if sample_count.is_some() {
-          max_sample_count = self.get_max_msaa_count()?;
+          max_sample_count = self.get_max_msaa_count();
           if max_sample_count < 2 {
             log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot enable MSAA!");
             return Err(renderer::EnumError::from(EnumError::MSAAError));
@@ -448,9 +438,19 @@ impl TraitContext for GlContext {
   }
   
   fn setup_camera(&mut self, camera: &Camera) -> Result<(), renderer::EnumError> {
+    let glsl_filter: Vec<&mut *mut Shader> = self.m_batch.m_shaders.iter_mut()
+      .filter(|&&mut shader| unsafe { (*shader).get_lang() == EnumShaderLanguageType::Glsl })
+      .collect();
+    
+    if glsl_filter.is_empty() {
+      // Setup view-projection ubo if we are reading a uniform block imposed by SPIR-V.
+      let mut ubo = GlUbo::new(EnumUboTypeSize::ViewProjection, 0)?;
+      ubo.set_data(EnumUboType::ViewProjection(camera.get_view_matrix(), camera.get_projection_matrix()))?;
+      self.m_batch.m_ubo_buffers.push(ubo);
+    }
+    
     // Setup view-projection uniform across all classic GLSL shaders.
-    for &mut shader in self.m_batch.m_shaders.iter_mut()
-      .filter(|&&mut shader| unsafe { (*shader).get_lang() == EnumShaderLanguageType::Glsl }) {
+    for &mut shader in glsl_filter {
       unsafe {
         (*shader).upload_data("u_view_projection",
           &(camera.get_projection_matrix() * camera.get_view_matrix()).transpose()).map_err(|_| {
@@ -458,10 +458,6 @@ impl TraitContext for GlContext {
         })?;
       }
     }
-    // Setup view-projection ubo if we are reading a uniform block imposed by SPIR-V.
-    let mut ubo = GlUbo::new(EnumUboTypeSize::ViewProjection, 0)?;
-    ubo.set_data(EnumUboType::ViewProjection(camera.get_view_matrix(), camera.get_projection_matrix()))?;
-    self.m_batch.m_ubo_buffers.push(ubo);
     return Ok(());
   }
   
@@ -588,9 +584,9 @@ impl GlContext {
         Ok(gl_ext_name) => {
           gl_extensions_available.push(String::from(gl_ext_name));
         }
-        Err(err) => {
+        Err(_err) => {
           log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot convert OpenGL extension name \
-          pointer to Rust str! Error => {err:?}");
+          pointer to Rust str! Error => {_err:?}");
           return Err(EnumError::CStringError);
         }
       }

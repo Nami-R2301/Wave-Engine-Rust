@@ -297,7 +297,7 @@ impl VkContext {
     return Ok(());
   }
   
-  pub fn create_pipeline(&mut self, shader_modules: &Vec<vk::ShaderModule>, sendable_entity: &REntity) -> Result<(), EnumError> {
+  pub fn create_pipeline(&mut self, shader_modules: &Vec<vk::ShaderModule>, _sendable_entity: &REntity) -> Result<(), EnumError> {
     // Setup dynamic states.
     self.m_dynamic_states.push(vk::DynamicState::VIEWPORT);
     self.m_dynamic_states.push(vk::DynamicState::SCISSOR);
@@ -306,7 +306,7 @@ impl VkContext {
     dynamic_states_create_info.dynamic_state_count = self.m_dynamic_states.len() as u32;
     dynamic_states_create_info.p_dynamic_states = self.m_dynamic_states.as_ptr();
     
-    let vk_vertex_attributes: Vec<VkVertexAttribute> = vec![
+    let _vk_vertex_attributes: Vec<VkVertexAttribute> = vec![
       VkVertexAttribute::new(0, 0, vk::Format::R32_UINT, 0)?,
       VkVertexAttribute::new(0, 1, vk::Format::R32G32B32_SFLOAT, EnumVertexMemberOffset::AtPos as u32)?,
       VkVertexAttribute::new(0, 2, vk::Format::R32G32B32_SFLOAT, EnumVertexMemberOffset::AtNormal as u32)?,
@@ -787,13 +787,8 @@ impl VkContext {
         height,
       });
     }
-    if Window::get().is_none() {
-      log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot get framebuffer size for swap \
-      extent : No active window context");
-      return Err(renderer::EnumError::from(EnumError::SwapError));
-    }
     
-    let (width, height) = unsafe { (*Window::get().unwrap()).m_api_window.get_framebuffer_size() };
+    let (width, height) = unsafe { (*Window::get_active()).m_api_window.get_framebuffer_size() };
     let actual_width: u32 = clamp(width as u32, surface_capabilities.min_image_extent.width,
       surface_capabilities.max_image_extent.width);
     let actual_height: u32 = clamp(height as u32, surface_capabilities.min_image_extent.height,
@@ -981,14 +976,9 @@ impl TraitContext for VkContext {
       self.toggle(*feature)?;
     }
     
-    let window = Window::get();
-    if window.is_none() {
-      log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot create swap chain : No active \
-      window context to present images onto!");
-      return Err(renderer::EnumError::from(EnumError::SwapError));
-    }
+    let window = Window::get_active();
     // Create swap chain.
-    self.create_swap_chain(unsafe { (*window.unwrap()).m_vsync })?;
+    self.create_swap_chain(unsafe { (*window).m_vsync })?;
     
     let swap_chain_images = unsafe {
       if self.m_swap_chain.is_none() {
@@ -1010,7 +1000,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn get_max_msaa_count(&self) -> Result<u8, renderer::EnumError> {
+  fn get_max_msaa_count(&self) -> u8 {
     let device_properties =
       unsafe {
         self.m_instance.get_physical_device_properties(self.m_physical_device)
@@ -1020,26 +1010,24 @@ impl TraitContext for VkContext {
     let max_sample_count = max_color_sample_count.min(max_depth_sample_count);
     
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_64) {
-      return Ok(64);
+      return 64;
     }
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_32) {
-      return Ok(32);
+      return 32;
     }
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_16) {
-      return Ok(16);
+      return 16;
     }
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_8) {
-      return Ok(8);
+      return 8;
     }
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_4) {
-      return Ok(4);
+      return 4;
     }
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_2) {
-      return Ok(2);
+      return 2;
     }
-    log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot retrieve max sample count for MSAA : \
-    MSAA not supported!");
-    return Err(renderer::EnumError::from(EnumError::NotSupported));
+    return 1;
   }
   
   fn check_extension(&self, _desired_extension: &str) -> bool {
@@ -1109,7 +1097,7 @@ impl TraitContext for VkContext {
         #[allow(unused)]
           let mut max_sample_count: u8 = 1;
         if sample_count.is_some() {
-          max_sample_count = self.get_max_msaa_count()?;
+          max_sample_count = self.get_max_msaa_count();
           if sample_count.unwrap() > max_sample_count && sample_count.unwrap() > 2 {
             log!(EnumLogColor::Yellow, "WARN", "[VkContext] -->\t Cannot enable MSAA with X{0}! \
               Defaulting to {1}...", sample_count.unwrap(), max_sample_count);

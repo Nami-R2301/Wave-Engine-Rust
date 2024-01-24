@@ -106,7 +106,8 @@ impl TraitShader for VkShader {
     let entry_point = "main";
     let compiler = shaderc::Compiler::new().unwrap();
     let mut options = shaderc::CompileOptions::new().unwrap();
-    // options.set_optimization_level(shaderc::OptimizationLevel::Performance);
+    options.add_macro_definition("Vulkan", None);
+    options.set_optimization_level(shaderc::OptimizationLevel::Performance);
     
     // Force converting unbound uniforms to SPIR-V compatible uniforms (aka bound ones).
     options.set_auto_bind_uniforms(true);
@@ -189,7 +190,7 @@ impl TraitShader for VkShader {
       let vk_context =
         (*active_renderer).get_api_handle()
           .downcast_mut::<VkContext>()
-          .expect("[VkShader] -->\t Cannot retrieve Vulkan instance : VkContext is None!");
+          .expect("[VkShader] -->\t Cannot retrieve Vulkan instance : Renderer not Vulkan!");
       for shader_module in self.m_vk_shader_modules.iter() {
         vk_context.get_handle().destroy_shader_module(*shader_module, None);
       }
@@ -208,13 +209,12 @@ impl VkShader {
     shader_module_create_info.code_size = shader_binary.len();
     shader_module_create_info.p_code = shader_binary.as_ptr() as *const u32;
     
-    let renderer = Renderer::get()
-      .expect("[VkShader] -->\t Cannot create Vulkan shader module : Renderer is None!");
+    let renderer = Renderer::get_active();
     unsafe {
       let vk_context =
         (*renderer).get_api_handle()
           .downcast_mut::<VkContext>()
-          .expect("[VkShader] -->\t Cannot retrieve Vulkan instance : VkContext is None!");
+          .expect("[VkShader] -->\t Cannot retrieve Vulkan instance : Renderer not Vulkan!");
       return match vk_context.get_handle().create_shader_module(&shader_module_create_info, None) {
         Ok(shader_module) => Ok(shader_module),
         #[allow(unused)]

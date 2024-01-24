@@ -153,17 +153,17 @@ impl TraitShader for GlShader {
       unsafe { gl::GetShaderiv(*shader_id, gl::COMPILE_STATUS, &mut compiled_successfully) };
       if compiled_successfully as GLboolean == gl::FALSE {
         #[allow(unused)]
-          let shader_type_str: String;
+          let _shader_type_str: String;
         // For debug purposes.
         match shader_stage.m_stage {
           EnumShaderStage::Vertex => {
-            shader_type_str = "vertex shader".to_string();
+            _shader_type_str = "vertex shader".to_string();
           }
           EnumShaderStage::Fragment => {
-            shader_type_str = "fragment shader".to_string();
+            _shader_type_str = "fragment shader".to_string();
           }
           EnumShaderStage::Compute => {
-            shader_type_str = "compute shader".to_string();
+            _shader_type_str = "compute shader".to_string();
           }
         }
         
@@ -179,7 +179,7 @@ impl TraitShader for GlShader {
         };
         
         log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Error, could not compile {0}!\n \
-        Info => {1}", shader_type_str, unsafe {
+        Info => {1}", _shader_type_str, unsafe {
         std::ffi::CStr::from_ptr(buffer.as_ptr().cast()).to_str()
           .expect("[GlShader] -->\t Cannot convert shader info log to Rust str in compile!")
       });
@@ -382,21 +382,19 @@ impl GlShader {
             
             unsafe { buffer_c.set_len(info_length as usize) };
             
-            let c_string = std::ffi::CString::new(buffer_c.as_slice())
+            let _c_string = std::ffi::CString::new(buffer_c.as_slice())
               .expect("[GlShader] -->\t Cannot convert bytes to CString!");
             
             log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Error, could not compile {0}! \
-                \nInfo => {1}", file_path_str, c_string.to_str().unwrap_or("Error"));
+                \nInfo => {1}", file_path_str, _c_string.to_str().unwrap_or("Error"));
             
             return Err(shader::EnumError::ShaderBinaryError);
           }
           
           // Specialize the shader (specify the entry point)
-          for _attempt in 0..3 {
-            unsafe {
-              gl4_6.SpecializeShader(*shader_id, entry_point.as_ptr(), 0,
-                std::ptr::null(), std::ptr::null());
-            }
+          unsafe {
+            gl4_6.SpecializeShader(*shader_id, entry_point.as_ptr(), 0,
+              std::ptr::null(), std::ptr::null());
           }
           
           let mut compiled_successfully: GLint = 0;
@@ -416,12 +414,12 @@ impl GlShader {
                 std::ffi::CStr::from_ptr(buffer_c.as_ptr().cast()).to_str()
                 .expect("[GlShader] -->\t Cannot convert shader info log to Rust str in compile_binary!")
                 });
-          
-          return Err(shader::EnumError::from(EnumError::ShaderBinaryCompilationError));
+            
+            return Err(shader::EnumError::from(EnumError::ShaderBinaryCompilationError));
+          }
         }
       }
     }
-  }
     return Ok(());
   }
 }

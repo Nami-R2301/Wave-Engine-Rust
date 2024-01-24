@@ -1,0 +1,302 @@
+/*
+ MIT License
+
+ Copyright (c) 2024 Nami Reghbati
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NON INFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+*/
+
+use std::fmt::{Display, Formatter};
+
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub enum EnumError {
+  InvalidContext,
+  InvalidUiOptions,
+  ApiError,
+}
+
+impl Display for EnumError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "[Ui] -->\t Error encountered with Ui element(s) : {:?}", self)
+  }
+}
+
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub enum EnumUiType {
+  Docked,
+  Floating,
+}
+
+pub mod ui_imgui {
+  use crate::wave_core::window::{Window};
+  use crate::wave_core::utils::Time;
+  use crate::wave_core::graphics::renderer::EnumApi;
+  
+  /// Taken from https://docs.rs/imgui-glfw-rs/latest/src/imgui_glfw_rs/lib.rs.html#101-232
+  
+  /// Use the reexported glfw crate to avoid version conflicts.
+  pub use glfw;
+  
+  use glfw::ffi::GLFWwindow;
+  use glfw::{Action, Context, Key, Modifiers, MouseButton, StandardCursor, WindowEvent};
+  use imgui::{Condition, ConfigFlags, Key as ImGuiKey, MouseCursor};
+  use imgui_opengl_renderer::Renderer;
+  use std::ffi::CStr;
+  use std::os::raw::c_void;
+  #[allow(unused)]
+  use crate::log;
+  use crate::wave_core::ui::EnumError;
+  
+  struct GlfwClipboardBackend(*mut c_void);
+  
+  impl imgui::ClipboardBackend for GlfwClipboardBackend {
+    fn get(&mut self) -> Option<String> {
+      let char_ptr = unsafe { glfw::ffi::glfwGetClipboardString(self.0 as *mut GLFWwindow) };
+      let c_str = unsafe { CStr::from_ptr(char_ptr) };
+      Some(c_str.to_str().unwrap().parse().unwrap())
+    }
+    
+    fn set(&mut self, value: &str) {
+      unsafe {
+        glfw::ffi::glfwSetClipboardString(self.0 as *mut GLFWwindow, value.as_ptr().cast());
+      };
+    }
+  }
+  
+  trait TraitUi {
+    fn on_event(&mut self, window_event: &WindowEvent);
+    fn on_update(&mut self);
+    fn on_render(&mut self);
+    fn on_delete(&mut self) -> Result<(), EnumError>;
+  }
+  
+  
+  pub struct Imgui {
+    m_api: Box<dyn TraitUi>,
+  }
+  
+  impl Imgui {
+    pub fn new(api_choice: EnumApi, window: &mut Window) -> Result<Self, EnumError> {
+      return match api_choice {
+        EnumApi::OpenGL => Ok(Imgui {
+          m_api: Box::new(GlImgui::new(window))
+        }),
+        EnumApi::Vulkan => {
+          #[cfg(feature = "Vulkan")]
+          todo!();
+          
+          #[cfg(not(feature = "Vulkan"))]
+          {
+            log!(EnumLogColor::Red, "ERROR", "[Ui] -->\t Cannot create Ui : Vulkan feature \
+            not enabled!\nMake sure to turn on Vulkan rendering by enabling it in the Cargo.toml \
+            file under features!");
+            return Err(EnumError::ApiError);
+          }
+        }
+      };
+    }
+    
+    pub fn on_event(&mut self, window_event: &WindowEvent) {
+      return self.m_api.on_event(window_event);
+    }
+    
+    pub fn on_update(&mut self) {
+      return self.m_api.on_update();
+    }
+    
+    pub fn on_render(&mut self) {
+      return self.m_api.on_render();
+    }
+  }
+  
+  impl Drop for Imgui {
+    fn drop(&mut self) {
+      match self.m_api.on_delete() {
+        Ok(_) => {}
+        Err(_) => {}
+      }
+    }
+  }
+  
+  pub struct GlImgui {
+    m_last_frame: Time,
+    m_mouse_press: [bool; 5],
+    m_cursor_pos: (f64, f64),
+    m_cursor: (MouseCursor, Option<StandardCursor>),
+    m_imgui_handle: imgui::Context,
+    m_ui_handle: *mut imgui::Ui,
+    m_window_handle: *mut Window,
+    m_renderer: Renderer,
+  }
+  
+  impl TraitUi for GlImgui {
+    fn on_event(&mut self, event: &WindowEvent) {
+      match *event {
+        WindowEvent::MouseButton(mouse_btn, action, _) => {
+          let index = match mouse_btn {
+            MouseButton::Button1 => 0,
+            MouseButton::Button2 => 1,
+            MouseButton::Button3 => 2,
+            MouseButton::Button4 => 3,
+            MouseButton::Button5 => 4,
+            _ => 0,
+          };
+          let press = action != Action::Release;
+          self.m_mouse_press[index] = press;
+          self.m_imgui_handle.io_mut().mouse_down = self.m_mouse_press;
+        }
+        WindowEvent::CursorPos(w, h) => {
+          self.m_imgui_handle.io_mut().mouse_pos = [w as f32, h as f32];
+          self.m_cursor_pos = (w, h);
+        }
+        WindowEvent::Scroll(_, d) => {
+          self.m_imgui_handle.io_mut().mouse_wheel = d as f32;
+        }
+        WindowEvent::Char(character) => {
+          self.m_imgui_handle.io_mut().add_input_character(character);
+        }
+        WindowEvent::Key(key, _, action, modifier) => {
+          // GLFW modifiers.
+          self.m_imgui_handle.io_mut().key_ctrl = modifier.intersects(Modifiers::Control);
+          self.m_imgui_handle.io_mut().key_alt = modifier.intersects(Modifiers::Alt);
+          self.m_imgui_handle.io_mut().key_shift = modifier.intersects(Modifiers::Shift);
+          self.m_imgui_handle.io_mut().key_super = modifier.intersects(Modifiers::Super);
+          
+          self.m_imgui_handle.io_mut().keys_down[key as usize] = action != Action::Release;
+        }
+        _ => {}
+      }
+    }
+    
+    fn on_update(&mut self) {
+      let io = self.m_imgui_handle.io_mut();
+      
+      let now = Time::now();
+      let delta = now - self.m_last_frame;
+      self.m_last_frame = now;
+      io.delta_time = delta.to_secs() as f32;
+      
+      let window_size = unsafe { (*self.m_window_handle).m_window_resolution };
+      io.display_size = [window_size.0 as f32, window_size.1 as f32];
+      
+      self.m_ui_handle = self.m_imgui_handle.new_frame();
+      unsafe {
+        (*self.m_ui_handle).window("Example Ui")
+          .menu_bar(true)
+          .size([window_size.0 as f32, window_size.1 as f32], Condition::FirstUseEver)
+          .build(|| {
+            (*self.m_ui_handle).text_colored([1.0, 0.0, 0.0, 1.0], "Example text");
+          });
+      }
+    }
+    
+    fn on_render(&mut self) {
+      unsafe {
+        let io = (*self.m_ui_handle).io();
+        if !io.config_flags.contains(ConfigFlags::NO_MOUSE_CURSOR_CHANGE) {
+          match (*self.m_ui_handle).mouse_cursor() {
+            Some(mouse_cursor) if !io.mouse_draw_cursor => {
+              (*self.m_window_handle).m_api_window.set_cursor_mode(glfw::CursorMode::Normal);
+              
+              let cursor = match mouse_cursor {
+                MouseCursor::TextInput => StandardCursor::IBeam,
+                MouseCursor::ResizeNS => StandardCursor::VResize,
+                MouseCursor::ResizeEW => StandardCursor::HResize,
+                MouseCursor::Hand => StandardCursor::Hand,
+                _ => StandardCursor::Arrow,
+              };
+              (*self.m_window_handle).m_api_window.set_cursor(Some(glfw::Cursor::standard(cursor)));
+              
+              if self.m_cursor.1 != Some(cursor) {
+                self.m_cursor.1 = Some(cursor);
+                self.m_cursor.0 = mouse_cursor;
+              }
+            }
+            _ => {
+              self.m_cursor.0 = MouseCursor::Arrow;
+              self.m_cursor.1 = None;
+              (*self.m_window_handle).m_api_window.set_cursor_mode(glfw::CursorMode::Hidden);
+            }
+          }
+        }
+        
+        self.m_renderer.render(&mut self.m_imgui_handle);
+        self.m_imgui_handle.update_platform_windows();
+      }
+    }
+    
+    fn on_delete(&mut self) -> Result<(), EnumError> {
+      return Ok(());
+    }
+  }
+  
+  impl GlImgui {
+    pub fn new(window: *mut Window) -> Self {
+      let mut context = imgui::Context::create();
+      unsafe {
+        let window_ptr = (*window).m_api_window.window_ptr() as *mut c_void;
+        context.set_clipboard_backend(GlfwClipboardBackend(window_ptr));
+      }
+      
+      let io_mut = context.io_mut();
+      Self::glfw_to_imgui(io_mut);
+      context.set_renderer_name(String::from("OpenGL"));
+      
+      let renderer = Renderer::new(&mut context, |s| unsafe {
+        (*window).m_api_window.get_proc_address(s) as _
+      });
+      
+      Self {
+        m_last_frame: Time::new(),
+        m_mouse_press: [false; 5],
+        m_cursor_pos: (0., 0.),
+        m_cursor: (MouseCursor::Arrow, None),
+        m_imgui_handle: context,
+        m_ui_handle: std::ptr::null_mut(),
+        m_window_handle: window,
+        m_renderer: renderer,
+      }
+    }
+    
+    fn glfw_to_imgui(imgui: &mut imgui::Io) {
+      // GLFW keys.
+      imgui.key_map[ImGuiKey::Tab as usize] = Key::Tab as u32;
+      imgui.key_map[ImGuiKey::LeftArrow as usize] = Key::Left as u32;
+      imgui.key_map[ImGuiKey::RightArrow as usize] = Key::Right as u32;
+      imgui.key_map[ImGuiKey::UpArrow as usize] = Key::Up as u32;
+      imgui.key_map[ImGuiKey::DownArrow as usize] = Key::Down as u32;
+      imgui.key_map[ImGuiKey::PageUp as usize] = Key::PageUp as u32;
+      imgui.key_map[ImGuiKey::PageDown as usize] = Key::PageDown as u32;
+      imgui.key_map[ImGuiKey::Home as usize] = Key::Home as u32;
+      imgui.key_map[ImGuiKey::End as usize] = Key::End as u32;
+      imgui.key_map[ImGuiKey::Insert as usize] = Key::Insert as u32;
+      imgui.key_map[ImGuiKey::Delete as usize] = Key::Delete as u32;
+      imgui.key_map[ImGuiKey::Backspace as usize] = Key::Backspace as u32;
+      imgui.key_map[ImGuiKey::Space as usize] = Key::Space as u32;
+      imgui.key_map[ImGuiKey::Enter as usize] = Key::Enter as u32;
+      imgui.key_map[ImGuiKey::Escape as usize] = Key::Escape as u32;
+      imgui.key_map[ImGuiKey::A as usize] = Key::A as u32;
+      imgui.key_map[ImGuiKey::C as usize] = Key::C as u32;
+      imgui.key_map[ImGuiKey::V as usize] = Key::V as u32;
+      imgui.key_map[ImGuiKey::X as usize] = Key::X as u32;
+      imgui.key_map[ImGuiKey::Y as usize] = Key::Y as u32;
+      imgui.key_map[ImGuiKey::Z as usize] = Key::Z as u32;
+    }
+  }
+}

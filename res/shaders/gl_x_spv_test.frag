@@ -7,7 +7,7 @@ struct Vertex_data_s
     vec2 vout_tex_coords;
 };
 
-#ifdef VULKAN
+#ifdef Vulkan
 layout (location = 0) flat in uint vout_entity_ID;
 layout (location = 1) in Vertex_data_s vout_vertex_data;
 #else

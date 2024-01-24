@@ -26,7 +26,7 @@ use std::collections::HashMap;
 
 use wave_engine::wave_core::EnumError;
 use wave_engine::wave_core::input::{EnumAction, EnumKey, EnumModifier, EnumMouseButton, Input};
-use wave_engine::wave_core::window::{EnumWindowMode, S_WINDOW, Window};
+use wave_engine::wave_core::window::{EnumWindowMode, Window};
 
 fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, bool>, action_required: EnumAction,
                                modifier: Option<EnumModifier>) -> Result<(), EnumError> {
@@ -35,21 +35,21 @@ fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, 
     // Migrates new states from last frame to old ones to avoid reading an input multiple times.
     // Needs to be updated every frame. Normally, this is done automatically in the main engine render
     // loop, but here we state it explicitly for testing and clarity purposes.
-    Input::on_update();
-    window.m_api_window.glfw.poll_events();
+    Input::reset();
+    window.on_event();
     
-    if Input::get_key_state(EnumKey::Escape, EnumAction::Press)? {
+    if Input::get_key_state(window, EnumKey::Escape, EnumAction::Press)? {
       return Ok(());
     }
     
     for (&key, _) in copy.iter() {
       if modifier.is_some() {
-        if Input::get_modifier_key_combo(key, modifier.unwrap())? && !keys.get(&key).unwrap() {
+        if Input::get_modifier_key_combo(window, key, modifier.unwrap())? && !keys.get(&key).unwrap() {
           keys.insert(key, true);
         }
         continue;
       }
-      if Input::get_key_state(key, action_required)? && !keys.get(&key).unwrap() {
+      if Input::get_key_state(window, key, action_required)? && !keys.get(&key).unwrap() {
         keys.insert(key, true);
       }
     }
@@ -61,18 +61,18 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
                                         action_required: EnumAction) -> Result<(), EnumError> {
   let copy = mouse_buttons.clone();
   while !window.is_closing() {
-    window.m_api_window.glfw.poll_events();
     // Migrates new states from last frame to old ones to avoid reading an input multiple times.
     // Needs to be updated every frame. Normally, this is done automatically in the main engine render
     // loop, but here we state it explicitly for testing and clarity purposes.
-    Input::on_update();
+    Input::reset();
+    window.on_event();
     
-    if Input::get_key_state(EnumKey::Escape, EnumAction::Press)? {
+    if Input::get_key_state(window, EnumKey::Escape, EnumAction::Press)? {
       return Ok(());
     }
     
     for (&mouse_button, _) in copy.iter() {
-      if Input::get_mouse_button_state(mouse_button, action_required)? &&
+      if Input::get_mouse_button_state(window, mouse_button, action_required)? &&
         !mouse_buttons.get(&mouse_button).unwrap() {
         mouse_buttons.insert(mouse_button, true);
       }
@@ -86,9 +86,6 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
 fn test_synchronous_key_inputs() -> Result<(), EnumError> {
   let mut window = Window::new(None, Some((1024, 768)),
     None, None, EnumWindowMode::Windowed)?;
-  unsafe {
-    S_WINDOW = Some(&mut window);
-  }
   
   // Check if PRESS input events work properly.
   {
@@ -176,9 +173,6 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
 fn test_synchronous_mouse_button_inputs() -> Result<(), EnumError> {
   let mut window = Window::new(None, Some((1024, 768)),
     None, None, EnumWindowMode::Windowed)?;
-  unsafe {
-    S_WINDOW = Some(&mut window);
-  }
   
   // Check if PRESS input events work properly.
   {

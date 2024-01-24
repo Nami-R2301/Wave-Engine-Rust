@@ -23,20 +23,9 @@
 */
 
 pub mod wave_core {
-  
   use once_cell::sync::Lazy;
   
-  use crate::log;
-  use crate::wave_core::assets::renderable_assets::{REntity, TraitRenderableEntity};
-  use crate::wave_core::camera::{Camera, EnumCameraType};
-  use crate::wave_core::graphics::renderer::{self, EnumApi, EnumCallCheckingType, Renderer, S_RENDERER};
-  use crate::wave_core::graphics::shader::{self, EnumShaderSource, EnumShaderStage, Shader, ShaderStage};
-  use crate::wave_core::input::{EnumKey, EnumModifier, Input};
-  use crate::wave_core::math::Vec3;
-  use crate::wave_core::assets::asset_loader::ResLoader;
-  use crate::wave_core::utils::Time;
-  use crate::wave_core::window::{EnumWindowMode, S_WINDOW, Window};
-  
+  pub mod ui;
   pub mod window;
   pub mod math;
   pub mod graphics;
@@ -46,7 +35,22 @@ pub mod wave_core {
   pub mod input;
   mod events;
   
-  static mut S_ENGINE: *mut Engine = std::ptr::null_mut();
+  use crate::log;
+  use window::{EnumWindowMode, S_WINDOW, Window};
+  #[cfg(feature = "debug")]
+  use graphics::renderer::EnumCallCheckingType;
+  
+  use graphics::renderer::{self, EnumApi, Renderer, S_RENDERER};
+  use graphics::shader::{self, EnumShaderSource, EnumShaderStage, Shader, ShaderStage};
+  use assets::asset_loader::ResLoader;
+  use assets::renderable_assets::{REntity, TraitRenderableEntity};
+  use camera::{Camera, EnumCameraType};
+  use input::{EnumKey, EnumModifier, Input};
+  use math::Vec3;
+  use utils::Time;
+  use crate::wave_core::ui::ui_imgui::Imgui;
+  
+  static mut S_ENGINE: Option<*mut Engine> = None;
   
   static S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::logger::init().unwrap());
   
@@ -69,7 +73,8 @@ pub mod wave_core {
     ShaderError(shader::EnumError),
     RendererError(renderer::EnumError),
     WindowError(window::EnumError),
-    InputError(input::EnumError)
+    InputError(input::EnumError),
+    UiError(ui::EnumError),
   }
   
   macro_rules! impl_enum_error {
@@ -98,9 +103,12 @@ pub mod wave_core {
   // Convert input error to wave_core::EnumError.
   impl_enum_error!(input::EnumError, EnumError::InputError);
   
+  // Convert ui errors to wave_core::EnumError.
+  impl_enum_error!(ui::EnumError, EnumError::UiError);
+  
   pub trait TraitApp {
     fn on_new(&mut self) -> Result<(), EnumError>;
-    fn on_event(&mut self) -> bool;
+    fn on_event(&mut self, window_event: &glfw::WindowEvent) -> bool;
     fn on_update(&mut self, time_step: f64) -> Result<bool, EnumError>;
     fn on_render(&mut self) -> Result<(), EnumError>;
     fn on_delete(&mut self) -> Result<(), EnumError>;
@@ -115,7 +123,7 @@ pub mod wave_core {
     m_state: EnumState,
   }
   
-  impl Engine {
+  impl<'a> Engine {
     /// Setup new engine struct containing an app with the [TraitApp] behavior in order to call
     /// `on_new()`, `on_delete()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
     /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
@@ -270,13 +278,59 @@ pub mod wave_core {
         return Err(EnumError::AppError);
       }
       
-      if self.m_window.on_event()? {
+      self.m_window.on_event();
+      
+      let mut window_event_happened = false;
+      for (_, event) in unsafe { glfw::flush_messages(&(*S_WINDOW.unwrap()).m_api_window_events) } {
+        window_event_happened = true;
+        // Asynchronous event polling.
+        match event {
+          glfw::WindowEvent::Key(key, _scancode, action, mods) => {
+            match (key, action, mods) {
+              (glfw::Key::Escape, glfw::Action::Press, _) => {
+                self.m_window.close();
+                log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
+              }
+              (glfw::Key::R, glfw::Action::Press, _) => {
+                // Resize should force the window to "refresh"
+                let (window_width, window_height) = self.m_window.m_api_window.get_size();
+                self.m_window.m_api_window.set_size(window_width + 1, window_height);
+                self.m_window.m_api_window.set_size(window_width, window_height);
+              }
+              _ => {}
+            }
+          }
+          glfw::WindowEvent::FramebufferSize(width, height) => {
+            log!("INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
+            let renderer = Renderer::get_active();
+            
+            unsafe {
+              (*renderer).on_events(glfw::WindowEvent::FramebufferSize(width, height))
+                .expect("Error while processing events for renderer!");
+              
+              window::S_PREVIOUS_WIDTH = self.m_window.m_window_resolution.0 as u32;
+              window::S_PREVIOUS_HEIGHT = self.m_window.m_window_resolution.1 as u32;
+            }
+            self.m_window.m_window_resolution = (width, height);
+          }
+          glfw::WindowEvent::Pos(pos_x, pos_y) => {
+            if self.m_window.m_is_windowed {
+              self.m_window.m_window_pos = (pos_x, pos_y);
+            }
+          }
+          _ => {
+            self.m_app.on_event(&event);
+          }
+        };
+      };
+      if window_event_happened {
         // If an event happened and Input::on_update() has been called, process custom inputs.
-        if Input::get_modifier_key_combo(EnumKey::V, EnumModifier::Alt)? {
+        Input::reset();
+        if Input::get_modifier_key_combo(&self.m_window, EnumKey::V, EnumModifier::Alt)? {
           self.m_window.toggle_vsync();
         }
         
-        if Input::get_modifier_key_combo(EnumKey::Enter, EnumModifier::Alt)? {
+        if Input::get_modifier_key_combo(&self.m_window, EnumKey::Enter, EnumModifier::Alt)? {
           self.m_window.toggle_fullscreen()?;
         }
       }
@@ -322,20 +376,30 @@ pub mod wave_core {
       return &mut self.m_window;
     }
     
+    pub fn get_renderer(&mut self) -> &mut Renderer {
+      return &mut self.m_renderer;
+    }
+    
+    pub fn get_renderer_api(&self) -> EnumApi {
+      return self.m_renderer.m_type;
+    }
+    
     pub fn get_log_file() -> &'static std::fs::File {
       return &S_LOG_FILE_PTR;
     }
     
     
     pub fn get() -> *mut Engine {
-      unsafe { return S_ENGINE; }
+      unsafe {
+        return S_ENGINE.expect("[Engine] -->\t Cannot retrieve engine : Engine is not initialized!");
+      }
     }
     
     pub fn set_singleton(engine: &mut Engine) -> () {
       unsafe {
-        S_ENGINE = engine;
-        S_RENDERER = Some(&mut (*S_ENGINE).m_renderer);
-        S_WINDOW = Some(&mut (*S_ENGINE).m_window);
+        S_ENGINE = Some(engine);
+        S_RENDERER = Some(&mut (*S_ENGINE.unwrap()).m_renderer);
+        S_WINDOW = Some(&mut (*S_ENGINE.unwrap()).m_window);
       }
     }
   }
@@ -367,6 +431,7 @@ pub mod wave_core {
    */
   
   pub struct ExampleApp {
+    m_ui: Option<Imgui>,
     m_shaders: Vec<Shader>,
     m_renderable_assets: Vec<REntity>,
     m_cameras: Vec<Camera>,
@@ -375,6 +440,7 @@ pub mod wave_core {
   impl ExampleApp {
     pub fn default() -> Self {
       return ExampleApp {
+        m_ui: None,
         m_shaders: Vec::new(),
         m_renderable_assets: Vec::new(),
         m_cameras: Vec::new(),
@@ -395,7 +461,7 @@ pub mod wave_core {
       return Ok(());
     }
     
-    fn on_event(&mut self) -> bool {
+    fn on_event(&mut self, _window_event: &glfw::WindowEvent) -> bool {
       return true;
     }
     
@@ -414,7 +480,8 @@ pub mod wave_core {
   
   impl TraitApp for ExampleApp {
     fn on_new(&mut self) -> Result<(), EnumError> {
-      let window = Window::get().expect("Cannot retrieve active window context!");
+      let engine = Engine::get();
+      let window = unsafe { (*engine).get_window() };
       
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
       
@@ -435,10 +502,7 @@ pub mod wave_core {
       self.m_shaders[0].submit()?;
       log!(EnumLogColor::Green, "INFO", "[App] -->\t Shaders sent to GPU successfully");
       
-      let aspect_ratio: f32 = unsafe {
-        (*window).m_window_resolution.0 as f32 /
-          (*window).m_window_resolution.1 as f32
-      };
+      let aspect_ratio: f32 = window.m_window_resolution.0 as f32 / window.m_window_resolution.1 as f32;
       
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
       self.m_renderable_assets.push(REntity::from(ResLoader::new("awp.obj")?));
@@ -449,25 +513,38 @@ pub mod wave_core {
       log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
       
       self.m_cameras.push(Camera::new(EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
-      let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
-      unsafe { (*renderer).setup_camera(&self.m_cameras[0])? };
+      let renderer = unsafe { (*engine).get_renderer() };
+      renderer.setup_camera(&self.m_cameras[0])?;
+      
+      // Setup imgui layer.
+      self.m_ui = Some(Imgui::new(EnumApi::OpenGL, window)?);
       
       // Show our window when we are done.
-      unsafe { (*window).show() };
+      window.show();
       return Ok(());
     }
     
-    fn on_event(&mut self) -> bool {
+    fn on_event(&mut self, window_event: &glfw::WindowEvent) -> bool {
+      if self.m_ui.is_some() {
+        self.m_ui.as_mut().unwrap().on_event(window_event);
+      }
       return false;
     }
     
     fn on_update(&mut self, _time_step: f64) -> Result<bool, EnumError> {
+      if self.m_ui.is_some() {
+        self.m_ui.as_mut().unwrap().on_update();
+      }
       return Ok(false);
     }
     
     fn on_render(&mut self) -> Result<(), EnumError> {
-      let renderer = Renderer::get().expect("Cannot retrieve active renderer!");
+      let renderer = Renderer::get_active();
       unsafe { (*renderer).on_render()? };
+      
+      if self.m_ui.is_some() {
+        self.m_ui.as_mut().unwrap().on_render();
+      }
       
       return Ok(());
     }

@@ -487,8 +487,7 @@ impl GlUbo {
   
   pub(crate) fn bind(&mut self, block_name: &'static str, shader_id: u32) -> Result<(), open_gl::renderer::EnumError> {
     if self.m_state == EnumState::Created || self.m_state == EnumState::Unbound {
-      let renderer = Renderer::get()
-        .expect("[GlUbo] -->\t Cannot retrieve OpenGL : OpenGL is None!");
+      let renderer = Renderer::get_active();
       let glsl_version = unsafe { (*renderer).get_max_shader_version_available() };
       if glsl_version < 4.2 {
         // If glsl < #version 420, uniform binding can't be done in shaders.
