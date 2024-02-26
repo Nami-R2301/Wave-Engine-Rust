@@ -45,6 +45,9 @@ pub mod wave_core {
   use graphics::shader::{self};
   use input::{EnumKey, EnumModifier, Input};
   use utils::Time;
+  use crate::wave_core::layers::{Layer};
+  use crate::wave_core::layers::renderer_layer::RendererLayer;
+  use crate::wave_core::layers::window_layer::WindowLayer;
   
   static mut S_ENGINE: Option<*mut Engine> = None;
   
@@ -112,8 +115,9 @@ pub mod wave_core {
   
   pub struct Engine {
     m_app: Box<dyn TraitApp>,
-    m_window: Window,
-    m_renderer: Renderer,
+    m_layers: Vec<Layer>,
+    m_window: Box<Window>,
+    m_renderer: Box<Renderer>,
     m_time_step: f64,
     m_tick_rate: f32,
     m_state: EnumState,
@@ -157,19 +161,22 @@ pub mod wave_core {
       
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Opening window...");
       // Setup window context.
-      let mut window = Window::new(api_preference, Some((1920, 1080)),
-        None, None, EnumWindowMode::Windowed)?;
+      let mut window = Box::new(Window::new(api_preference, Some((1920, 1080)),
+        None, None, EnumWindowMode::Windowed)?);
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Opened window successfully");
       
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Starting renderer...");
       // Create graphics context.
-      let renderer = Renderer::new(api_preference, &mut window)?;
+      let renderer = Box::new(Renderer::new(api_preference, &mut window)?);
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Started renderer successfully");
+      
+      let layers: Vec<Layer> = vec![];
       
       Ok({
         log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
         Engine {
           m_app: app_provided.unwrap_or(Box::new(EmptyApp::default())),
+          m_layers: layers,
           m_window: window,
           m_renderer: renderer,
           m_time_step: 0.0,
@@ -187,22 +194,38 @@ pub mod wave_core {
       
       self.m_state = EnumState::Starting;
       
+      let window_layer: Layer = Layer::new("Main Window", WindowLayer::new(self.m_window.as_mut()));
+      let renderer_layer: Layer = Layer::new("Renderer", RendererLayer::new(self.m_renderer.as_mut()));
+      
+      self.m_layers.push(window_layer);
+      self.m_layers.push(renderer_layer);
+      
       Engine::set_singleton(self);
       
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Setting up renderer...");
+      
+      let renderer_layer = self.m_layers.iter_mut().find(|layer| layer.is::<RendererLayer>())
+        .expect("Cannot find renderer!")
+        .get::<RendererLayer>()
+        .unwrap();
+      
+      let renderer = unsafe {
+        &mut *renderer_layer.m_context
+      };
+      
       // Enable features BEFORE finalizing context.
       #[cfg(not(feature = "vulkan"))]
       self.m_renderer.renderer_hint(renderer::EnumFeature::CullFacing(Some(gl::BACK as i64)));
       
-      self.m_renderer.renderer_hint(renderer::EnumFeature::DepthTest(true));
+      renderer.renderer_hint(renderer::EnumFeature::DepthTest(true));
       #[cfg(feature = "debug")]
-      self.m_renderer.renderer_hint(renderer::EnumFeature::ApiCallChecking(EnumCallCheckingType::SyncAndAsync));
-      self.m_renderer.renderer_hint(renderer::EnumFeature::Wireframe(true));
-      self.m_renderer.renderer_hint(renderer::EnumFeature::MSAA(None));
+      renderer.renderer_hint(renderer::EnumFeature::ApiCallChecking(EnumCallCheckingType::SyncAndAsync));
+      renderer.renderer_hint(renderer::EnumFeature::Wireframe(true));
+      renderer.renderer_hint(renderer::EnumFeature::MSAA(None));
       
       // Finalize graphics context with all hinted features to prepare for frame presentation.
-      self.m_renderer.submit()?;
-      log!(EnumLogColor::White, "INFO", "[Renderer] -->\t {0}", self.m_renderer);
+      renderer.submit()?;
+      log!(EnumLogColor::White, "INFO", "[Renderer] -->\t {0}", renderer);
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Setup renderer successfully");
       
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Starting app...");
@@ -289,7 +312,7 @@ pub mod wave_core {
               }
               (glfw::Key::R, glfw::Action::Press, _) => {
                 // Resize should force the window to "refresh"
-                let (window_width, window_height) = self.m_window.m_api_window.get_size();
+                  let (window_width, window_height) = self.m_window.m_api_window.get_size();
                 self.m_window.m_api_window.set_size(window_width + 1, window_height);
                 self.m_window.m_api_window.set_size(window_width, window_height);
               }
@@ -310,9 +333,9 @@ pub mod wave_core {
             self.m_window.m_window_resolution = (width, height);
           }
           glfw::WindowEvent::Pos(pos_x, pos_y) => {
-            if self.m_window.m_is_windowed {
-              self.m_window.m_window_pos = (pos_x, pos_y);
-            }
+             if self.m_window.m_is_windowed {
+               self.m_window.m_window_pos = (pos_x, pos_y);
+             }
           }
           _ => {
             self.m_app.on_event(&event);
@@ -394,8 +417,8 @@ pub mod wave_core {
     pub fn set_singleton(engine: &mut Engine) -> () {
       unsafe {
         S_ENGINE = Some(engine);
-        S_RENDERER = Some(&mut (*S_ENGINE.unwrap()).m_renderer);
-        S_WINDOW = Some(&mut (*S_ENGINE.unwrap()).m_window);
+        S_RENDERER = Some((*S_ENGINE.unwrap()).m_renderer.as_mut());
+        S_WINDOW = Some((*S_ENGINE.unwrap()).m_window.as_mut());
       }
     }
   }

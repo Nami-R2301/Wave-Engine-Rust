@@ -89,7 +89,11 @@ impl wave_core::TraitApp for Editor {
     renderer.setup_camera(&self.m_cameras[0])?;
     
     // Setup imgui layer.
-    self.m_ui = Some(Imgui::new(renderer::EnumApi::OpenGL, window)?);
+    unsafe {
+      if (*engine).get_renderer().m_type == renderer::EnumApi::OpenGL {
+        self.m_ui = Some(Imgui::new(renderer::EnumApi::OpenGL, window)?);
+      }
+    }
     
     // Show our window when we are done.
     window.show();

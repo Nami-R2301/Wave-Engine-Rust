@@ -22,8 +22,40 @@
  SOFTWARE.
 */
 
-use crate::wave_core::graphics::renderer::Renderer;
+use crate::wave_core::EnumError;
+use crate::wave_core::graphics::renderer::{Renderer};
+use crate::wave_core::layers::TraitLayer;
 
 pub struct RendererLayer {
-  m_context: Renderer
+  pub(crate) m_context: *mut Renderer
+}
+
+impl RendererLayer {
+  pub fn new(renderer_context: &mut Renderer) -> Self {
+    return Self {
+      m_context: renderer_context
+    }
+  }
+}
+
+impl TraitLayer for RendererLayer {
+  fn on_new(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_event(&mut self) -> Result<bool, EnumError> {
+    todo!()
+  }
+  
+  fn on_update(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_render(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_delete(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
 }

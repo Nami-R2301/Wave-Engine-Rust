@@ -22,8 +22,40 @@
  SOFTWARE.
 */
 
+use crate::wave_core::EnumError;
+use crate::wave_core::layers::TraitLayer;
 use crate::wave_core::window::Window;
 
 pub struct WindowLayer {
-  m_context: Window
+  pub(crate) m_context: *mut Window
+}
+
+impl WindowLayer {
+  pub fn new(window_context: &mut Window) -> Self {
+    return Self {
+      m_context: window_context
+    }
+  }
+}
+
+impl TraitLayer for WindowLayer {
+  fn on_new(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_event(&mut self) -> Result<bool, EnumError> {
+    todo!()
+  }
+  
+  fn on_update(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_render(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_delete(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
 }
