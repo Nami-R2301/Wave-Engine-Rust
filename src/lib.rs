@@ -33,6 +33,7 @@ pub mod wave_core {
   pub mod assets;
   pub mod camera;
   pub mod input;
+  pub mod layers;
   mod events;
   
   use crate::log;
@@ -41,14 +42,9 @@ pub mod wave_core {
   use graphics::renderer::EnumCallCheckingType;
   
   use graphics::renderer::{self, EnumApi, Renderer, S_RENDERER};
-  use graphics::shader::{self, EnumShaderSource, EnumShaderStage, Shader, ShaderStage};
-  use assets::asset_loader::ResLoader;
-  use assets::renderable_assets::{REntity, TraitRenderableEntity};
-  use camera::{Camera, EnumCameraType};
+  use graphics::shader::{self};
   use input::{EnumKey, EnumModifier, Input};
-  use math::Vec3;
   use utils::Time;
-  use crate::wave_core::ui::ui_imgui::Imgui;
   
   static mut S_ENGINE: Option<*mut Engine> = None;
   
@@ -65,7 +61,7 @@ pub mod wave_core {
     ShutDown,
   }
   
-  #[derive(Debug)]
+  #[derive(Debug, PartialEq)]
   pub enum EnumError {
     UndefinedError,
     AppError,
@@ -173,7 +169,7 @@ pub mod wave_core {
       Ok({
         log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
         Engine {
-          m_app: app_provided.unwrap_or(Box::new(ExampleApp::default())),
+          m_app: app_provided.unwrap_or(Box::new(EmptyApp::default())),
           m_window: window,
           m_renderer: renderer,
           m_time_step: 0.0,
@@ -195,7 +191,7 @@ pub mod wave_core {
       
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Setting up renderer...");
       // Enable features BEFORE finalizing context.
-      #[cfg(not(feature = "Vulkan"))]
+      #[cfg(not(feature = "vulkan"))]
       self.m_renderer.renderer_hint(renderer::EnumFeature::CullFacing(Some(gl::BACK as i64)));
       
       self.m_renderer.renderer_hint(renderer::EnumFeature::DepthTest(true));
@@ -430,24 +426,6 @@ pub mod wave_core {
   ///////////////////////////////////             ///////////////////////////////////
    */
   
-  pub struct ExampleApp {
-    m_ui: Option<Imgui>,
-    m_shaders: Vec<Shader>,
-    m_renderable_assets: Vec<REntity>,
-    m_cameras: Vec<Camera>,
-  }
-  
-  impl ExampleApp {
-    pub fn default() -> Self {
-      return ExampleApp {
-        m_ui: None,
-        m_shaders: Vec::new(),
-        m_renderable_assets: Vec::new(),
-        m_cameras: Vec::new(),
-      };
-    }
-  }
-  
   pub struct EmptyApp {}
   
   impl EmptyApp {
@@ -474,88 +452,6 @@ pub mod wave_core {
     }
     
     fn on_delete(&mut self) -> Result<(), EnumError> {
-      return Ok(());
-    }
-  }
-  
-  impl TraitApp for ExampleApp {
-    fn on_new(&mut self) -> Result<(), EnumError> {
-      let engine = Engine::get();
-      let window = unsafe { (*engine).get_window() };
-      
-      log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
-      
-      let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
-        EnumShaderSource::FromFile(String::from("res/shaders/gl_x_spv_test.vert")));
-      let fragment_shader = ShaderStage::new(EnumShaderStage::Fragment,
-        EnumShaderSource::FromFile(String::from("res/shaders/gl_x_spv_test.frag")));
-      
-      let shader = Shader::new(vec![vertex_shader, fragment_shader])?;
-      
-      log!("INFO", "{0}", shader);
-      
-      self.m_shaders.push(shader);
-      log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
-      
-      log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending shaders to GPU...");
-      // Sourcing and compilation.
-      self.m_shaders[0].submit()?;
-      log!(EnumLogColor::Green, "INFO", "[App] -->\t Shaders sent to GPU successfully");
-      
-      let aspect_ratio: f32 = window.m_window_resolution.0 as f32 / window.m_window_resolution.1 as f32;
-      
-      log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
-      self.m_renderable_assets.push(REntity::from(ResLoader::new("awp.obj")?));
-      self.m_renderable_assets[0].translate(Vec3::new(&[10.0, -10.0, 50.0]));
-      self.m_renderable_assets[0].rotate(Vec3::new(&[-90.0, 90.0, 0.0]));
-      
-      self.m_renderable_assets[0].send(&mut self.m_shaders[0])?;
-      log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
-      
-      self.m_cameras.push(Camera::new(EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
-      let renderer = unsafe { (*engine).get_renderer() };
-      renderer.setup_camera(&self.m_cameras[0])?;
-      
-      // Setup imgui layer.
-      self.m_ui = Some(Imgui::new(EnumApi::OpenGL, window)?);
-      
-      // Show our window when we are done.
-      window.show();
-      return Ok(());
-    }
-    
-    fn on_event(&mut self, window_event: &glfw::WindowEvent) -> bool {
-      if self.m_ui.is_some() {
-        self.m_ui.as_mut().unwrap().on_event(window_event);
-      }
-      return false;
-    }
-    
-    fn on_update(&mut self, _time_step: f64) -> Result<bool, EnumError> {
-      if self.m_ui.is_some() {
-        self.m_ui.as_mut().unwrap().on_update();
-      }
-      return Ok(false);
-    }
-    
-    fn on_render(&mut self) -> Result<(), EnumError> {
-      let renderer = Renderer::get_active();
-      unsafe { (*renderer).on_render()? };
-      
-      if self.m_ui.is_some() {
-        self.m_ui.as_mut().unwrap().on_render();
-      }
-      
-      return Ok(());
-    }
-    
-    fn on_delete(&mut self) -> Result<(), EnumError> {
-      log!(EnumLogColor::Purple, "INFO", "[App] -->\t Freeing shaders from GPU...");
-      for shader in self.m_shaders.iter_mut() {
-        shader.on_delete()?;
-      }
-      log!(EnumLogColor::Green, "INFO", "[App] -->\t Freed shaders from GPU successfully");
-      
       return Ok(());
     }
   }

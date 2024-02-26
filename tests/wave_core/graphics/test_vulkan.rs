@@ -22,10 +22,10 @@
  SOFTWARE.
 */
 
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 use wave_engine::wave_core::graphics::vulkan::renderer::{ash::vk, VkContext};
 
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 #[ignore]
 #[test]
 fn test_instance_extensions() {
@@ -86,7 +86,7 @@ fn test_instance_extensions() {
   }
 }
 
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 #[ignore]
 #[test]
 fn test_instance_layers() {
@@ -105,7 +105,7 @@ fn test_instance_layers() {
   }
 }
 
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 #[ignore]
 #[test]
 fn test_instance_creation() {

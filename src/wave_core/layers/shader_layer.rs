@@ -1,7 +1,7 @@
 /*
  MIT License
 
- Copyright (c) 2023 Nami Reghbati
+ Copyright (c) 2024 Nami Reghbati
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -22,14 +22,8 @@
  SOFTWARE.
 */
 
-pub mod shader;
-pub mod texture;
-pub mod renderer;
-pub mod text;
-pub mod imgui;
-pub mod color;
+use crate::wave_core::graphics::shader::Shader;
 
-#[cfg(feature = "vulkan")]
-pub mod vulkan;
-
-mod open_gl;
+pub struct ShaderLayer {
+  m_shader: Shader
+}

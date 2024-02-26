@@ -28,9 +28,9 @@ use crate::log;
 use crate::wave_core::graphics::open_gl;
 use crate::wave_core::graphics::open_gl::shader::GlShader;
 use crate::wave_core::graphics::renderer::{EnumApi, Renderer};
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 use crate::wave_core::graphics::vulkan;
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 use crate::wave_core::graphics::vulkan::shader::VkShader;
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -67,7 +67,7 @@ pub enum EnumError {
   InvalidFileOperation,
   IoError(std::io::ErrorKind),
   OpenGLShaderError(open_gl::shader::EnumError),
-  #[cfg(feature = "Vulkan")]
+  #[cfg(feature = "vulkan")]
   VulkanShaderError(vulkan::shader::EnumError),
 }
 
@@ -95,7 +95,7 @@ impl From<open_gl::shader::EnumError> for EnumError {
   }
 }
 
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 impl From<vulkan::shader::EnumError> for EnumError {
   fn from(value: vulkan::shader::EnumError) -> Self {
     return EnumError::VulkanShaderError(value);
@@ -259,17 +259,17 @@ impl Shader {
       }
     }
     
-    shader_program.set_language(shader_stages.get(0).unwrap())?;
+    shader_program.parse_language(shader_stages.get(0).unwrap())?;
     
     match unsafe { (*renderer).m_type } {
       EnumApi::OpenGL => {
         shader_program.m_api_data = Box::new(GlShader::new(shader_stages)?);
       }
-      #[cfg(feature = "Vulkan")]
+      #[cfg(feature = "vulkan")]
       EnumApi::Vulkan => {
         shader_program.m_api_data = Box::new(VkShader::new(shader_stages)?);
       }
-      #[cfg(not(feature = "Vulkan"))]
+      #[cfg(not(feature = "vulkan"))]
       EnumApi::Vulkan => {}
     }
     
@@ -308,7 +308,7 @@ impl Shader {
     return Ok(());
   }
   
-  fn set_language(&mut self, shader_stage: &ShaderStage) -> Result<(), EnumError> {
+  fn parse_language(&mut self, shader_stage: &ShaderStage) -> Result<(), EnumError> {
     return match &shader_stage.m_source {
       EnumShaderSource::FromFile(file_path_str) => {
         let file_path = std::path::Path::new(&file_path_str);
@@ -354,9 +354,9 @@ impl Shader {
       }
       EnumShaderSource::FromStr(source_str) => {
         let version_number_str = source_str.split_once("#version")
-          .expect("[Shader] -->\t Cannot split GLSL #version and version number in set_language()!");
+          .expect("[Shader] -->\t Cannot split GLSL #version and version number in parse_language()!");
         let version_number_f: u16 = version_number_str.1.parse()
-          .expect("[Shader] -->\t Cannot parse GLSL version number in set_language()!");
+          .expect("[Shader] -->\t Cannot parse GLSL version number in parse_language()!");
         
         log!("DEBUG", "[Shader] -->\t GLSL version from literal {0} => {1}",
           source_str, version_number_f);

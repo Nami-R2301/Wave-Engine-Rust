@@ -406,6 +406,16 @@ pub mod logger {
     ($log_color: expr, $log_type: literal, $($format_and_arguments:tt)*) =>{{}};
   }
   
+  #[inline(always)]
+  pub fn init() -> Option<File> {
+    let file = std::fs::OpenOptions::new()
+      .append(true)
+      .create(true)
+      .open("wave-engine.log");
+    
+    return file.ok();
+  }
+  
   ///
   /// Macros for displaying string formatted messages (**message_format**) in a given file stream
   /// (**log_output**).
@@ -495,16 +505,6 @@ pub mod logger {
   }
   
   #[inline(always)]
-  pub fn init() -> Option<File> {
-    let file = std::fs::OpenOptions::new()
-      .append(true)
-      .create(true)
-      .open("wave-engine.log");
-    
-    return file.ok();
-  }
-  
-  #[inline(always)]
   pub fn color_to_str(log_color: EnumLogColor) -> &'static str {
     return match log_color {
       EnumLogColor::White => "\x1b[0m",
@@ -557,7 +557,7 @@ const CONST_TIME_NANO: f64 = 1000000000.0;
 const CONST_TIME_MICRO: f64 = 1000000.0;
 const CONST_TIME_MILLI: f64 = 1000.0;
 
-#[derive(PartialEq, PartialOrd, Copy, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Copy, Clone)]
 pub struct Time {
   pub m_nano_seconds: f64,
 }

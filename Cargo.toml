@@ -24,7 +24,7 @@ path = "src/wave_editor/main.rs"
 default = []
 debug = []
 profiler = []
-Vulkan = []
+vulkan = []
 
 [profile.dev]
 opt-level = 0

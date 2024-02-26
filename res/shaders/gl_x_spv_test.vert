@@ -1,4 +1,4 @@
-#version 420 core
+#version 330 core
 
 // Outputs.
 struct Vertex_data_s
@@ -10,7 +10,7 @@ struct Vertex_data_s
 
 #ifdef Vulkan
 // We are compiling for SPIR-V
-layout (std140, binding = 0) uniform ubo_camera
+layout (std140) uniform ubo_camera
 {
     mat4 m_view;
     mat4 m_projection;
@@ -22,7 +22,7 @@ uniform mat4 u_view_projection = mat4(0.0f);
 
 #ifdef Vulkan
 // We are compiling for SPIR-V
-layout (std140, binding = 1) uniform ubo_model
+layout (std140) uniform ubo_model
 {
     mat4 m_matrix;
 } Ubo_model;

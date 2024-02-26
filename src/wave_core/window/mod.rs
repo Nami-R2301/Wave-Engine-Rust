@@ -26,7 +26,7 @@ extern crate glfw;
 
 use std::fmt::{Display, Formatter};
 
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 use ash::vk;
 use glfw::Context;
 
@@ -212,9 +212,9 @@ impl Window {
           m_render_api: api_preference.is_some().then(|| {
             return api_preference.unwrap();
           }).unwrap_or_else(|| {
-            #[cfg(not(feature = "Vulkan"))]
+            #[cfg(not(feature = "vulkan"))]
             return EnumApi::OpenGL;
-            #[cfg(feature = "Vulkan")]
+            #[cfg(feature = "vulkan")]
             return EnumApi::Vulkan;
           }),
           m_window_mode: window_mode,
@@ -275,7 +275,7 @@ impl Window {
       .unwrap_or(0)));
   }
   
-  #[cfg(feature = "Vulkan")]
+  #[cfg(feature = "vulkan")]
   pub fn init_vulkan_surface(&self, vk_instance: &ash::Instance, vk_surface_khr: &mut vk::SurfaceKHR) {
     let result = self.m_api_window.create_window_surface(vk_instance.handle(),
       std::ptr::null_mut(), vk_surface_khr).result();

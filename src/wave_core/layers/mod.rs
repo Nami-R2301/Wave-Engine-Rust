@@ -1,7 +1,7 @@
 /*
  MIT License
 
- Copyright (c) 2023 Nami Reghbati
+ Copyright (c) 2024 Nami Reghbati
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -22,14 +22,25 @@
  SOFTWARE.
 */
 
-pub mod shader;
-pub mod texture;
-pub mod renderer;
-pub mod text;
-pub mod imgui;
-pub mod color;
+use crate::wave_core;
 
-#[cfg(feature = "vulkan")]
-pub mod vulkan;
+mod app_layer;
+mod window_layer;
+mod renderer_layer;
+mod shader_layer;
+mod imgui_layer;
 
-mod open_gl;
+#[derive(Debug, Clone)]
+pub struct Layer<T: TraitLayer> {
+  pub m_uuid: u64,
+  pub m_name: &'static str,
+  m_data: T
+}
+
+pub trait TraitLayer {
+  fn on_new(&mut self) -> Result<(), wave_core::EnumError>;
+  fn on_event(&mut self) -> Result<bool, wave_core::EnumError>;
+  fn on_update(&mut self) -> Result<(), wave_core::EnumError>;
+  fn on_render(&mut self) -> Result<(), wave_core::EnumError>;
+  fn on_delete(&mut self) -> Result<(), wave_core::EnumError>;
+}

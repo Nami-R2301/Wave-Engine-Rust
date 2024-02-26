@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 use ash::vk;
 
 use crate::log;

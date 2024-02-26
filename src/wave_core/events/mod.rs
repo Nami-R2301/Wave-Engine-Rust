@@ -21,3 +21,12 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 */
+
+use crate::wave_core::utils::Time;
+
+#[derive(Debug, PartialEq, PartialOrd)]
+pub enum EnumEvents {
+    WindowCloseEvent(Time),
+    WindowResizeEvent(u32, u32),
+    WindowFocusEvent(bool),
+}

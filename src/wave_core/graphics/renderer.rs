@@ -32,10 +32,10 @@ use crate::wave_core::camera::{Camera};
 use crate::wave_core::graphics::{open_gl};
 use crate::wave_core::graphics::open_gl::renderer::GlContext;
 use crate::wave_core::graphics::shader::Shader;
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 use crate::wave_core::graphics::{vulkan};
 
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 use crate::wave_core::graphics::vulkan::renderer::VkContext;
 use crate::wave_core::window::Window;
 
@@ -85,11 +85,11 @@ pub enum EnumError {
   InvalidEntity,
   EntityNotFound,
   CError,
-  #[cfg(feature = "Vulkan")]
+  #[cfg(feature = "vulkan")]
   VulkanError(vulkan::renderer::EnumError),
   OpenGLError(open_gl::renderer::EnumError),
   OpenGLInvalidBufferOperation(open_gl::buffer::EnumError),
-  #[cfg(feature = "Vulkan")]
+  #[cfg(feature = "vulkan")]
   VulkanInvalidBufferOperation(vulkan::buffer::EnumError),
 }
 
@@ -99,7 +99,7 @@ impl From<open_gl::renderer::EnumError> for EnumError {
   }
 }
 
-#[cfg(feature = "Vulkan")]
+#[cfg(feature = "vulkan")]
 impl From<vulkan::renderer::EnumError> for EnumError {
   fn from(value: vulkan::renderer::EnumError) -> Self {
     return EnumError::VulkanError(value);
@@ -174,7 +174,7 @@ impl Renderer {
   pub fn new(api_preference: Option<EnumApi>, window: &mut Window) -> Result<Renderer, EnumError> {
     // If user has not chosen an api, choose accordingly.
     if api_preference.is_none() {
-      #[cfg(feature = "Vulkan")]
+      #[cfg(feature = "vulkan")]
       return Ok(Renderer {
         m_type: EnumApi::Vulkan,
         m_state: EnumState::Created,
@@ -182,7 +182,7 @@ impl Renderer {
         m_api: Box::new(VkContext::on_new(window)?),
       });
       
-      #[cfg(not(feature = "Vulkan"))]
+      #[cfg(not(feature = "vulkan"))]
       return Ok(Renderer {
         m_type: EnumApi::OpenGL,
         m_state: EnumState::Created,
@@ -201,7 +201,7 @@ impl Renderer {
         })
       }
       EnumApi::Vulkan => {
-        #[cfg(feature = "Vulkan")]
+        #[cfg(feature = "vulkan")]
         return Ok(Renderer {
           m_type: EnumApi::Vulkan,
           m_state: EnumState::Created,
@@ -209,7 +209,7 @@ impl Renderer {
           m_api: Box::new(VkContext::on_new(window)?),
         });
         
-        #[cfg(not(feature = "Vulkan"))]
+        #[cfg(not(feature = "vulkan"))]
         {
           log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot create renderer : Vulkan feature \
             not enabled!\nMake sure to turn on Vulkan rendering by enabling it in the Cargo.toml \

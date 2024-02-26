@@ -565,7 +565,7 @@ impl VkContext {
     #[allow(unused)]
       let p_next: *const std::ffi::c_void = <*const vk::DebugUtilsMessengerCreateInfoEXT>::cast(&debug_create_info);
     
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "trace_api")]
     {
       debug_create_info.s_type = vk::DebugUtilsMessengerCreateInfoEXT::STRUCTURE_TYPE;
       debug_create_info.message_severity = vk::DebugUtilsMessageSeverityFlagsEXT::INFO
@@ -667,8 +667,8 @@ impl VkContext {
   /// successful, otherwise an [renderer::EnumError] on any error encountered.
   ///
   #[allow(unused)]
-  fn set_debug(entry: &ash::Entry, instance: &ash::Instance) -> Result<(ext::DebugUtils, vk::DebugUtilsMessengerEXT), renderer::EnumError> {
-    #[cfg(feature = "debug")]
+  fn set_api_callback(entry: &ash::Entry, instance: &ash::Instance) -> Result<(ext::DebugUtils, vk::DebugUtilsMessengerEXT), renderer::EnumError> {
+    #[cfg(feature = "trace_api")]
     {
       // For debug callback function
       let mut debug_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
@@ -699,6 +699,7 @@ impl VkContext {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] --> Cannot setup debug callback: Debug feature not enabled!");
       return Err(renderer::EnumError::from(EnumError::DebugError));
     }
+    return Err(renderer::EnumError::from(EnumError::DebugError));
   }
   
   /// Pick the first suitable Vulkan physical device.
@@ -1071,9 +1072,9 @@ impl TraitContext for VkContext {
       EnumFeature::ApiCallChecking(debug_type) => {
         if debug_type != EnumCallCheckingType::None {
           // Toggle on debugging.
-          #[cfg(feature = "debug")]
+          #[cfg(feature = "trace_api")]
           {
-            let debug_callback = Some(VkContext::set_debug(&self.m_entry, &self.m_instance)?);
+            let debug_callback = Some(VkContext::set_api_callback(&self.m_entry, &self.m_instance)?);
             self.m_debug_report_callback = debug_callback;
           }
         } else {
@@ -1187,7 +1188,7 @@ impl TraitContext for VkContext {
 }
 
 
-#[cfg(all(feature = "Vulkan", feature = "debug"))]
+#[cfg(all(feature = "Vulkan", feature = "trace_api"))]
 unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSeverityFlagsEXT,
                                                 _type: vk::DebugUtilsMessageTypeFlagsEXT,
                                                 p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
@@ -1216,15 +1217,22 @@ unsafe extern "system" fn vulkan_debug_callback(flag: vk::DebugUtilsMessageSever
       let message_str = message.to_str().unwrap_or("Error converting &CStr to &str!")
         .split("|")
         .collect::<Vec<&str>>();
-      let mut message_info: (&str, &str) = ("Empty", "Empty");
+      let message_info: (&str, &str);
       if message_str.len() > 2 {
         message_info = message_str[2].split_once(":").unwrap_or(("Empty", message_str[2]));
-      }
-      log!(EnumLogColor::Red, "ERROR", "[Driver] -->\t Vulkan Driver Notification \
+        log!(EnumLogColor::Red, "ERROR", "[Driver] -->\t Vulkan Driver Notification \
     :\nType =>\t\t  {0}\nID =>\t\t {1}\nFunction =>\t {2}\nMessage =>\t {3}\n",
       message_str[0], message_str[1], message_info.0, message_info.1);
-      panic!("{}", format!("[VkContext] -->\t Fatal driver error encountered :\n{0}\n",
-        message_info.1));
+        panic!("{}", format!("[VkContext] -->\t Fatal driver error encountered :\n{0}\n",
+          message_info.1));
+      } else if message_str.len() == 1 {
+        message_info = message_str[0].split_once(":").unwrap_or(("Empty", message_str[0]));
+        log!(EnumLogColor::Red, "ERROR", "[Driver] -->\t Vulkan Driver Notification \
+    :\nType =>\t\t  {0:?}\nID =>\t\t {1}\nFunction =>\t {2}\nMessage =>\t {3}\n", _type,
+      message_str[0], message_info.0, message_info.1);
+        panic!("{}", format!("[VkContext] -->\t Fatal driver error encountered :\n{0}\n",
+          message_str[0]));
+      }
     }
   }
   
