@@ -45,7 +45,7 @@ pub mod wave_core {
   use graphics::shader::{self};
   use input::{EnumKey, EnumModifier, Input};
   use utils::Time;
-  use crate::wave_core::layers::{Layer};
+  use crate::wave_core::layers::{Layer, TraitLayer};
   use crate::wave_core::layers::renderer_layer::RendererLayer;
   use crate::wave_core::layers::window_layer::WindowLayer;
   
@@ -123,7 +123,7 @@ pub mod wave_core {
     m_state: EnumState,
   }
   
-  impl<'a> Engine {
+  impl Engine {
     /// Setup new engine struct containing an app with the [TraitApp] behavior in order to call
     /// `on_new()`, `on_delete()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
     /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
@@ -206,7 +206,7 @@ pub mod wave_core {
       
       let renderer_layer = self.m_layers.iter_mut().find(|layer| layer.is::<RendererLayer>())
         .expect("Cannot find renderer!")
-        .get::<RendererLayer>()
+        .try_get::<RendererLayer>()
         .unwrap();
       
       let renderer = unsafe {
@@ -389,6 +389,17 @@ pub mod wave_core {
       
       self.m_state = EnumState::Deleted;
       return Ok(());
+    }
+    
+    pub fn push_layer(&mut self, new_layer: Layer) -> () {
+      self.m_layers.push(new_layer);
+    }
+    
+    pub fn pop_layer(&mut self, removed_layer: &Layer) -> bool {
+      if self.m_layers.iter().any(|layer| layer == removed_layer) {
+        return true;
+      }
+      return false;
     }
     
     pub fn get_window(&mut self) -> &mut Window {

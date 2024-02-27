@@ -23,6 +23,7 @@
 */
 
 use crate::wave_core;
+use crate::wave_core::EnumError;
 
 pub mod app_layer;
 pub mod window_layer;
@@ -30,10 +31,20 @@ pub mod renderer_layer;
 pub mod shader_layer;
 pub mod imgui_layer;
 
-pub struct Layer {
+pub struct Layer{
   pub m_uuid: u64,
   pub m_name: &'static str,
   m_data: Box<dyn std::any::Any>
+}
+
+impl PartialEq<Self> for Layer {
+  fn eq(&self, other: &Self) -> bool {
+    return other.try_get::<Self>().is_some();
+  }
+  
+  fn ne(&self, other: &Self) -> bool {
+    return !self.eq(other);
+  }
 }
 
 pub trait TraitLayer {
@@ -45,7 +56,7 @@ pub trait TraitLayer {
 }
 
 impl Layer {
-  pub fn new<T: std::any::Any + TraitLayer>(name: &'static str, data: T) -> Self {
+  pub fn new<T: TraitLayer + 'static>(name: &'static str, data: T) -> Self {
     return Self {
       m_uuid: 0,
       m_name: name,
@@ -53,11 +64,33 @@ impl Layer {
     }
   }
   
-  pub fn is<T: std::any::Any>(&self) -> bool {
+  pub fn is<T: TraitLayer + 'static>(&self) -> bool {
     return self.m_data.is::<T>();
   }
   
-  pub fn get<T: TraitLayer + 'static>(&mut self) -> Option<&mut T> {
-    return self.m_data.downcast_mut::<T>();
+  pub fn try_get<T: TraitLayer + 'static>(&self) -> Option<&T> {
+    return self.m_data.downcast_ref::<T>();
+  }
+}
+
+impl TraitLayer for Layer {
+  fn on_new(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_event(&mut self) -> Result<bool, EnumError> {
+    todo!()
+  }
+  
+  fn on_update(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_render(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_delete(&mut self) -> Result<(), EnumError> {
+    todo!()
   }
 }

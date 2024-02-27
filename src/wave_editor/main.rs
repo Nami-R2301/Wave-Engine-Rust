@@ -181,7 +181,7 @@ fn main() -> Result<(), wave_core::EnumError> {
   
   // Supply it to our engine. Engine will NOT construct app and will only init the engine
   // with the supplied GPU API of choice as its renderer.
-  let mut engine: Engine = Engine::new(Some(renderer::EnumApi::OpenGL), Some(my_app))?;
+  let mut engine: Engine = Engine::new(Some(renderer::EnumApi::Vulkan), Some(my_app))?;
   
   // Execute the app in game loop and return if there's a close event or if an error occurred.
   return engine.run();
