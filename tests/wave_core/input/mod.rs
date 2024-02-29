@@ -36,7 +36,7 @@ fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, 
     // Needs to be updated every frame. Normally, this is done automatically in the main engine render
     // loop, but here we state it explicitly for testing and clarity purposes.
     Input::reset();
-    window.on_event();
+    window.get_api_mut().poll_events();
     
     if Input::get_key_state(window, EnumKey::Escape, EnumAction::Press)? {
       return Ok(());
@@ -65,7 +65,7 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
     // Needs to be updated every frame. Normally, this is done automatically in the main engine render
     // loop, but here we state it explicitly for testing and clarity purposes.
     Input::reset();
-    window.on_event();
+    window.get_api_mut().poll_events();
     
     if Input::get_key_state(window, EnumKey::Escape, EnumAction::Press)? {
       return Ok(());

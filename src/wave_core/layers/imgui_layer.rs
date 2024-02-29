@@ -22,8 +22,41 @@
  SOFTWARE.
 */
 
+use glfw::WindowEvent;
+use crate::wave_core::EnumError;
+use crate::wave_core::layers::TraitLayer;
 use crate::wave_core::ui::ui_imgui::Imgui;
 
 pub struct ImguiLayer {
   m_ui: Imgui
+}
+
+impl ImguiLayer {
+  pub(crate) fn new(imgui: Imgui) -> Self {
+    return Self {
+      m_ui: imgui
+    }
+  }
+}
+
+impl TraitLayer for ImguiLayer {
+  fn on_new(&mut self) -> Result<(), EnumError> {
+    return Ok(());
+  }
+  
+  fn on_event(&mut self, event: &WindowEvent) -> Result<bool, EnumError> {
+    return Ok(self.m_ui.on_event(event));
+  }
+  
+  fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {
+    return Ok(self.m_ui.on_update());
+  }
+  
+  fn on_render(&mut self) -> Result<(), EnumError> {
+    return Ok(self.m_ui.on_render());
+  }
+  
+  fn on_delete(&mut self) -> Result<(), EnumError> {
+    return Ok(());
+  }
 }

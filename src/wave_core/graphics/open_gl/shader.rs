@@ -251,7 +251,7 @@ impl TraitShader for GlShader {
     return format;
   }
   
-  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), shader::EnumError> {
+  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn Any) -> Result<(), shader::EnumError> {
     match self.bind() {
       Ok(_) => {}
       Err(err) => {
@@ -328,13 +328,12 @@ impl GlShader {
   
   fn compile_binary(&mut self, binary_shader_stages: Vec<ShaderStage>) -> Result<(), shader::EnumError> {
     let gl4_6 = unsafe { S_GL_4_6.as_ref().unwrap() };
-    let entry_point = "main";
+    let entry_point = std::ffi::CString::new("main").expect("Cannot convert entry point main to C str!");
     
     let mut supported_binary_format_count: GLint = 0;
     check_gl_call!("GlShader", gl::GetIntegerv(gl::NUM_SHADER_BINARY_FORMATS, &mut supported_binary_format_count));
     if supported_binary_format_count == 0 {
-      log!(EnumLogColor::Red, "Error", "[GlShader] -->\t Cannot compile shader binary : \
-                No binary formats supported!");
+      log!(EnumLogColor::Red, "Error", "[GlShader] -->\t Cannot compile shader binary : No binary formats supported!");
       return Err(shader::EnumError::from(EnumError::NoBinaryFormatsError));
     }
     
@@ -393,7 +392,7 @@ impl GlShader {
           
           // Specialize the shader (specify the entry point)
           unsafe {
-            gl4_6.SpecializeShader(*shader_id, entry_point.as_ptr(), 0,
+            gl4_6.SpecializeShader(*shader_id, entry_point.as_ptr().cast(), 0,
               std::ptr::null(), std::ptr::null());
           }
           

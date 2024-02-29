@@ -170,10 +170,12 @@ pub struct ShaderStage {
 }
 
 impl ShaderStage {
-  pub fn default() -> Self {
+  pub fn default(stage: EnumShaderStage) -> Self {
     return Self {
-      m_stage: EnumShaderStage::Vertex,
-      m_source: EnumShaderSource::FromStr(String::from("")),
+      m_stage: stage,
+      m_source: (stage == EnumShaderStage::Vertex)
+        .then(|| EnumShaderSource::FromFile("res/shaders/glsl_330.vert".to_string()))
+        .unwrap_or(EnumShaderSource::FromFile("res/shaders/glsl_330.frag".to_string())),
       m_is_cached: false,
     };
   }
@@ -201,6 +203,7 @@ impl Eq for ShaderStage {}
 
 pub struct Shader {
   m_state: EnumState,
+  m_version: u16,
   m_shader_lang: EnumShaderLanguageType,
   m_api_data: Box<dyn TraitShader>,
 }
@@ -209,6 +212,7 @@ impl Shader {
   pub fn default() -> Self {
     return Self {
       m_state: EnumState::NotCreated,
+      m_version: 330,
       m_shader_lang: EnumShaderLanguageType::Glsl,
       m_api_data: Box::new(GlShader::default()),
     };
@@ -308,6 +312,10 @@ impl Shader {
     return Ok(());
   }
   
+  pub fn get_version(&self) -> u16 {
+    return self.m_version;
+  }
+  
   fn parse_language(&mut self, shader_stage: &ShaderStage) -> Result<(), EnumError> {
     return match &shader_stage.m_source {
       EnumShaderSource::FromFile(file_path_str) => {
@@ -324,57 +332,51 @@ impl Shader {
         }
         
         let file_contents = std::fs::read_to_string(&file_path_str)?;
+        let version_number_str = file_contents.split_once("#version")
+          .expect("[Shader] -->\t Cannot split GLSL #version and version number in set_language()!");
+        let version_number: u16 = version_number_str.1.get(1..4)
+          .expect("[Shader] -->\t Cannot get GLSL version number in set_language()!")
+          .parse()
+          .expect(&format!("[Shader] -->\t Cannot parse GLSL version number {0} in set_language()!",
+            version_number_str.1.get(1..4).unwrap()));
+        
+        self.m_version = version_number;
+        
         
         // If we have a GLSL shader with preprocessor instructions compatible with SPIR-V.
         if file_contents.contains("GL_SPIRV") || file_contents.contains("Vulkan") {
-          let version_number_str = file_contents.split_once("#version")
-            .expect("[Shader] -->\t Cannot split GLSL #version and version number in set_language()!");
-          let version_number_f: u16 = version_number_str.1.get(1..4)
-            .expect("[Shader] -->\t Cannot get GLSL version number in set_language()!")
-            .parse()
-            .expect(&format!("[Shader] -->\t Cannot parse GLSL version number {0} in set_language()!",
-              version_number_str.1.get(1..4).unwrap()));
-          
           log!("DEBUG", "[Shader] -->\t GLSL version from file {0} => {1}",
-          file_path_str, version_number_f);
-          
-          if version_number_f >= 410 && file_contents.contains("uniform") {
-            // Compatible GLSL-SPIR-V shader found, setting the appropriate language.
-            self.m_shader_lang = EnumShaderLanguageType::GlslSpirV;
-            return Ok(());
-          }
-          
-          if version_number_f < 410 && file_contents.contains("uniform") {
-            // Missing obligatory uniform block bindings imposed by SPIR-V compliance, since it is
-            // a glsl 4.1 feature, thus we fallback to glsl.
-            self.m_shader_lang = EnumShaderLanguageType::Glsl;
-          }
+          file_path_str, version_number);
+          // Compatible GLSL-SPIR-V shader found, setting the appropriate language.
+          self.m_shader_lang = EnumShaderLanguageType::GlslSpirV;
+          return Ok(());
         }
+        
+        // Missing obligatory uniform block bindings imposed by SPIR-V compliance, since it is
+        // a glsl 4.1 feature, thus we fall back to glsl.
+        self.m_shader_lang = EnumShaderLanguageType::Glsl;
         Ok(())
       }
       EnumShaderSource::FromStr(source_str) => {
         let version_number_str = source_str.split_once("#version")
           .expect("[Shader] -->\t Cannot split GLSL #version and version number in parse_language()!");
-        let version_number_f: u16 = version_number_str.1.parse()
+        let version_number: u16 = version_number_str.1.parse()
           .expect("[Shader] -->\t Cannot parse GLSL version number in parse_language()!");
         
-        log!("DEBUG", "[Shader] -->\t GLSL version from literal {0} => {1}",
-          source_str, version_number_f);
+        self.m_version = version_number;
         
         // If we have a GLSL shader with preprocessor instructions compatible with SPIR-V.
         if source_str.contains("GL_SPIRV") || source_str.contains("Vulkan") {
-          if version_number_f >= 410 && source_str.contains("uniform") {
-            // Compatible GLSL-SPIR-V shader found, setting the appropriate language.
-            self.m_shader_lang = EnumShaderLanguageType::GlslSpirV;
-            return Ok(());
-          }
-          
-          if version_number_f < 410 && source_str.contains("uniform") {
-            // Missing obligatory uniform block bindings imposed by SPIR-V compliance, since it is
-            // a glsl 4.1 feature, thus we fallback to glsl.
-            self.m_shader_lang = EnumShaderLanguageType::Glsl;
-          }
+          log!("DEBUG", "[Shader] -->\t GLSL version from str {0} => {1}",
+          source_str, version_number);
+          // Compatible GLSL-SPIR-V shader found, setting the appropriate language.
+          self.m_shader_lang = EnumShaderLanguageType::GlslSpirV;
+          return Ok(());
         }
+        
+        // Missing obligatory uniform block bindings imposed by SPIR-V compliance, since it is
+        // a glsl 4.1 feature, thus we fall back to glsl.
+        self.m_shader_lang = EnumShaderLanguageType::Glsl;
         Ok(())
       }
     };

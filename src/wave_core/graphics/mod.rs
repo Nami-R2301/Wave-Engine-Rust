@@ -26,7 +26,6 @@ pub mod shader;
 pub mod texture;
 pub mod renderer;
 pub mod text;
-pub mod imgui;
 pub mod color;
 
 #[cfg(feature = "vulkan")]

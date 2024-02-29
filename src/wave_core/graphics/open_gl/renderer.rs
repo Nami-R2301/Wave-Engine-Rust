@@ -254,10 +254,10 @@ impl TraitContext for GlContext {
     return self.m_ext.contains_key(&str);
   }
   
-  fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, renderer::EnumError> {
+  fn on_event(&mut self, window_event: &glfw::WindowEvent) -> Result<bool, renderer::EnumError> {
     return match window_event {
       glfw::WindowEvent::FramebufferSize(width, height) => {
-        check_gl_call!("Renderer", gl::Viewport(0, 0, width, height));
+        check_gl_call!("Renderer", gl::Viewport(0, 0, *width, *height));
         Ok(true)
       }
       _ => { Ok(false) }
@@ -438,26 +438,21 @@ impl TraitContext for GlContext {
   }
   
   fn setup_camera(&mut self, camera: &Camera) -> Result<(), renderer::EnumError> {
-    let glsl_filter: Vec<&mut *mut Shader> = self.m_batch.m_shaders.iter_mut()
-      .filter(|&&mut shader| unsafe { (*shader).get_lang() == EnumShaderLanguageType::Glsl })
-      .collect();
+    // Setup view-projection ubo.
+    let mut ubo = GlUbo::new(EnumUboTypeSize::ViewProjection, 0)?;
     
-    if glsl_filter.is_empty() {
-      // Setup view-projection ubo if we are reading a uniform block imposed by SPIR-V.
-      let mut ubo = GlUbo::new(EnumUboTypeSize::ViewProjection, 0)?;
-      ubo.set_data(EnumUboType::ViewProjection(camera.get_view_matrix(), camera.get_projection_matrix()))?;
-      self.m_batch.m_ubo_buffers.push(ubo);
-    }
-    
-    // Setup view-projection uniform across all classic GLSL shaders.
-    for &mut shader in glsl_filter {
+    // Apply to all shaders.
+    for &shader in self.m_batch.m_shaders.iter() {
       unsafe {
-        (*shader).upload_data("u_view_projection",
-          &(camera.get_projection_matrix() * camera.get_view_matrix()).transpose()).map_err(|_| {
-          return renderer::EnumError::OpenGLError(EnumError::from(open_gl::shader::EnumError::UniformNotFound));
-        })?;
+        // If glsl version is lower than 420, then we cannot bind blocks in shaders and have to encode them here instead.
+        if (*shader).get_version() < 420 && (*shader).get_lang() == EnumShaderLanguageType::Glsl {
+          ubo.bind("ubo_camera", (*shader).get_id(), 0)?;
+        }
       }
     }
+    
+    ubo.set_data(EnumUboType::ViewProjection(camera.get_view_matrix(), camera.get_projection_matrix()))?;
+    self.m_batch.m_ubo_buffers.push(ubo);
     return Ok(());
   }
   
@@ -515,21 +510,15 @@ impl TraitContext for GlContext {
     self.m_batch.m_vao_buffers.push(vao);
     self.m_batch.m_vbo_buffers.push(vbo);
     
-    // Only set ubo for view and projection if we are reading a uniform block imposed by SPIR-V.
-    if shader_associated.get_lang() == EnumShaderLanguageType::SpirV || shader_associated.get_lang()
-      == EnumShaderLanguageType::GlslSpirV {
-      let mut ubo_model = GlUbo::new(EnumUboTypeSize::Transform, 1)?;
-      ubo_model.bind("u_model", shader_associated.get_id())?;
-      ubo_model.set_data(EnumUboType::Transform(sendable_entity.get_matrix()))?;
-      self.m_batch.m_ubo_buffers.push(ubo_model);
-      return Ok(());
+    // Only set ubo for view and projection.
+    let mut ubo_model = GlUbo::new(EnumUboTypeSize::Transform, 1)?;
+    
+    // If glsl version is lower than 420, then we cannot bind blocks in shaders and have to encode them here instead.
+    if shader_associated.get_version() < 420 && shader_associated.get_lang() == EnumShaderLanguageType::Glsl {
+      ubo_model.bind("ubo_model", shader_associated.get_id(), 1)?;
     }
-    // Otherwise, we are dealing with a classic GLSL file and only have to upload a single uniform
-    // (push constant) to the shader.
-    shader_associated.upload_data("u_model", &sendable_entity.get_matrix().transpose())
-      .map_err(|_| {
-        return renderer::EnumError::OpenGLError(EnumError::from(open_gl::shader::EnumError::UniformNotFound));
-      })?;
+    ubo_model.set_data(EnumUboType::Transform(sendable_entity.get_matrix()))?;
+    self.m_batch.m_ubo_buffers.push(ubo_model);
     return Ok(());
   }
   

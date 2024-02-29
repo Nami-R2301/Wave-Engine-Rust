@@ -35,8 +35,8 @@ pub(crate) use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLintptr, 
 
 use crate::{check_gl_call, log};
 use crate::wave_core::assets::renderable_assets::REntity;
-use crate::wave_core::graphics::{open_gl};
-use crate::wave_core::graphics::renderer::{Renderer, S_RENDERER};
+use crate::wave_core::graphics::open_gl;
+use crate::wave_core::graphics::renderer::{S_RENDERER};
 use crate::wave_core::math::Mat4;
 
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Ord, Hash)]
@@ -58,6 +58,7 @@ pub enum EnumError {
   InvalidVbo,
   InvalidVao,
   InvalidUbo,
+  InvalidBlockBinding,
 }
 
 #[allow(unused)]
@@ -485,17 +486,35 @@ impl GlUbo {
     });
   }
   
-  pub(crate) fn bind(&mut self, block_name: &'static str, shader_id: u32) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn bind(&mut self, block_name: &'static str, shader_id: u32, binding: u32) -> Result<(), open_gl::renderer::EnumError> {
     if self.m_state == EnumState::Created || self.m_state == EnumState::Unbound {
-      let renderer = Renderer::get_active();
-      let glsl_version = unsafe { (*renderer).get_max_shader_version_available() };
-      if glsl_version < 4.2 {
-        // If glsl < #version 420, uniform binding can't be done in shaders.
-        let u_block: u32 = unsafe {
-          gl::GetUniformBlockIndex(shader_id, block_name.as_ptr() as *const GLchar)
-        };
-        check_gl_call!("GlUbo", gl::UniformBlockBinding(shader_id, u_block, 1));
+      let mut result: i32 = 0;
+      check_gl_call!("GlRenderer", gl::GetIntegerv(gl::MAX_UNIFORM_BUFFER_BINDINGS, &mut result));
+      
+      if result < binding as i32 {
+        log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot bind Ubo, binding {0} exceeds max supported block bindings!",
+          binding);
+        return Err(open_gl::renderer::EnumError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
       }
+      
+      let mut num_blocks: i32 = 0;
+      check_gl_call!("GlUbo", gl::GetProgramiv(shader_id, gl::ACTIVE_UNIFORM_BLOCKS, &mut num_blocks));
+      
+      if binding > num_blocks as u32 {
+        log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot bind Ubo, Block index {0} exceeds block count {1} in shader {2}!",
+          binding, num_blocks, shader_id);
+        return Err(open_gl::renderer::EnumError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
+      }
+      
+      let c_string = std::ffi::CString::new(block_name).expect("Cannot transform block name to C str!");
+      
+      let u_block: u32;
+      check_gl_call!("GlUbo", u_block = gl::GetUniformBlockIndex(shader_id, c_string.as_ptr()));
+      if u_block == gl::INVALID_INDEX {
+        log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot bind Ubo, 'block name' {0} not found in shader!",block_name);
+        return Err(open_gl::renderer::EnumError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
+      }
+      check_gl_call!("GlUbo", gl::UniformBlockBinding(shader_id, u_block, binding));
     }
     
     self.m_state = EnumState::Bound;

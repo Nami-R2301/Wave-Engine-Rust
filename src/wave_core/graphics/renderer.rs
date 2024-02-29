@@ -150,7 +150,7 @@ pub(crate) trait TraitContext {
   fn get_api_version(&self) -> f32;
   fn get_max_shader_version_available(&self) -> f32;
   fn check_extension(&self, desired_extension: &str) -> bool;
-  fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError>;
+  fn on_event(&mut self, window_event: &glfw::WindowEvent) -> Result<bool, EnumError>;
   fn on_render(&mut self) -> Result<(), EnumError>;
   fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError>;
   fn get_max_msaa_count(&self) -> u8;
@@ -240,8 +240,8 @@ impl Renderer {
     return self.m_api.check_extension(desired_extension);
   }
   
-  pub fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, EnumError> {
-    return self.m_api.on_events(window_event);
+  pub fn on_event(&mut self, window_event: &glfw::WindowEvent) -> Result<bool, EnumError> {
+    return self.m_api.on_event(window_event);
   }
   
   pub fn on_render(&mut self) -> Result<(), EnumError> {

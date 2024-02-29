@@ -22,8 +22,10 @@
  SOFTWARE.
 */
 
+use crate::log;
 use crate::wave_core::EnumError;
-use crate::wave_core::graphics::renderer::{Renderer};
+use crate::wave_core::graphics::renderer;
+use crate::wave_core::graphics::renderer::{EnumCallCheckingType, Renderer};
 use crate::wave_core::layers::TraitLayer;
 
 pub struct RendererLayer {
@@ -40,22 +42,43 @@ impl RendererLayer {
 
 impl TraitLayer for RendererLayer {
   fn on_new(&mut self) -> Result<(), EnumError> {
-    todo!()
+    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Setting up renderer...");
+    
+    // Enable features BEFORE finalizing context.
+    unsafe {
+      (*self.m_context).renderer_hint(renderer::EnumFeature::CullFacing(Some(gl::BACK as i64)));
+      (*self.m_context).renderer_hint(renderer::EnumFeature::DepthTest(true));
+      #[cfg(feature = "debug")]
+      (*self.m_context).renderer_hint(renderer::EnumFeature::ApiCallChecking(EnumCallCheckingType::SyncAndAsync));
+      (*self.m_context).renderer_hint(renderer::EnumFeature::Wireframe(true));
+      (*self.m_context).renderer_hint(renderer::EnumFeature::MSAA(None));
+      
+      // Finalize graphics context with all hinted features to prepare for frame presentation.
+      (*self.m_context).submit()?;
+      
+      log!(EnumLogColor::White, "INFO", "[Renderer] -->\t {0}", *self.m_context);
+      log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Setup renderer successfully");
+    }
+    return Ok(());
   }
   
-  fn on_event(&mut self) -> Result<bool, EnumError> {
-    todo!()
+  fn on_event(&mut self, event: &glfw::WindowEvent) -> Result<bool, EnumError> {
+    return unsafe { (*self.m_context).on_event(event).map_err(|err| EnumError::from(err)) };
   }
   
-  fn on_update(&mut self) -> Result<(), EnumError> {
-    todo!()
+  fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {
+    return Ok(());
   }
   
   fn on_render(&mut self) -> Result<(), EnumError> {
-    todo!()
+    return unsafe {
+      (*self.m_context).on_render().map_err(|err| EnumError::from(err))
+    }
   }
   
   fn on_delete(&mut self) -> Result<(), EnumError> {
-    todo!()
+    return unsafe {
+      (*self.m_context).on_delete().map_err(|err| EnumError::from(err))
+    }
   }
 }

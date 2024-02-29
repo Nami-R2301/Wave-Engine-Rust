@@ -22,75 +22,74 @@
  SOFTWARE.
 */
 
+use std::ops::Deref;
+use glfw::WindowEvent;
 use crate::wave_core;
-use crate::wave_core::EnumError;
 
 pub mod app_layer;
 pub mod window_layer;
 pub mod renderer_layer;
-pub mod shader_layer;
 pub mod imgui_layer;
 
-pub struct Layer{
-  pub m_uuid: u64,
-  pub m_name: &'static str,
-  m_data: Box<dyn std::any::Any>
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum EnumLayerType {
+  Window,
+  Imgui,
+  Renderer,
+  App
 }
 
-impl PartialEq<Self> for Layer {
-  fn eq(&self, other: &Self) -> bool {
-    return other.try_get::<Self>().is_some();
-  }
-  
-  fn ne(&self, other: &Self) -> bool {
-    return !self.eq(other);
-  }
+pub struct Layer {
+  pub m_uuid: u64,
+  pub m_name: &'static str,
+  m_type: EnumLayerType,
+  m_data: Box<dyn TraitLayer>,
 }
 
 pub trait TraitLayer {
   fn on_new(&mut self) -> Result<(), wave_core::EnumError>;
-  fn on_event(&mut self) -> Result<bool, wave_core::EnumError>;
-  fn on_update(&mut self) -> Result<(), wave_core::EnumError>;
+  fn on_event(&mut self, event: &WindowEvent) -> Result<bool, wave_core::EnumError>;
+  fn on_update(&mut self, time_step: f64) -> Result<(), wave_core::EnumError>;
   fn on_render(&mut self) -> Result<(), wave_core::EnumError>;
   fn on_delete(&mut self) -> Result<(), wave_core::EnumError>;
 }
 
 impl Layer {
-  pub fn new<T: TraitLayer + 'static>(name: &'static str, data: T) -> Self {
+  pub fn new<T: TraitLayer + 'static>(name: &'static str, ty: EnumLayerType, data: T) -> Self {
     return Self {
       m_uuid: 0,
       m_name: name,
+      m_type: ty,
       m_data: Box::new(data),
     }
   }
   
-  pub fn is<T: TraitLayer + 'static>(&self) -> bool {
-    return self.m_data.is::<T>();
+  pub fn is(&self, layer_type: EnumLayerType) -> bool {
+    return self.m_type == layer_type;
   }
   
-  pub fn try_get<T: TraitLayer + 'static>(&self) -> Option<&T> {
-    return self.m_data.downcast_ref::<T>();
-  }
-}
-
-impl TraitLayer for Layer {
-  fn on_new(&mut self) -> Result<(), EnumError> {
-    todo!()
+  pub fn try_cast<T: TraitLayer + 'static>(&self) -> Option<&T> {
+    return unsafe { Some(&*(self.m_data.deref() as *const dyn TraitLayer as *const T)) };
   }
   
-  fn on_event(&mut self) -> Result<bool, EnumError> {
-    todo!()
+  pub fn on_new(&mut self) -> Result<(), wave_core::EnumError> {
+    return self.m_data.on_new();
   }
   
-  fn on_update(&mut self) -> Result<(), EnumError> {
-    todo!()
+  pub fn on_event(&mut self, event: &WindowEvent) -> Result<bool, wave_core::EnumError> {
+    return self.m_data.on_event(event);
   }
   
-  fn on_render(&mut self) -> Result<(), EnumError> {
-    todo!()
+  pub fn on_update(&mut self, time_step: f64) -> Result<(), wave_core::EnumError> {
+    return self.m_data.on_update(time_step);
   }
   
-  fn on_delete(&mut self) -> Result<(), EnumError> {
-    todo!()
+  pub fn on_render(&mut self) -> Result<(), wave_core::EnumError> {
+    return self.m_data.on_render();
   }
+  
+  pub fn on_delete(&mut self) -> Result<(), wave_core::EnumError> {
+    return  self.m_data.on_delete();
+  }
+  
 }

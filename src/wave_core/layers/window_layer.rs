@@ -40,22 +40,29 @@ impl WindowLayer {
 
 impl TraitLayer for WindowLayer {
   fn on_new(&mut self) -> Result<(), EnumError> {
-    todo!()
+    return Ok(());
   }
   
-  fn on_event(&mut self) -> Result<bool, EnumError> {
-    todo!()
+  fn on_event(&mut self, event: &glfw::WindowEvent) -> Result<bool, EnumError> {
+    return unsafe {
+      (*self.m_context).on_event(event).map_err(|err| EnumError::from(err))
+    };
   }
   
-  fn on_update(&mut self) -> Result<(), EnumError> {
-    todo!()
+  fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {
+    return unsafe {
+      (*self.m_context).on_update().map_err(|err| EnumError::from(err))
+    };
   }
   
   fn on_render(&mut self) -> Result<(), EnumError> {
-    todo!()
+    unsafe { (*self.m_context).refresh() };
+    return Ok(());
   }
   
   fn on_delete(&mut self) -> Result<(), EnumError> {
-    todo!()
+    return unsafe {
+      (*self.m_context).on_delete().map_err(|err| EnumError::from(err))
+    };
   }
 }

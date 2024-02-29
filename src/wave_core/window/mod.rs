@@ -28,7 +28,7 @@ use std::fmt::{Display, Formatter};
 
 #[cfg(feature = "vulkan")]
 use ash::vk;
-use glfw::Context;
+use glfw::{Context, WindowEvent};
 
 use crate::log;
 use crate::wave_core::graphics::renderer::{EnumApi};
@@ -149,8 +149,7 @@ impl Window {
     context_ref.window_hint(glfw::WindowHint::Visible(false));
     
     // If user has not chosen an api, choose accordingly.
-    if api_preference.is_none() {
-    } else {
+    if api_preference.is_some() {
       match api_preference.unwrap() {
         EnumApi::OpenGL => {
           // OpenGL hints.
@@ -286,12 +285,46 @@ impl Window {
     }
   }
   
-  pub fn on_update(&mut self) -> Result<bool, EnumError> {
-    return Ok(true);
+  pub fn on_update(&mut self) -> Result<(), EnumError> {
+    return Ok(());
   }
   
-  pub fn on_event(&mut self) {
-    self.m_api_window.glfw.poll_events();
+  pub fn on_event(&mut self, event: &WindowEvent) -> Result<bool, EnumError> {
+    return match event {
+      WindowEvent::Key(key, _scancode, action, mods) => {
+        return match (key, action, mods) {
+          (glfw::Key::Escape, glfw::Action::Press, _) => {
+            self.close();
+            log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
+            Ok(true)
+          }
+          (glfw::Key::R, glfw::Action::Press, _) => {
+            // Resize should force the window to "refresh"
+            let (window_width, window_height) = self.m_api_window.get_size();
+            self.m_api_window.set_size(window_width + 1, window_height);
+            self.m_api_window.set_size(window_width, window_height);
+            Ok(true)
+          }
+          _ => Ok(false)
+        }
+      }
+      WindowEvent::FramebufferSize(width, height) => {
+        log!("INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
+          unsafe {
+          S_PREVIOUS_WIDTH = self.m_window_resolution.0 as u32;
+          S_PREVIOUS_HEIGHT = self.m_window_resolution.1 as u32;
+        }
+        self.m_window_resolution = (*width, *height);
+        Ok(true)
+      }
+      WindowEvent::Pos(pos_x, pos_y) => {
+        if self.m_is_windowed {
+          self.m_window_pos = (*pos_x, *pos_y);
+        }
+        Ok(true)
+      }
+      _ => Ok(false)
+    };
   }
   
   pub fn on_delete(&mut self) -> Result<(), EnumError> {
@@ -396,8 +429,10 @@ impl Window {
   }
   
   pub fn get_active() -> *mut Window {
-    unsafe { return S_WINDOW.expect("[Window] -->\t Cannot retrieve window : No active window \
-      contexts!"); };
+    unsafe {
+      return S_WINDOW.expect("[Window] -->\t Cannot retrieve window : No active window \
+      contexts!");
+    };
   }
 }
 

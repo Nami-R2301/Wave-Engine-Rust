@@ -115,7 +115,7 @@ impl TraitShader for VkShader {
     #[cfg(feature = "debug")]
     options.set_generate_debug_info();
     
-    // Switch from left handed coordinates (OpenGL) to right handed (Vulkan, DirectX).
+    // Switch from left-handed coordinates (OpenGL) to right-handed (Vulkan, DirectX).
     options.set_invert_y(true);
     options.set_warnings_as_errors();
     

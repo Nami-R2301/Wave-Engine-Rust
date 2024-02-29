@@ -43,7 +43,7 @@ pub enum EnumUiType {
   Floating,
 }
 
-pub mod ui_imgui {
+pub(crate) mod ui_imgui {
   use crate::wave_core::window::{Window};
   use crate::wave_core::utils::Time;
   use crate::wave_core::graphics::renderer::EnumApi;
@@ -80,39 +80,30 @@ pub mod ui_imgui {
   }
   
   trait TraitUi {
-    fn on_event(&mut self, window_event: &WindowEvent);
+    fn on_event(&mut self, window_event: &WindowEvent) -> bool;
     fn on_update(&mut self);
     fn on_render(&mut self);
     fn on_delete(&mut self) -> Result<(), EnumError>;
   }
   
   
-  pub struct Imgui {
+  pub(crate) struct Imgui {
     m_api: Box<dyn TraitUi>,
   }
   
   impl Imgui {
-    pub fn new(api_choice: EnumApi, window: &mut Window) -> Result<Self, EnumError> {
+    pub fn new(api_choice: EnumApi, window: &mut Window) -> Self {
       return match api_choice {
-        EnumApi::OpenGL => Ok(Imgui {
+        EnumApi::OpenGL => Imgui {
           m_api: Box::new(GlImgui::new(window))
-        }),
+        },
         EnumApi::Vulkan => {
-          #[cfg(feature = "Vulkan")]
-          todo!();
-          
-          #[cfg(not(feature = "Vulkan"))]
-          {
-            log!(EnumLogColor::Red, "ERROR", "[Ui] -->\t Cannot create Ui : Vulkan feature \
-            not enabled!\nMake sure to turn on Vulkan rendering by enabling it in the Cargo.toml \
-            file under features!");
-            return Err(EnumError::ApiError);
-          }
+          todo!()
         }
-      };
+      }
     }
     
-    pub fn on_event(&mut self, window_event: &WindowEvent) {
+    pub fn on_event(&mut self, window_event: &WindowEvent) -> bool {
       return self.m_api.on_event(window_event);
     }
     
@@ -146,42 +137,50 @@ pub mod ui_imgui {
   }
   
   impl TraitUi for GlImgui {
-    fn on_event(&mut self, event: &WindowEvent) {
-      match *event {
-        WindowEvent::MouseButton(mouse_btn, action, _) => {
-          let index = match mouse_btn {
-            MouseButton::Button1 => 0,
-            MouseButton::Button2 => 1,
-            MouseButton::Button3 => 2,
-            MouseButton::Button4 => 3,
-            MouseButton::Button5 => 4,
-            _ => 0,
-          };
-          let press = action != Action::Release;
-          self.m_mouse_press[index] = press;
-          self.m_imgui_handle.io_mut().mouse_down = self.m_mouse_press;
+    fn on_event(&mut self, event: &WindowEvent) -> bool {
+      if self.m_imgui_handle.io_mut().want_capture_keyboard {
+        return match *event {
+          WindowEvent::MouseButton(mouse_btn, action, _) => {
+            let index = match mouse_btn {
+              MouseButton::Button1 => 0,
+              MouseButton::Button2 => 1,
+              MouseButton::Button3 => 2,
+              MouseButton::Button4 => 3,
+              MouseButton::Button5 => 4,
+              _ => 0,
+            };
+            let press = action != Action::Release;
+            self.m_mouse_press[index] = press;
+            self.m_imgui_handle.io_mut().mouse_down = self.m_mouse_press;
+            true
+          }
+          WindowEvent::CursorPos(w, h) => {
+            self.m_imgui_handle.io_mut().mouse_pos = [w as f32, h as f32];
+            self.m_cursor_pos = (w, h);
+            true
+          }
+          WindowEvent::Scroll(_, d) => {
+            self.m_imgui_handle.io_mut().mouse_wheel = d as f32;
+            true
+          }
+          WindowEvent::Char(character) => {
+            self.m_imgui_handle.io_mut().add_input_character(character);
+            true
+          }
+          WindowEvent::Key(key, _, action, modifier) => {
+            // GLFW modifiers.
+            self.m_imgui_handle.io_mut().key_ctrl = modifier.intersects(Modifiers::Control);
+            self.m_imgui_handle.io_mut().key_alt = modifier.intersects(Modifiers::Alt);
+            self.m_imgui_handle.io_mut().key_shift = modifier.intersects(Modifiers::Shift);
+            self.m_imgui_handle.io_mut().key_super = modifier.intersects(Modifiers::Super);
+            
+            self.m_imgui_handle.io_mut().keys_down[key as usize] = action != Action::Release;
+            true
+          }
+          _ => false
         }
-        WindowEvent::CursorPos(w, h) => {
-          self.m_imgui_handle.io_mut().mouse_pos = [w as f32, h as f32];
-          self.m_cursor_pos = (w, h);
-        }
-        WindowEvent::Scroll(_, d) => {
-          self.m_imgui_handle.io_mut().mouse_wheel = d as f32;
-        }
-        WindowEvent::Char(character) => {
-          self.m_imgui_handle.io_mut().add_input_character(character);
-        }
-        WindowEvent::Key(key, _, action, modifier) => {
-          // GLFW modifiers.
-          self.m_imgui_handle.io_mut().key_ctrl = modifier.intersects(Modifiers::Control);
-          self.m_imgui_handle.io_mut().key_alt = modifier.intersects(Modifiers::Alt);
-          self.m_imgui_handle.io_mut().key_shift = modifier.intersects(Modifiers::Shift);
-          self.m_imgui_handle.io_mut().key_super = modifier.intersects(Modifiers::Super);
-          
-          self.m_imgui_handle.io_mut().keys_down[key as usize] = action != Action::Release;
-        }
-        _ => {}
       }
+      return false;
     }
     
     fn on_update(&mut self) {

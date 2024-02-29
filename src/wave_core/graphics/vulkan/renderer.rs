@@ -961,7 +961,7 @@ impl TraitContext for VkContext {
     return 1.0;
   }
   
-  fn on_events(&mut self, window_event: glfw::WindowEvent) -> Result<bool, renderer::EnumError> {
+  fn on_event(&mut self, window_event: &glfw::WindowEvent) -> Result<bool, renderer::EnumError> {
     return match window_event {
       _ => Ok(false)
     };

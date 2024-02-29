@@ -22,18 +22,17 @@
  SOFTWARE.
 */
 
+use glfw::WindowEvent;
 use wave_engine::*;
 use wave_engine::wave_core::Engine;
-use wave_engine::wave_core::graphics::shader::{Shader, ShaderStage, EnumShaderStage, EnumShaderSource};
-use wave_engine::wave_core::graphics::renderer::{self, Renderer};
-use wave_engine::wave_core::ui::ui_imgui::Imgui;
+use wave_engine::wave_core::graphics::shader::{Shader, ShaderStage, EnumShaderStage};
+use wave_engine::wave_core::graphics::renderer::{self};
 use wave_engine::wave_core::math::Vec3;
 use wave_engine::wave_core::camera::{Camera, EnumCameraType};
 use wave_engine::wave_core::assets::asset_loader::ResLoader;
 use wave_engine::wave_core::assets::renderable_assets::{TraitRenderableEntity, REntity};
 
 pub struct Editor {
-  m_ui: Option<Imgui>,
   m_shaders: Vec<Shader>,
   m_renderable_assets: Vec<REntity>,
   m_cameras: Vec<Camera>,
@@ -42,7 +41,6 @@ pub struct Editor {
 impl Editor {
   pub fn default() -> Self {
     return Editor {
-      m_ui: None,
       m_shaders: Vec::new(),
       m_renderable_assets: Vec::new(),
       m_cameras: Vec::new(),
@@ -57,10 +55,8 @@ impl wave_core::TraitApp for Editor {
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
-    let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
-      EnumShaderSource::FromFile(String::from("res/shaders/gl_x_spv_test.vert")));
-    let fragment_shader = ShaderStage::new(EnumShaderStage::Fragment,
-      EnumShaderSource::FromFile(String::from("res/shaders/gl_x_spv_test.frag")));
+    let vertex_shader = ShaderStage::default(EnumShaderStage::Vertex);
+    let fragment_shader = ShaderStage::default(EnumShaderStage::Fragment);
     
     let shader = Shader::new(vec![vertex_shader, fragment_shader])?;
     
@@ -88,40 +84,20 @@ impl wave_core::TraitApp for Editor {
     let renderer = unsafe { (*engine).get_renderer() };
     renderer.setup_camera(&self.m_cameras[0])?;
     
-    // Setup imgui layer.
-    unsafe {
-      if (*engine).get_renderer().m_type == renderer::EnumApi::OpenGL {
-        self.m_ui = Some(Imgui::new(renderer::EnumApi::OpenGL, window)?);
-      }
-    }
-    
     // Show our window when we are done.
     window.show();
     return Ok(());
   }
   
-  fn on_event(&mut self, window_event: &glfw::WindowEvent) -> bool {
-    if self.m_ui.is_some() {
-      self.m_ui.as_mut().unwrap().on_event(window_event);
-    }
-    return false;
-  }
-  
-  fn on_update(&mut self, _time_step: f64) -> Result<bool, wave_core::EnumError> {
-    if self.m_ui.is_some() {
-      self.m_ui.as_mut().unwrap().on_update();
-    }
+  fn on_event(&mut self, _window_event: &WindowEvent) -> Result<bool, wave_core::EnumError> {
     return Ok(false);
   }
   
+  fn on_update(&mut self, _time_step: f64) -> Result<(), wave_core::EnumError> {
+    return Ok(());
+  }
+  
   fn on_render(&mut self) -> Result<(), wave_core::EnumError> {
-    let renderer = Renderer::get_active();
-    unsafe { (*renderer).on_render()? };
-    
-    if self.m_ui.is_some() {
-      self.m_ui.as_mut().unwrap().on_render();
-    }
-    
     return Ok(());
   }
   
@@ -181,7 +157,7 @@ fn main() -> Result<(), wave_core::EnumError> {
   
   // Supply it to our engine. Engine will NOT construct app and will only init the engine
   // with the supplied GPU API of choice as its renderer.
-  let mut engine: Engine = Engine::new(Some(renderer::EnumApi::Vulkan), Some(my_app))?;
+  let mut engine: Engine = Engine::new(Some(renderer::EnumApi::OpenGL), Some(my_app))?;
   
   // Execute the app in game loop and return if there's a close event or if an error occurred.
   return engine.run();

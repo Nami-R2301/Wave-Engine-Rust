@@ -1,4 +1,4 @@
-#version 450 core
+#version 420 core
 
 struct Vertex_data_s
 {
@@ -6,7 +6,6 @@ struct Vertex_data_s
     vec4 vout_frag_color;
     vec2 vout_tex_coords;
 };
-
 
 layout (location = 0) flat in uint vout_entity_ID;
 layout (location = 1) in Vertex_data_s vout_vertex_data;

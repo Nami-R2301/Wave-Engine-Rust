@@ -1,5 +1,4 @@
-#version 450 core
-#pragma debug(on)
+#version 330 core
 
 // Outputs.
 struct Vertex_data_s
@@ -9,18 +8,16 @@ struct Vertex_data_s
     vec2 vout_tex_coords;
 };
 
-// We are compiling for SPIR-V
-layout (std140, binding = 0) uniform u_camera
+// < 420 so we cannot bind blocks in shaders.
+layout (std140) uniform ubo_camera
 {
     mat4 m_view;
     mat4 m_projection;
-} U_camera;
-
-
-layout (std140, binding = 1) uniform u_model
+} Ubo_camera;
+layout (std140) uniform ubo_model
 {
     mat4 m_matrix;
-} U_model;
+} Ubo_model;
 
 layout (location = 0) in uint in_entity_ID;
 layout (location = 1) in vec3 in_position;
@@ -29,11 +26,11 @@ layout (location = 3) in vec4 in_color;
 layout (location = 4) in vec2 in_tex_coords;
 
 
-layout (location = 0) flat out uint vout_entity_ID;
-layout (location = 1) out Vertex_data_s vout_vertex_data;
+flat out uint vout_entity_ID;
+out Vertex_data_s vout_vertex_data;
 
 void main() {
-    gl_Position = U_camera.m_projection * U_camera.m_view * (U_model.m_matrix * vec4(in_position, 1.0));
+    gl_Position = Ubo_camera.m_projection * Ubo_camera.m_view * (Ubo_model.m_matrix * vec4(in_position, 1.0));
     vout_entity_ID = in_entity_ID;
     vout_vertex_data.vout_normal = in_normal;
     vout_vertex_data.vout_tex_coords = in_tex_coords;

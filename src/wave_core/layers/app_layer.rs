@@ -22,8 +22,39 @@
  SOFTWARE.
 */
 
-use crate::wave_core::TraitApp;
+use crate::wave_core::layers::TraitLayer;
+use crate::wave_core::{EnumError, TraitApp};
 
-pub struct AppLayer<'b> {
-  m_app: &'b dyn TraitApp
+pub struct AppLayer {
+  m_app: *mut dyn TraitApp
+}
+
+impl TraitLayer for AppLayer {
+  fn on_new(&mut self) -> Result<(), EnumError> {
+    return unsafe { (*self.m_app).on_new() };
+  }
+  
+  fn on_event(&mut self, event: &glfw::WindowEvent) -> Result<bool, EnumError> {
+    return unsafe { (*self.m_app).on_event(event) };
+  }
+  
+  fn on_update(&mut self, time_step: f64) -> Result<(), EnumError> {
+    return unsafe { (*self.m_app).on_update(time_step) };
+  }
+  
+  fn on_render(&mut self) -> Result<(), EnumError> {
+    return unsafe { (*self.m_app).on_render() };
+  }
+  
+  fn on_delete(&mut self) -> Result<(), EnumError> {
+    return unsafe { (*self.m_app).on_delete() };
+  }
+}
+
+impl AppLayer {
+  pub fn new(app: *mut dyn TraitApp) -> Self {
+    return Self {
+      m_app: app,
+    };
+  }
 }
