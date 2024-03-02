@@ -22,7 +22,6 @@
  SOFTWARE.
 */
 
-use glfw::WindowEvent;
 use wave_engine::*;
 use wave_engine::wave_core::Engine;
 use wave_engine::wave_core::graphics::shader::{Shader, ShaderStage, EnumShaderStage};
@@ -31,6 +30,7 @@ use wave_engine::wave_core::math::Vec3;
 use wave_engine::wave_core::camera::{Camera, EnumCameraType};
 use wave_engine::wave_core::assets::asset_loader::ResLoader;
 use wave_engine::wave_core::assets::renderable_assets::{TraitRenderableEntity, REntity};
+use wave_engine::wave_core::events::EnumEvent;
 
 pub struct Editor {
   m_shaders: Vec<Shader>,
@@ -89,11 +89,56 @@ impl wave_core::TraitApp for Editor {
     return Ok(());
   }
   
-  fn on_event(&mut self, _window_event: &WindowEvent) -> Result<bool, wave_core::EnumError> {
-    return Ok(false);
+  fn on_event(&mut self, event: &EnumEvent) -> bool {
+    return match event {
+      EnumEvent::KeyPressedEvent(key, _modifiers) => {
+        match key {
+          wave_core::input::EnumKey::W => {
+            self.m_renderable_assets[0].translate(Vec3::new(&[0.0, 4.0, 0.0]));
+            true
+          }
+          wave_core::input::EnumKey::A => {
+            self.m_renderable_assets[0].translate(Vec3::new(&[-4.0, 0.0, 0.0]));
+            true
+          }
+          wave_core::input::EnumKey::S => {
+            self.m_renderable_assets[0].translate(Vec3::new(&[0.0, -4.0, 0.0]));
+            true
+          }
+          wave_core::input::EnumKey::D => {
+            self.m_renderable_assets[0].translate(Vec3::new(&[4.0, 0.0, 0.0]));
+            true
+          }
+          _ => false
+        }
+      }
+      EnumEvent::KeyHeldEvent(key, _modifier) => {
+        match key {
+          wave_core::input::EnumKey::W => {
+            self.m_renderable_assets[0].translate(Vec3::new(&[0.0, 1.0, 0.0]));
+            true
+          }
+          wave_core::input::EnumKey::A => {
+            self.m_renderable_assets[0].translate(Vec3::new(&[-1.0, 0.0, 0.0]));
+            true
+          }
+          wave_core::input::EnumKey::S => {
+            self.m_renderable_assets[0].translate(Vec3::new(&[0.0, -1.0, 0.0]));
+            true
+          }
+          wave_core::input::EnumKey::D => {
+            self.m_renderable_assets[0].translate(Vec3::new(&[1.0, 0.0, 0.0]));
+            true
+          }
+          _ => false
+        }
+      }
+      _ => false
+    }
   }
   
   fn on_update(&mut self, _time_step: f64) -> Result<(), wave_core::EnumError> {
+    self.m_renderable_assets[0].send(&mut self.m_shaders[0])?;
     return Ok(());
   }
   

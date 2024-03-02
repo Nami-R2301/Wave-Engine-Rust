@@ -32,6 +32,7 @@ use gl46::GlFns;
 use crate::log;
 use crate::wave_core::assets::renderable_assets::{EnumVertexMemberOffset, REntity};
 use crate::wave_core::camera::Camera;
+use crate::wave_core::events::EnumEvent;
 use crate::wave_core::graphics::{open_gl, renderer};
 use crate::wave_core::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar,
   GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
@@ -238,7 +239,7 @@ impl TraitContext for GlContext {
     return to_float;
   }
   
-  fn get_max_shader_version_available(&self) -> f32 {
+  fn get_max_shader_version_available(&self) -> u16 {
     let shading_info: Vec<&str> = unsafe {
       std::ffi::CStr::from_ptr(gl::GetString(gl::SHADING_LANGUAGE_VERSION) as *const i8)
         .to_str().unwrap_or("Cannot retrieve api version information!")
@@ -246,7 +247,7 @@ impl TraitContext for GlContext {
         .collect()
     };
     let shading_language_version_str = shading_info.first().unwrap();
-    return shading_language_version_str.parse::<f32>().unwrap_or(0.0);
+    return (shading_language_version_str.parse::<f32>().unwrap_or(0.0) * 100.0) as u16;
   }
   
   fn check_extension(&self, desired_extension: &str) -> bool {
@@ -254,13 +255,13 @@ impl TraitContext for GlContext {
     return self.m_ext.contains_key(&str);
   }
   
-  fn on_event(&mut self, window_event: &glfw::WindowEvent) -> Result<bool, renderer::EnumError> {
-    return match window_event {
-      glfw::WindowEvent::FramebufferSize(width, height) => {
-        check_gl_call!("Renderer", gl::Viewport(0, 0, *width, *height));
-        Ok(true)
+  fn on_event(&mut self, event: &EnumEvent) -> bool {
+    return match event {
+     EnumEvent::WindowResizeEvent(width, height) => unsafe {
+        gl::Viewport(0, 0, *width as GLsizei, *height as GLsizei);
+        true
       }
-      _ => { Ok(false) }
+      _ => false
     };
   }
   

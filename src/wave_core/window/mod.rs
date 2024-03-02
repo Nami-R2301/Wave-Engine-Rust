@@ -28,11 +28,12 @@ use std::fmt::{Display, Formatter};
 
 #[cfg(feature = "vulkan")]
 use ash::vk;
-use glfw::{Context, WindowEvent};
+use glfw::{Context, Modifiers};
 
 use crate::log;
+use crate::wave_core::events::EnumEvent;
 use crate::wave_core::graphics::renderer::{EnumApi};
-use crate::wave_core::input::{self};
+use crate::wave_core::input::{self, EnumKey};
 
 pub(crate) static mut S_WINDOW_CONTEXT: Option<*mut glfw::Glfw> = None;
 pub(crate) static mut S_WINDOW: Option<*mut Window> = None;
@@ -289,41 +290,53 @@ impl Window {
     return Ok(());
   }
   
-  pub fn on_event(&mut self, event: &WindowEvent) -> Result<bool, EnumError> {
+  pub fn on_event(&mut self, event: &EnumEvent) -> bool {
     return match event {
-      WindowEvent::Key(key, _scancode, action, mods) => {
-        return match (key, action, mods) {
-          (glfw::Key::Escape, glfw::Action::Press, _) => {
+      EnumEvent::KeyPressedEvent(key, modifiers) => {
+        return match key {
+          EnumKey::Escape => {
             self.close();
             log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
-            Ok(true)
+            true
           }
-          (glfw::Key::R, glfw::Action::Press, _) => {
+          EnumKey::R => {
             // Resize should force the window to "refresh"
             let (window_width, window_height) = self.m_api_window.get_size();
             self.m_api_window.set_size(window_width + 1, window_height);
             self.m_api_window.set_size(window_width, window_height);
-            Ok(true)
+            true
           }
-          _ => Ok(false)
+          EnumKey::Enter => {
+            if modifiers.intersects(Modifiers::Alt) {
+              self.toggle_fullscreen();
+            }
+            true
+          }
+          EnumKey::V => {
+            if modifiers.intersects(Modifiers::Alt) {
+              self.toggle_vsync();
+            }
+            true
+          }
+          _ => false
         }
       }
-      WindowEvent::FramebufferSize(width, height) => {
+      EnumEvent::WindowResizeEvent(width, height) => {
         log!("INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
-          unsafe {
+        unsafe {
           S_PREVIOUS_WIDTH = self.m_window_resolution.0 as u32;
           S_PREVIOUS_HEIGHT = self.m_window_resolution.1 as u32;
         }
-        self.m_window_resolution = (*width, *height);
-        Ok(true)
+        self.m_window_resolution = (*width as i32, *height as i32);
+        true
       }
-      WindowEvent::Pos(pos_x, pos_y) => {
+      EnumEvent::WindowMoveEvent(pos_x, pos_y) => {
         if self.m_is_windowed {
           self.m_window_pos = (*pos_x, *pos_y);
         }
-        Ok(true)
+        true
       }
-      _ => Ok(false)
+      _ => false
     };
   }
   
@@ -373,12 +386,12 @@ impl Window {
     log!(EnumLogColor::Blue, "INFO", "[Window] -->\t VSync {0}", self.m_vsync);
   }
   
-  pub fn toggle_fullscreen(&mut self) -> Result<(), EnumError> {
+  pub fn toggle_fullscreen(&mut self) {
     unsafe {
       if S_WINDOW_CONTEXT.is_none() {
         log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot toggle fullscreen : \
         No active window context!");
-        return Err(EnumError::NoContextError);
+        panic!("[Window] -->\t Cannot toggle fullscreen : No active window context!");
       };
       
       (*S_WINDOW_CONTEXT.unwrap()).with_primary_monitor(|_, monitor| {
@@ -415,7 +428,6 @@ impl Window {
         self.m_is_windowed = !self.m_is_windowed;
       });
     }
-    return Ok(());
   }
   
   pub fn get_framebuffer_size(&mut self) -> (u32, u32) {

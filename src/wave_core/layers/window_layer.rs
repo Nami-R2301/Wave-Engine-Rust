@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-use crate::wave_core::EnumError;
+use crate::wave_core::{EnumError, events};
 use crate::wave_core::layers::TraitLayer;
 use crate::wave_core::window::Window;
 
@@ -43,9 +43,9 @@ impl TraitLayer for WindowLayer {
     return Ok(());
   }
   
-  fn on_event(&mut self, event: &glfw::WindowEvent) -> Result<bool, EnumError> {
+  fn on_event(&mut self, event: &events::EnumEvent) -> bool {
     return unsafe {
-      (*self.m_context).on_event(event).map_err(|err| EnumError::from(err))
+      (*self.m_context).on_event(event)
     };
   }
   

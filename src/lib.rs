@@ -23,17 +23,16 @@
 */
 
 pub mod wave_core {
-  use glfw::WindowEvent;
   use once_cell::sync::Lazy;
   
   use graphics::renderer::{self, EnumApi, Renderer, S_RENDERER};
   #[cfg(feature = "debug")]
   use graphics::shader::{self};
-  use input::{EnumKey, EnumModifier, Input};
   use utils::Time;
   use window::{EnumWindowMode, S_WINDOW, Window};
   
   use crate::log;
+  use crate::wave_core::events::{EnumEvent};
   use crate::wave_core::layers::{EnumLayerType, Layer};
   use crate::wave_core::layers::app_layer::AppLayer;
   #[cfg(feature = "imgui")]
@@ -52,8 +51,8 @@ pub mod wave_core {
   pub mod assets;
   pub mod camera;
   pub mod input;
+  pub mod events;
   pub mod layers;
-  mod events;
   
   static mut S_ENGINE: Option<*mut Engine> = None;
   
@@ -113,7 +112,7 @@ pub mod wave_core {
   
   pub trait TraitApp {
     fn on_new(&mut self) -> Result<(), EnumError>;
-    fn on_event(&mut self, window_event: &WindowEvent) -> Result<bool, EnumError>;
+    fn on_event(&mut self, event: &EnumEvent) -> bool;
     fn on_update(&mut self, time_step: f64) -> Result<(), EnumError>;
     fn on_render(&mut self) -> Result<(), EnumError>;
     fn on_delete(&mut self) -> Result<(), EnumError>;
@@ -126,7 +125,7 @@ pub mod wave_core {
     m_renderer: Box<Renderer>,
     m_time_step: f64,
     m_tick_rate: f32,
-    m_state: EnumState,
+    m_state: EnumState
   }
   
   impl Engine {
@@ -187,7 +186,7 @@ pub mod wave_core {
           m_renderer: renderer,
           m_time_step: 0.0,
           m_tick_rate: 0.0,
-          m_state: EnumState::NotStarted,
+          m_state: EnumState::NotStarted
         }
       })
     }
@@ -253,7 +252,17 @@ pub mod wave_core {
         frame_start = Time::from(chrono::Utc::now());
         
         // Engine routine.
-        self.process_events()?;
+        self.m_window.get_api_mut().poll_events();
+        
+        for (_, glfw_event) in glfw::flush_messages(&self.m_window.m_api_window_events) {
+          
+          let event = EnumEvent::from(glfw_event);
+          for layer in self.m_layers.iter_mut().rev() {
+            if layer.on_event(&event) {
+              break;
+            }
+          }
+        }
         
         // Update layers.
         for layer in self.m_layers.iter_mut().rev() {
@@ -282,38 +291,6 @@ pub mod wave_core {
           same_frame_counter = frame_counter;
           frame_counter = 0;
           runtime = Time::from(chrono::Utc::now());
-        }
-      }
-      return Ok(());
-    }
-    
-    fn process_events(&mut self) -> Result<(), EnumError> {
-      if self.m_state != EnumState::Running {
-        log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Cannot process events : Engine not started! Make sure to call `on_new()` before");
-        return Err(EnumError::AppError);
-      }
-      
-      self.m_window.get_api_mut().poll_events();
-      
-      let mut event_processed: bool = false;
-      for (_, event) in glfw::flush_messages(&self.m_window.m_api_window_events) {
-        for layer in self.m_layers.iter_mut().rev() {
-          if layer.on_event(&event)? {
-            event_processed = true;
-            break;
-          }
-        }
-      }
-      
-      if !event_processed {
-        // If an event happened and Input::on_update() has been called, process custom inputs.
-        Input::reset();
-        if Input::get_modifier_key_combo(&self.m_window, EnumKey::V, EnumModifier::Alt)? {
-          self.m_window.toggle_vsync();
-        }
-        
-        if Input::get_modifier_key_combo(&self.m_window, EnumKey::Enter, EnumModifier::Alt)? {
-          self.m_window.toggle_fullscreen()?;
         }
       }
       return Ok(());
@@ -417,8 +394,8 @@ pub mod wave_core {
       return Ok(());
     }
     
-    fn on_event(&mut self, _window_event: &WindowEvent) -> Result<bool, EnumError> {
-      return Ok(false);
+    fn on_event(&mut self, _event: &EnumEvent) -> bool {
+      return false;
     }
     
     fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {

@@ -29,6 +29,7 @@ use std::fmt::{Display, Formatter};
 use crate::log;
 use crate::wave_core::assets::renderable_assets::REntity;
 use crate::wave_core::camera::{Camera};
+use crate::wave_core::events;
 use crate::wave_core::graphics::{open_gl};
 use crate::wave_core::graphics::open_gl::renderer::GlContext;
 use crate::wave_core::graphics::shader::Shader;
@@ -148,9 +149,9 @@ pub(crate) trait TraitContext {
   fn on_new(window: &mut Window) -> Result<Self, EnumError> where Self: Sized;
   fn get_api_handle(&mut self) -> &mut dyn Any;
   fn get_api_version(&self) -> f32;
-  fn get_max_shader_version_available(&self) -> f32;
+  fn get_max_shader_version_available(&self) -> u16;
   fn check_extension(&self, desired_extension: &str) -> bool;
-  fn on_event(&mut self, window_event: &glfw::WindowEvent) -> Result<bool, EnumError>;
+  fn on_event(&mut self, event: &events::EnumEvent) -> bool;
   fn on_render(&mut self) -> Result<(), EnumError>;
   fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError>;
   fn get_max_msaa_count(&self) -> u8;
@@ -240,8 +241,8 @@ impl Renderer {
     return self.m_api.check_extension(desired_extension);
   }
   
-  pub fn on_event(&mut self, window_event: &glfw::WindowEvent) -> Result<bool, EnumError> {
-    return self.m_api.on_event(window_event);
+  pub fn on_event(&mut self, event: &events::EnumEvent) -> bool {
+    return self.m_api.on_event(event);
   }
   
   pub fn on_render(&mut self) -> Result<(), EnumError> {
@@ -290,7 +291,7 @@ impl Renderer {
     return self.m_api.get_api_version();
   }
   
-  pub fn get_max_shader_version_available(&self) -> f32 {
+  pub fn get_max_shader_version_available(&self) -> u16 {
     return self.m_api.get_max_shader_version_available();
   }
 }

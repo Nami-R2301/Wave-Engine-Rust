@@ -23,7 +23,7 @@
 */
 
 use crate::log;
-use crate::wave_core::EnumError;
+use crate::wave_core::{EnumError, events};
 use crate::wave_core::graphics::renderer;
 use crate::wave_core::graphics::renderer::{EnumCallCheckingType, Renderer};
 use crate::wave_core::layers::TraitLayer;
@@ -62,8 +62,8 @@ impl TraitLayer for RendererLayer {
     return Ok(());
   }
   
-  fn on_event(&mut self, event: &glfw::WindowEvent) -> Result<bool, EnumError> {
-    return unsafe { (*self.m_context).on_event(event).map_err(|err| EnumError::from(err)) };
+  fn on_event(&mut self, event: &events::EnumEvent) -> bool {
+    return unsafe { (*self.m_context).on_event(event) };
   }
   
   fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {

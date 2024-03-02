@@ -23,7 +23,7 @@
 */
 
 use crate::wave_core::layers::TraitLayer;
-use crate::wave_core::{EnumError, TraitApp};
+use crate::wave_core::{EnumError, events, TraitApp};
 
 pub struct AppLayer {
   m_app: *mut dyn TraitApp
@@ -34,7 +34,7 @@ impl TraitLayer for AppLayer {
     return unsafe { (*self.m_app).on_new() };
   }
   
-  fn on_event(&mut self, event: &glfw::WindowEvent) -> Result<bool, EnumError> {
+  fn on_event(&mut self, event: &events::EnumEvent) -> bool {
     return unsafe { (*self.m_app).on_event(event) };
   }
   

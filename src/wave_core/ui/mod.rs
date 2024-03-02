@@ -54,13 +54,15 @@ pub(crate) mod ui_imgui {
   pub use glfw;
   
   use glfw::ffi::GLFWwindow;
-  use glfw::{Action, Context, Key, Modifiers, MouseButton, StandardCursor, WindowEvent};
+  use glfw::{Context, Key, Modifiers, StandardCursor};
   use imgui::{Condition, ConfigFlags, Key as ImGuiKey, MouseCursor};
   use imgui_opengl_renderer::Renderer;
   use std::ffi::CStr;
   use std::os::raw::c_void;
   #[allow(unused)]
   use crate::log;
+  use crate::wave_core::events::EnumEvent;
+  use crate::wave_core::input::EnumMouseButton;
   use crate::wave_core::ui::EnumError;
   
   struct GlfwClipboardBackend(*mut c_void);
@@ -80,7 +82,7 @@ pub(crate) mod ui_imgui {
   }
   
   trait TraitUi {
-    fn on_event(&mut self, window_event: &WindowEvent) -> bool;
+    fn on_event(&mut self, event: &EnumEvent) -> bool;
     fn on_update(&mut self);
     fn on_render(&mut self);
     fn on_delete(&mut self) -> Result<(), EnumError>;
@@ -103,8 +105,8 @@ pub(crate) mod ui_imgui {
       }
     }
     
-    pub fn on_event(&mut self, window_event: &WindowEvent) -> bool {
-      return self.m_api.on_event(window_event);
+    pub fn on_event(&mut self, event: &EnumEvent) -> bool {
+      return self.m_api.on_event(event);
     }
     
     pub fn on_update(&mut self) {
@@ -128,6 +130,7 @@ pub(crate) mod ui_imgui {
   pub struct GlImgui {
     m_last_frame: Time,
     m_mouse_press: [bool; 5],
+    #[allow(unused)]
     m_cursor_pos: (f64, f64),
     m_cursor: (MouseCursor, Option<StandardCursor>),
     m_imgui_handle: imgui::Context,
@@ -137,44 +140,43 @@ pub(crate) mod ui_imgui {
   }
   
   impl TraitUi for GlImgui {
-    fn on_event(&mut self, event: &WindowEvent) -> bool {
+    fn on_event(&mut self, event: &EnumEvent) -> bool {
       if self.m_imgui_handle.io_mut().want_capture_keyboard {
-        return match *event {
-          WindowEvent::MouseButton(mouse_btn, action, _) => {
+        return match event {
+          EnumEvent::MouseBtnPressedEvent(mouse_btn, _modifiers) => {
             let index = match mouse_btn {
-              MouseButton::Button1 => 0,
-              MouseButton::Button2 => 1,
-              MouseButton::Button3 => 2,
-              MouseButton::Button4 => 3,
-              MouseButton::Button5 => 4,
+              EnumMouseButton::LeftButton => 0,
+              EnumMouseButton::RightButton => 1,
+              EnumMouseButton::MiddleButton => 2,
+              EnumMouseButton::Button4 => 3,
+              EnumMouseButton::Button5 => 4,
               _ => 0,
             };
-            let press = action != Action::Release;
-            self.m_mouse_press[index] = press;
+            self.m_mouse_press[index] = true;
             self.m_imgui_handle.io_mut().mouse_down = self.m_mouse_press;
             true
-          }
-          WindowEvent::CursorPos(w, h) => {
-            self.m_imgui_handle.io_mut().mouse_pos = [w as f32, h as f32];
-            self.m_cursor_pos = (w, h);
+          },
+          // WindowEvent::CursorPos(w, h) => {
+          //   self.m_imgui_handle.io_mut().mouse_pos = [w as f32, h as f32];
+          //   self.m_cursor_pos = (w, h);
+          //   true
+          // }
+          EnumEvent::MouseScrollEvent(_x, y) => {
+            self.m_imgui_handle.io_mut().mouse_wheel = *y as f32;
             true
           }
-          WindowEvent::Scroll(_, d) => {
-            self.m_imgui_handle.io_mut().mouse_wheel = d as f32;
-            true
-          }
-          WindowEvent::Char(character) => {
-            self.m_imgui_handle.io_mut().add_input_character(character);
-            true
-          }
-          WindowEvent::Key(key, _, action, modifier) => {
+          // WindowEvent::Char(character) => {
+          //   self.m_imgui_handle.io_mut().add_input_character(character);
+          //   true
+          // }
+          EnumEvent::KeyPressedEvent(key, modifier) => {
             // GLFW modifiers.
             self.m_imgui_handle.io_mut().key_ctrl = modifier.intersects(Modifiers::Control);
             self.m_imgui_handle.io_mut().key_alt = modifier.intersects(Modifiers::Alt);
             self.m_imgui_handle.io_mut().key_shift = modifier.intersects(Modifiers::Shift);
             self.m_imgui_handle.io_mut().key_super = modifier.intersects(Modifiers::Super);
             
-            self.m_imgui_handle.io_mut().keys_down[key as usize] = action != Action::Release;
+            self.m_imgui_handle.io_mut().keys_down[*key as usize] = true;
             true
           }
           _ => false

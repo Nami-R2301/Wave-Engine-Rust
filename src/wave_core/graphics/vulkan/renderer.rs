@@ -36,6 +36,7 @@ pub(crate) use ash::vk::{self, PhysicalDeviceType, TaggedStructure};
 use crate::log;
 use crate::wave_core::assets::renderable_assets::{EnumVertexMemberOffset, REntity};
 use crate::wave_core::camera::Camera;
+use crate::wave_core::events;
 use crate::wave_core::graphics::{renderer, vulkan};
 use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumFeature, EnumState, TraitContext};
 use crate::wave_core::graphics::shader::Shader;
@@ -957,14 +958,12 @@ impl TraitContext for VkContext {
     return to_float;
   }
   
-  fn get_max_shader_version_available(&self) -> f32 {
-    return 1.0;
+  fn get_max_shader_version_available(&self) -> u16 {
+    return 1;
   }
   
-  fn on_event(&mut self, window_event: &glfw::WindowEvent) -> Result<bool, renderer::EnumError> {
-    return match window_event {
-      _ => Ok(false)
-    };
+  fn on_event(&mut self, _event: &events::EnumEvent) -> bool {
+    return false;
   }
   
   fn on_render(&mut self) -> Result<(), renderer::EnumError> {

@@ -23,8 +23,8 @@
 */
 
 use std::ops::Deref;
-use glfw::WindowEvent;
 use crate::wave_core;
+use crate::wave_core::events;
 
 pub mod app_layer;
 pub mod window_layer;
@@ -48,7 +48,7 @@ pub struct Layer {
 
 pub trait TraitLayer {
   fn on_new(&mut self) -> Result<(), wave_core::EnumError>;
-  fn on_event(&mut self, event: &WindowEvent) -> Result<bool, wave_core::EnumError>;
+  fn on_event(&mut self, event: &events::EnumEvent) -> bool;
   fn on_update(&mut self, time_step: f64) -> Result<(), wave_core::EnumError>;
   fn on_render(&mut self) -> Result<(), wave_core::EnumError>;
   fn on_delete(&mut self) -> Result<(), wave_core::EnumError>;
@@ -76,7 +76,7 @@ impl Layer {
     return self.m_data.on_new();
   }
   
-  pub fn on_event(&mut self, event: &WindowEvent) -> Result<bool, wave_core::EnumError> {
+  pub fn on_event(&mut self, event: &events::EnumEvent) -> bool {
     return self.m_data.on_event(event);
   }
   
