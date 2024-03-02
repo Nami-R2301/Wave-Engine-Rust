@@ -44,10 +44,12 @@ use crate::wave_core::math::{Mat4};
 static mut S_ENTITIES_ID_CACHE: Lazy<HashSet<u32>> = Lazy::new(|| HashSet::new());
 
 pub trait TraitRenderableEntity {
+  fn resend_transform(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn resend(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn free(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn is_sent(&self) -> bool;
+  fn has_changed(&self) -> bool;
 }
 
 #[repr(usize)]
@@ -89,6 +91,7 @@ pub struct REntity {
   // Transformations applied to the entity, to be eventually applied to the model matrix.
   m_transform: [Vec3<f32>; 3],
   m_sent: bool,
+  m_changed: bool,
   m_flat_shaded: bool
 }
 
@@ -99,6 +102,7 @@ impl REntity {
       m_renderer_id: u64::MAX,
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
+      m_changed: false,
       m_flat_shaded: false
     };
   }
@@ -109,6 +113,7 @@ impl REntity {
       m_renderer_id: u64::MAX,
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
+      m_changed: false,
       m_flat_shaded: is_flat_shaded
     };
   }
@@ -143,18 +148,25 @@ impl REntity {
   }
   
   pub fn translate(&mut self, amount: Vec3<f32>) {
-    self.m_transform[0] = Vec3::new(&[amount.x, amount.y, -amount.z]);
+    self.m_transform[0] += Vec3::new(&[amount.x, amount.y, -amount.z]);
+    self.m_changed = true;
   }
   
   pub fn rotate(&mut self, amount: Vec3<f32>) {
+    let mut copy = self.m_transform[1];
+    
     // Inverse x and y to correspond to the right orientation.
-    self.m_transform[1].x = amount.x;
-    self.m_transform[1].y = amount.y;
-    self.m_transform[1].z = -amount.z;
+    copy.x = amount.x;
+    copy.y = amount.y;
+    copy.z = -amount.z;
+    
+    self.m_transform[1] += copy;
+    self.m_changed = true;
   }
   
   pub fn scale(&mut self, amount: Vec3<f32>) {
-    self.m_transform[2] = amount;
+    self.m_transform[2] += amount;
+    self.m_changed = true;
   }
   
   pub fn get_matrix(&self) -> Mat4 {
@@ -184,12 +196,29 @@ impl PartialEq for REntity {
 }
 
 impl TraitRenderableEntity for REntity {
+  fn resend_transform(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError> {
+    if !self.m_sent {
+      log!(EnumLogColor::Red, "ERROR", "[RAssets] -->\t Cannot update shader ({0}) of entity, entity not sent previously!",
+        shader_associated.get_id());
+      return Err(EnumError::EntityNotFound);
+    }
+    
+    // Only update if the entity changed.
+    if self.m_changed {
+      let renderer = Renderer::get_active();
+      renderer.update(shader_associated, self.get_matrix())?;
+      self.m_changed = false;
+    }
+    return Ok(());
+  }
+  
   fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError> {
     let renderer = Renderer::get_active();
     
-    return match unsafe { (*renderer).enqueue(self, shader_associated) } {
+    return match renderer.enqueue(self, shader_associated) {
       Ok(_) => {
         self.m_sent = true;
+        self.m_changed = false;
         Ok(())
       }
       Err(err) => {
@@ -207,9 +236,10 @@ impl TraitRenderableEntity for REntity {
   fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumError> {
     let renderer = Renderer::get_active();
     
-    return match unsafe { (*renderer).dequeue(&self.m_renderer_id) } {
+    return match renderer.dequeue(&self.m_renderer_id) {
       Ok(_) => {
         self.m_sent = false;
+        self.m_changed = false;
         Ok(())
       }
       Err(err) => { Err(err) }
@@ -218,5 +248,9 @@ impl TraitRenderableEntity for REntity {
   
   fn is_sent(&self) -> bool {
     return self.m_sent;
+  }
+  
+  fn has_changed(&self) -> bool {
+    return self.m_changed;
   }
 }

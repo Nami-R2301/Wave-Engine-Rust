@@ -226,7 +226,7 @@ impl Shader {
       return Err(EnumError::NoShaderStagesProvided);
     }
     
-    let renderer: &mut Renderer = unsafe { &mut *Renderer::get_active() };
+    let renderer: &mut Renderer = Renderer::get_active();
     let mut shader_program: Shader = Shader::default();
     
     for shader_stage in shader_stages.iter_mut() {
@@ -277,7 +277,7 @@ impl Shader {
   }
   
   pub fn check_cache(shader_file_path: &std::path::Path) -> Result<Vec<u8>, EnumError> {
-    let renderer = unsafe { &mut *Renderer::get_active() };
+    let renderer = Renderer::get_active();
     if renderer.m_type == EnumApi::OpenGL && !renderer.check_extension("GL_ARB_gl_spirv") {
       log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Cannot load from cached SPIR-V binary : \
           \n{0:113}Current OpenGL renderer doesn't support the extension required 'GL_ARB_gl_spirv'\
@@ -360,17 +360,16 @@ impl Shader {
       .expect(&format!("[Shader] -->\t Cannot parse GLSL version number {0} in set_language()!",
         version_number_str.1.get(1..4).unwrap()));
     
-    unsafe {
-      let renderer = Renderer::get_active();
-      let max_version = (*renderer).get_max_shader_version_available();
-      // If the shader source version number is higher than supported.
-      if max_version < version_number {
-        // Try loading a source file with the appropriate version number.
-        log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Attempting to load a source file compatible with glsl {0}", max_version);
-        std::fs::read_to_string(&source.replace("#version 420", &("#version ".to_owned() + &max_version.to_string())))?;
-      }
-      return Ok(max_version);
+    
+    let renderer = Renderer::get_active();
+    let max_version = (*renderer).get_max_shader_version_available();
+    // If the shader source version number is higher than supported.
+    if max_version < version_number {
+      // Try loading a source file with the appropriate version number.
+      log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Attempting to load a source file compatible with glsl {0}", max_version);
+      std::fs::read_to_string(&source.replace("#version 420", &("#version ".to_owned() + &max_version.to_string())))?;
     }
+    return Ok(max_version);
   }
   
   fn parse_language(&mut self, shader_stage: &ShaderStage) -> Result<(), EnumError> {

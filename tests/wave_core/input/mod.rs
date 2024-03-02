@@ -38,18 +38,18 @@ fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, 
     Input::reset();
     window.get_api_mut().poll_events();
     
-    if Input::get_key_state(window, EnumKey::Escape, EnumAction::Press)? {
+    if Input::get_key_state(window, EnumKey::Escape, EnumAction::Pressed) {
       return Ok(());
     }
     
     for (&key, _) in copy.iter() {
       if modifier.is_some() {
-        if Input::get_modifier_key_combo(window, key, modifier.unwrap())? && !keys.get(&key).unwrap() {
+        if Input::get_modifier_key_combo(window, key, modifier.unwrap()) && !keys.get(&key).unwrap() {
           keys.insert(key, true);
         }
         continue;
       }
-      if Input::get_key_state(window, key, action_required)? && !keys.get(&key).unwrap() {
+      if Input::get_key_state(window, key, action_required) && !keys.get(&key).unwrap() {
         keys.insert(key, true);
       }
     }
@@ -67,12 +67,12 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
     Input::reset();
     window.get_api_mut().poll_events();
     
-    if Input::get_key_state(window, EnumKey::Escape, EnumAction::Press)? {
+    if Input::get_key_state(window, EnumKey::Escape, EnumAction::Pressed) {
       return Ok(());
     }
     
     for (&mouse_button, _) in copy.iter() {
-      if Input::get_mouse_button_state(window, mouse_button, action_required)? &&
+      if Input::get_mouse_button_state(window, mouse_button, action_required) &&
         !mouse_buttons.get(&mouse_button).unwrap() {
         mouse_buttons.insert(mouse_button, true);
       }
@@ -95,7 +95,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
       (EnumKey::A, false), (EnumKey::B, false), (EnumKey::C, false), (EnumKey::D, false),
       (EnumKey::E, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Press, None)?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Pressed, None)?;
     
     assert!(keys_tracked.into_iter().all(|(_, was_pressed)| was_pressed));
     window.hide();
@@ -109,7 +109,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
       (EnumKey::F, false), (EnumKey::G, false), (EnumKey::H, false), (EnumKey::I, false),
       (EnumKey::J, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Hold, None)?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Held, None)?;
     
     assert!(keys_tracked.into_iter().all(|(_, was_held)| was_held));
     window.hide();
@@ -123,7 +123,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
       (EnumKey::K, false), (EnumKey::L, false), (EnumKey::M, false), (EnumKey::N, false),
       (EnumKey::O, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Release, None)?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Released, None)?;
     
     assert!(keys_tracked.into_iter().all(|(_, was_released)| was_released));
     window.hide();
@@ -135,7 +135,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
     window.show();
     let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([(EnumKey::A, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Press,
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Pressed,
       Some(EnumModifier::Shift))?;
     
     assert!(keys_tracked.into_iter().all(|(_key, value)| value));
@@ -147,7 +147,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
     let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([(EnumKey::B, false),
       (EnumKey::D, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Hold,
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Held,
       Some(EnumModifier::Alt))?;
     
     assert!(keys_tracked.into_iter().all(|(_key, value)| value));
@@ -158,7 +158,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
     window.show();
     let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([(EnumKey::Space, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Release,
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Released,
       Some(EnumModifier::Control))?;
     
     assert!(keys_tracked.into_iter().all(|(_key, value)| value));
@@ -183,7 +183,7 @@ fn test_synchronous_mouse_button_inputs() -> Result<(), EnumError> {
       (EnumMouseButton::MiddleButton, false), (EnumMouseButton::Button4, false),
       (EnumMouseButton::Button5, false)]);
     
-    synchronous_mouse_button_inputs_loop(&mut window, &mut mouse_buttons_tracked, EnumAction::Press)?;
+    synchronous_mouse_button_inputs_loop(&mut window, &mut mouse_buttons_tracked, EnumAction::Pressed)?;
     
     assert!(mouse_buttons_tracked.into_iter().all(|(_, was_pressed)| was_pressed));
     window.hide();
@@ -196,7 +196,7 @@ fn test_synchronous_mouse_button_inputs() -> Result<(), EnumError> {
     let mut mouse_buttons_tracked: HashMap<EnumMouseButton, bool> = HashMap::from([
       (EnumMouseButton::LeftButton, false), (EnumMouseButton::RightButton, false)]);
     
-    synchronous_mouse_button_inputs_loop(&mut window, &mut mouse_buttons_tracked, EnumAction::Hold)?;
+    synchronous_mouse_button_inputs_loop(&mut window, &mut mouse_buttons_tracked, EnumAction::Held)?;
     
     assert!(mouse_buttons_tracked.into_iter().all(|(_, was_held)| was_held));
     window.hide();
@@ -209,7 +209,7 @@ fn test_synchronous_mouse_button_inputs() -> Result<(), EnumError> {
     let mut mouse_buttons_tracked: HashMap<EnumMouseButton, bool> = HashMap::from([
       (EnumMouseButton::RightButton, false), (EnumMouseButton::Button4, false)]);
     
-    synchronous_mouse_button_inputs_loop(&mut window, &mut mouse_buttons_tracked, EnumAction::Release)?;
+    synchronous_mouse_button_inputs_loop(&mut window, &mut mouse_buttons_tracked, EnumAction::Released)?;
     
     assert!(mouse_buttons_tracked.into_iter().all(|(_, was_released)| was_released));
     window.hide();

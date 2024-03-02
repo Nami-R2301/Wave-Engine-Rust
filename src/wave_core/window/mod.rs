@@ -116,7 +116,7 @@ pub struct Window {
   m_state: EnumState,
 }
 
-impl Window {
+impl<'a> Window {
   pub fn new(api_preference: Option<EnumApi>, resolution_preference: Option<(i32, i32)>,
              refresh_count_desired: Option<u32>, sample_count_desired: Option<u32>,
              window_mode: EnumWindowMode) -> Result<Self, EnumError> {
@@ -440,9 +440,9 @@ impl Window {
     return (self.m_window_resolution.0 as u32, self.m_window_resolution.1 as u32);
   }
   
-  pub fn get_active() -> *mut Window {
+  pub fn get_active() -> &'a mut Window {
     unsafe {
-      return S_WINDOW.expect("[Window] -->\t Cannot retrieve window : No active window \
+      return &mut *S_WINDOW.expect("[Window] -->\t Cannot retrieve window : No active window \
       contexts!");
     };
   }

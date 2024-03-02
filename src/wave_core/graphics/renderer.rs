@@ -38,6 +38,7 @@ use crate::wave_core::graphics::{vulkan};
 
 #[cfg(feature = "vulkan")]
 use crate::wave_core::graphics::vulkan::renderer::VkContext;
+use crate::wave_core::math::{Mat4};
 use crate::wave_core::window::Window;
 
 pub(crate) static mut S_RENDERER: Option<*mut Renderer> = None;
@@ -85,6 +86,8 @@ pub enum EnumError {
   ContextError,
   InvalidEntity,
   EntityNotFound,
+  ShaderNotFound,
+  UboNotFound,
   CError,
   #[cfg(feature = "vulkan")]
   VulkanError(vulkan::renderer::EnumError),
@@ -161,6 +164,7 @@ pub(crate) trait TraitContext {
   fn flush(&mut self);
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn dequeue(&mut self, id: &u64) -> Result<(), EnumError>;
+  fn update(&mut self, shader_associated: &mut Shader, transform: Mat4)-> Result<(), EnumError>;
   fn on_delete(&mut self) -> Result<(), EnumError>;
 }
 
@@ -171,7 +175,7 @@ pub struct Renderer {
   m_api: Box<dyn TraitContext>,
 }
 
-impl Renderer {
+impl<'a> Renderer {
   pub fn new(api_preference: Option<EnumApi>, window: &mut Window) -> Result<Renderer, EnumError> {
     // If user has not chosen an api, choose accordingly.
     if api_preference.is_none() {
@@ -229,7 +233,7 @@ impl Renderer {
     self.m_features = features_desired;
   }
   
-  pub fn setup_camera(&mut self, camera: &Camera) -> Result<(), EnumError> {
+  pub fn send_camera(&mut self, camera: &Camera) -> Result<(), EnumError> {
     return self.m_api.setup_camera(camera);
   }
   
@@ -280,10 +284,13 @@ impl Renderer {
     return self.m_api.dequeue(id);
   }
   
-  pub fn get_active() -> *mut Renderer {
+  pub fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), EnumError> {
+    return self.m_api.update(shader_associated, transform);
+  }
+  
+  pub fn get_active() -> &'a mut Renderer {
     return unsafe {
-      S_RENDERER.expect("[Renderer] -->\t Cannot retreive active renderer : \
-        No active renderers!")
+      &mut *S_RENDERER.expect("[Renderer] -->\t Cannot retrieve active renderer : No active renderers!")
     };
   }
   

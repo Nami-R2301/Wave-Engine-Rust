@@ -25,7 +25,7 @@
 use crate::log;
 use crate::wave_core::{EnumError, events};
 use crate::wave_core::graphics::renderer;
-use crate::wave_core::graphics::renderer::{EnumCallCheckingType, Renderer};
+use crate::wave_core::graphics::renderer::{Renderer};
 use crate::wave_core::layers::TraitLayer;
 
 pub struct RendererLayer {
@@ -49,7 +49,7 @@ impl TraitLayer for RendererLayer {
       (*self.m_context).renderer_hint(renderer::EnumFeature::CullFacing(Some(gl::BACK as i64)));
       (*self.m_context).renderer_hint(renderer::EnumFeature::DepthTest(true));
       #[cfg(feature = "debug")]
-      (*self.m_context).renderer_hint(renderer::EnumFeature::ApiCallChecking(EnumCallCheckingType::SyncAndAsync));
+      (*self.m_context).renderer_hint(renderer::EnumFeature::ApiCallChecking(renderer::EnumCallCheckingType::SyncAndAsync));
       (*self.m_context).renderer_hint(renderer::EnumFeature::Wireframe(true));
       (*self.m_context).renderer_hint(renderer::EnumFeature::MSAA(None));
       

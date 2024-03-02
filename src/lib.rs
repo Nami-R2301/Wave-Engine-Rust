@@ -26,13 +26,13 @@ pub mod wave_core {
   use once_cell::sync::Lazy;
   
   use graphics::renderer::{self, EnumApi, Renderer, S_RENDERER};
-  #[cfg(feature = "debug")]
   use graphics::shader::{self};
   use utils::Time;
   use window::{EnumWindowMode, S_WINDOW, Window};
   
   use crate::log;
   use crate::wave_core::events::{EnumEvent};
+  use crate::wave_core::input::{EnumAction, EnumKey, EnumMouseButton, Input};
   use crate::wave_core::layers::{EnumLayerType, Layer};
   use crate::wave_core::layers::app_layer::AppLayer;
   #[cfg(feature = "imgui")]
@@ -121,14 +121,14 @@ pub mod wave_core {
   pub struct Engine {
     m_app: Box<dyn TraitApp>,
     m_layers: Vec<Layer>,
-    m_window: Box<Window>,
-    m_renderer: Box<Renderer>,
+    m_window: Window,
+    m_renderer: Renderer,
     m_time_step: f64,
     m_tick_rate: f32,
     m_state: EnumState
   }
   
-  impl Engine {
+  impl<'a> Engine {
     /// Setup new engine struct containing an app with the [TraitApp] behavior in order to call
     /// `on_new()`, `on_delete()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
     /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
@@ -166,13 +166,13 @@ pub mod wave_core {
       
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Opening window...");
       // Setup window context.
-      let mut window = Box::new(Window::new(api_preference, Some((1920, 1080)),
-        None, None, EnumWindowMode::Windowed)?);
+      let mut window = Window::new(api_preference, Some((1920, 1080)),
+        None, None, EnumWindowMode::Windowed)?;
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Opened window successfully");
       
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Starting renderer...");
       // Create graphics context.
-      let renderer = Box::new(Renderer::new(api_preference, &mut window)?);
+      let renderer = Renderer::new(api_preference, &mut window)?;
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Started renderer successfully");
       
       let layers: Vec<Layer> = vec![];
@@ -199,12 +199,12 @@ pub mod wave_core {
       
       self.m_state = EnumState::Starting;
       
-      let window_layer: Layer = Layer::new("Main Window", EnumLayerType::Window, WindowLayer::new(self.m_window.as_mut()));
-      let renderer_layer: Layer = Layer::new("Renderer", EnumLayerType::Renderer, RendererLayer::new(self.m_renderer.as_mut()));
+      let window_layer: Layer = Layer::new("Main Window", EnumLayerType::Window, WindowLayer::new(&mut self.m_window));
+      let renderer_layer: Layer = Layer::new("Renderer", EnumLayerType::Renderer, RendererLayer::new(&mut self.m_renderer));
       
       #[cfg(feature = "imgui")]
       let imgui_layer: Layer = Layer::new("Imgui", EnumLayerType::Imgui,
-        ImguiLayer::new(Imgui::new(self.m_renderer.m_type, self.m_window.as_mut())));
+        ImguiLayer::new(Imgui::new(self.m_renderer.m_type, &mut self.m_window)));
       
       let app_layer: Layer = Layer::new("App", EnumLayerType::App, AppLayer::new(self.m_app.as_mut()));
       
@@ -254,14 +254,21 @@ pub mod wave_core {
         // Engine routine.
         self.m_window.get_api_mut().poll_events();
         
+        let mut any_event_processed: bool = false;
         for (_, glfw_event) in glfw::flush_messages(&self.m_window.m_api_window_events) {
           
           let event = EnumEvent::from(glfw_event);
           for layer in self.m_layers.iter_mut().rev() {
             if layer.on_event(&event) {
+              any_event_processed = true;
               break;
             }
           }
+        }
+        
+        // Update key and mouse button states for synchronous event polling in app.
+        if !any_event_processed {
+          Input::reset();
         }
         
         // Update layers.
@@ -311,46 +318,55 @@ pub mod wave_core {
       return Ok(());
     }
     
-    pub fn push_layer(&mut self, new_layer: Layer) -> () {
-      self.m_layers.push(new_layer);
+    pub fn push_layer(new_layer: Layer) -> () {
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
+      engine.m_layers.push(new_layer);
     }
     
-    pub fn pop_layer(&mut self, layer_type: EnumLayerType) -> bool {
+    pub fn pop_layer(layer_type: EnumLayerType) -> bool {
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
+      
       // Reverse iterator to get the last layer corresponding to the requested layer to remove.
-      if self.m_layers.iter().rev().any(|layer| layer.is(layer_type)) {
+      if engine.m_layers.iter().rev().any(|layer| layer.is(layer_type)) {
         return true;
       }
       return false;
     }
     
-    pub fn get_window(&mut self) -> &mut Window {
-      return &mut self.m_window;
-    }
-    
-    pub fn get_renderer(&mut self) -> &mut Renderer {
-      return &mut self.m_renderer;
-    }
-    
-    pub fn get_renderer_api(&self) -> EnumApi {
-      return self.m_renderer.m_type;
-    }
-    
-    pub fn get_log_file() -> &'static std::fs::File {
+    pub fn get_log_file() -> &'a std::fs::File {
       return &S_LOG_FILE_PTR;
     }
     
+    pub fn get_time_step() -> f64 {
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
+      return engine.m_time_step;
+    }
     
-    pub fn get() -> *mut Engine {
-      unsafe {
-        return S_ENGINE.expect("[Engine] -->\t Cannot retrieve engine : Engine is not initialized!");
-      }
+    pub fn get_renderer() -> &'a mut Renderer {
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve engine, no active engine!") };
+      return &mut engine.m_renderer;
+    }
+    
+    pub fn get_window() -> &'a mut Window {
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve engine, no active engine!") };
+      return &mut engine.m_window;
+    }
+    
+    pub fn is_key(key: EnumKey, state: EnumAction) -> bool {
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve engine, no active engine!") };
+      return Input::get_key_state(&engine.m_window, key, state);
+    }
+    
+    pub fn is_mouse_btn(button: EnumMouseButton, state: EnumAction) -> bool {
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve engine, no active engine!") };
+      return Input::get_mouse_button_state(&engine.m_window, button, state);
     }
     
     pub fn set_singleton(engine: &mut Engine) -> () {
       unsafe {
         S_ENGINE = Some(engine);
-        S_RENDERER = Some((*S_ENGINE.unwrap()).m_renderer.as_mut());
-        S_WINDOW = Some((*S_ENGINE.unwrap()).m_window.as_mut());
+        S_RENDERER = Some(&mut (*engine).m_renderer);
+        S_WINDOW = Some(&mut (*engine).m_window);
       }
     }
   }

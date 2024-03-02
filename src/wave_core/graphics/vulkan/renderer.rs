@@ -42,6 +42,7 @@ use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumFeature, En
 use crate::wave_core::graphics::shader::Shader;
 use crate::wave_core::graphics::vulkan::buffer::{VkVbo, VkVertexAttribute};
 use crate::wave_core::graphics::vulkan::shader::VkShader;
+use crate::wave_core::math::{Mat4};
 use crate::wave_core::window::Window;
 
 /*
@@ -790,7 +791,7 @@ impl VkContext {
       });
     }
     
-    let (width, height) = unsafe { (*Window::get_active()).m_api_window.get_framebuffer_size() };
+    let (width, height) = Window::get_active().m_api_window.get_framebuffer_size();
     let actual_width: u32 = clamp(width as u32, surface_capabilities.min_image_extent.width,
       surface_capabilities.max_image_extent.width);
     let actual_height: u32 = clamp(height as u32, surface_capabilities.min_image_extent.height,
@@ -962,6 +963,10 @@ impl TraitContext for VkContext {
     return 1;
   }
   
+  fn check_extension(&self, _desired_extension: &str) -> bool {
+    todo!()
+  }
+  
   fn on_event(&mut self, _event: &events::EnumEvent) -> bool {
     return false;
   }
@@ -978,7 +983,7 @@ impl TraitContext for VkContext {
     
     let window = Window::get_active();
     // Create swap chain.
-    self.create_swap_chain(unsafe { (*window).m_vsync })?;
+    self.create_swap_chain(window.m_vsync)?;
     
     let swap_chain_images = unsafe {
       if self.m_swap_chain.is_none() {
@@ -1028,10 +1033,6 @@ impl TraitContext for VkContext {
       return 2;
     }
     return 1;
-  }
-  
-  fn check_extension(&self, _desired_extension: &str) -> bool {
-    todo!()
   }
   
   fn to_string(&self) -> String {
@@ -1135,6 +1136,10 @@ impl TraitContext for VkContext {
   }
   
   fn dequeue(&mut self, _id: &u64) -> Result<(), renderer::EnumError> {
+    todo!()
+  }
+  
+  fn update(&mut self, _shader_associated: &mut Shader, _transform: Mat4) -> Result<(), renderer::EnumError> {
     todo!()
   }
   

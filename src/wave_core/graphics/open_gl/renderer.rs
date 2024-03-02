@@ -38,6 +38,7 @@ use crate::wave_core::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType
   GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
 use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumFeature, EnumState, S_RENDERER, TraitContext};
 use crate::wave_core::graphics::shader::{EnumShaderLanguageType, Shader};
+use crate::wave_core::math::{Mat4};
 use crate::wave_core::window::Window;
 
 /*
@@ -285,9 +286,7 @@ impl TraitContext for GlContext {
     let window = Window::get_active();
     
     let window = window;
-    let window_framebuffer_size = unsafe {
-      (*window).get_framebuffer_size()
-    };
+    let window_framebuffer_size = window.get_framebuffer_size();
     check_gl_call!("Renderer", gl::Viewport(0, 0, window_framebuffer_size.0 as i32, window_framebuffer_size.1 as i32));
     check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
     
@@ -301,7 +300,7 @@ impl TraitContext for GlContext {
     //
     // return framebuffer_color_sample_count.min(framebuffer_depth_sample_count);
     let window = Window::get_active();
-    return unsafe { (*window).m_samples };
+    return window.m_samples;
   }
   
   fn to_string(&self) -> String {
@@ -440,14 +439,14 @@ impl TraitContext for GlContext {
   
   fn setup_camera(&mut self, camera: &Camera) -> Result<(), renderer::EnumError> {
     // Setup view-projection ubo.
-    let mut ubo = GlUbo::new(EnumUboTypeSize::ViewProjection, 0)?;
+    let mut ubo = GlUbo::new(EnumUboTypeSize::ViewProjection, Some("ubo_camera"), 0)?;
     
     // Apply to all shaders.
     for &shader in self.m_batch.m_shaders.iter() {
       unsafe {
         // If glsl version is lower than 420, then we cannot bind blocks in shaders and have to encode them here instead.
         if (*shader).get_version() < 420 && (*shader).get_lang() == EnumShaderLanguageType::Glsl {
-          ubo.bind("ubo_camera", (*shader).get_id(), 0)?;
+          ubo.bind_block((*shader).get_id(), 0)?;
         }
       }
     }
@@ -512,11 +511,11 @@ impl TraitContext for GlContext {
     self.m_batch.m_vbo_buffers.push(vbo);
     
     // Only set ubo for view and projection.
-    let mut ubo_model = GlUbo::new(EnumUboTypeSize::Transform, 1)?;
+    let mut ubo_model = GlUbo::new(EnumUboTypeSize::Transform, Some("ubo_model"), 1)?;
     
     // If glsl version is lower than 420, then we cannot bind blocks in shaders and have to encode them here instead.
     if shader_associated.get_version() < 420 && shader_associated.get_lang() == EnumShaderLanguageType::Glsl {
-      ubo_model.bind("ubo_model", shader_associated.get_id(), 1)?;
+      ubo_model.bind_block(shader_associated.get_id(), 1)?;
     }
     ubo_model.set_data(EnumUboType::Transform(sendable_entity.get_matrix()))?;
     self.m_batch.m_ubo_buffers.push(ubo_model);
@@ -525,6 +524,30 @@ impl TraitContext for GlContext {
   
   fn dequeue(&mut self, _id: &u64) -> Result<(), renderer::EnumError> {
     todo!()
+  }
+  
+  fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), renderer::EnumError> {
+    let shader_found = self.m_batch.m_shaders.iter_mut()
+      .find(|shader| shader_associated.get_id() == unsafe { (***shader).get_id() });
+    
+    if shader_found.is_none() {
+      log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot update shader ({0}), shader not found in batch!",
+        shader_associated.get_id());
+      return Err(renderer::EnumError::ShaderNotFound);
+    }
+    
+    let ubo_model_found = self.m_batch.m_ubo_buffers.iter_mut()
+      .find(|ubo| ubo.get_name() == Some("ubo_model"));
+    
+    // If we didn't manually bind to a block name (for glsl versions < 420), otherwise binding is optional.
+    if ubo_model_found.is_none() && shader_associated.get_version() < 420 {
+      log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot update transform ubo, ubo not found in batch!");
+      return Err(renderer::EnumError::UboNotFound);
+    }
+    
+    self.m_batch.m_ubo_buffers[0].bind()?;
+    self.m_batch.m_ubo_buffers[0].set_data(EnumUboType::Transform(transform))?;
+    return Ok(());
   }
   
   fn on_delete(&mut self) -> Result<(), renderer::EnumError> {

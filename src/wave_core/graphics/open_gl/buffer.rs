@@ -465,12 +465,13 @@ pub(crate) enum EnumUboTypeSize {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct GlUbo {
   m_buffer_id: u32,
+  m_name: Option<&'static str>,
   m_size: EnumUboTypeSize,
   m_state: EnumState,
 }
 
 impl GlUbo {
-  pub(crate) fn new(size: EnumUboTypeSize, binding: u32) -> Result<Self, open_gl::renderer::EnumError> {
+  pub(crate) fn new(size: EnumUboTypeSize, block_name: Option<&'static str>, binding: u32) -> Result<Self, open_gl::renderer::EnumError> {
     let mut buffer_id = 0;
     
     check_gl_call!("GlUbo", gl::CreateBuffers(1, &mut buffer_id));
@@ -481,12 +482,32 @@ impl GlUbo {
     
     return Ok(Self {
       m_buffer_id: buffer_id,
+      m_name: block_name,
       m_size: size,
       m_state: EnumState::Created,
     });
   }
   
-  pub(crate) fn bind(&mut self, block_name: &'static str, shader_id: u32, binding: u32) -> Result<(), open_gl::renderer::EnumError> {
+  #[allow(unused)]
+  pub(crate) fn get_id(&self) -> u32 {
+    return self.m_buffer_id;
+  }
+  
+  pub(crate) fn get_name(&self) -> Option<&str> {
+    return self.m_name;
+  }
+  
+  pub(crate) fn bind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+    check_gl_call!("GlUbo", gl::BindBuffer(gl::UNIFORM_BUFFER, self.m_buffer_id));
+    return Ok(());
+  }
+  
+  pub(crate) fn bind_block(&mut self, shader_id: u32, binding: u32) -> Result<(), open_gl::renderer::EnumError> {
+    if self.m_name.is_none() {
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot bind block for ubo, no block name associated with ubo {0}!", self.m_buffer_id);
+      return Err(open_gl::renderer::EnumError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
+    }
+    
     if self.m_state == EnumState::Created || self.m_state == EnumState::Unbound {
       let mut result: i32 = 0;
       check_gl_call!("GlRenderer", gl::GetIntegerv(gl::MAX_UNIFORM_BUFFER_BINDINGS, &mut result));
@@ -506,12 +527,12 @@ impl GlUbo {
         return Err(open_gl::renderer::EnumError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
       }
       
-      let c_string = std::ffi::CString::new(block_name).expect("Cannot transform block name to C str!");
+      let c_string = std::ffi::CString::new(self.m_name.unwrap()).expect("Cannot transform block name to C str!");
       
       let u_block: u32;
       check_gl_call!("GlUbo", u_block = gl::GetUniformBlockIndex(shader_id, c_string.as_ptr()));
       if u_block == gl::INVALID_INDEX {
-        log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot bind Ubo, 'block name' {0} not found in shader!",block_name);
+        log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot bind Ubo, 'block name' {0} not found in shader!", self.m_name.unwrap());
         return Err(open_gl::renderer::EnumError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
       }
       check_gl_call!("GlUbo", gl::UniformBlockBinding(shader_id, u_block, binding));
