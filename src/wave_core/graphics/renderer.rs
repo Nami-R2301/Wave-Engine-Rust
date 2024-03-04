@@ -27,6 +27,7 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use crate::{log};
+use crate::wave_core::assets::asset_loader;
 use crate::wave_core::assets::renderable_assets::{REntity};
 use crate::wave_core::camera::{Camera};
 use crate::wave_core::events;
@@ -82,6 +83,7 @@ pub enum EnumError {
   UnsupportedApi,
   NotImplemented,
   ContextError,
+  InvalidAssetSource(asset_loader::EnumError),
   InvalidEntity,
   EntityNotFound,
   ShaderNotFound,
@@ -93,6 +95,12 @@ pub enum EnumError {
   OpenGLInvalidBufferOperation(open_gl::buffer::EnumError),
   #[cfg(feature = "vulkan")]
   VulkanInvalidBufferOperation(vulkan::buffer::EnumError),
+}
+
+impl From<asset_loader::EnumError> for EnumError {
+  fn from(value: asset_loader::EnumError) -> Self {
+    return EnumError::InvalidAssetSource(value);
+  }
 }
 
 impl From<open_gl::renderer::EnumError> for EnumError {

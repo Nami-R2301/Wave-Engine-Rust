@@ -128,9 +128,9 @@ pub struct REntity {
 }
 
 impl REntity {
-  pub fn default() -> Self {
+  pub fn default() -> Result<Self, EnumError> {
     let mut new_entity: REntity = REntity {
-      m_data: ResLoader::new("cube.obj").expect("Error loading basic obj cube!"),
+      m_data: ResLoader::new("cube.obj")?,
       m_type: EnumEntityType::Object,
       m_renderer_id: u64::MAX,
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
@@ -141,7 +141,7 @@ impl REntity {
     
     new_entity.register();
     new_entity.translate(Vec3::new(&[0.0, 0.0, 10.0]));
-    return new_entity;
+    return Ok(new_entity);
   }
   pub fn new(data: Vec<Vertex>, data_type: EnumEntityType, is_flat_shaded: bool) -> Self {
     let mut new_entity: REntity = REntity {

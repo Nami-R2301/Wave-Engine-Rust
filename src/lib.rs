@@ -23,7 +23,6 @@
 */
 
 pub mod wave_core {
-  use std::collections::BinaryHeap;
   use once_cell::sync::Lazy;
   
   use graphics::renderer::{self, EnumApi, Renderer};
