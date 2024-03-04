@@ -36,8 +36,8 @@ pub(crate) use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLintptr, 
 use crate::{check_gl_call, log};
 use crate::wave_core::assets::renderable_assets::REntity;
 use crate::wave_core::graphics::open_gl;
-use crate::wave_core::graphics::renderer::{S_RENDERER};
 use crate::wave_core::math::Mat4;
+use crate::wave_core::S_ENGINE;
 
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Ord, Hash)]
 enum EnumState {
@@ -342,7 +342,6 @@ impl GlVbo {
     return Ok(());
   }
   
-  #[allow(unused)]
   pub(crate) fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumError> {
     if vertex_size * vertex_count == 0 || vertex_size * vertex_count > self.m_size {
       return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
@@ -424,6 +423,10 @@ impl GlVbo {
     }
     self.m_state = EnumState::Unbound;
     return Ok(());
+  }
+  
+  pub fn is_empty(&self) -> bool {
+    return self.m_size == 0 || self.m_count == 0;
   }
   
   pub(crate) fn on_delete(&mut self) -> Result<(), open_gl::renderer::EnumError> {

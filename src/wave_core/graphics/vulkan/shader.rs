@@ -33,6 +33,7 @@ extern crate shaderc;
 use std::any::Any;
 
 use crate::log;
+use crate::wave_core::Engine;
 use crate::wave_core::graphics::renderer::{EnumApi, Renderer};
 use crate::wave_core::graphics::shader::{self, EnumShaderSource, EnumShaderStage, Shader, ShaderStage, TraitShader};
 use crate::wave_core::graphics::vulkan::renderer::{vk, VkContext};
@@ -209,21 +210,19 @@ impl VkShader {
     shader_module_create_info.code_size = shader_binary.len();
     shader_module_create_info.p_code = shader_binary.as_ptr() as *const u32;
     
-    let renderer = Renderer::get_active();
-    unsafe {
-      let vk_context =
-        (*renderer).get_api_handle()
-          .downcast_mut::<VkContext>()
-          .expect("[VkShader] -->\t Cannot retrieve Vulkan instance : Renderer not Vulkan!");
-      return match vk_context.get_handle().create_shader_module(&shader_module_create_info, None) {
-        Ok(shader_module) => Ok(shader_module),
-        #[allow(unused)]
-        Err(err) => {
-          log!(EnumLogColor::Red, "ERROR", "[VkShader] -->\t Cannot create Vulkan shader module : \
+    let renderer = Engine::get_active_renderer();
+    let vk_context =
+      renderer.get_api_handle()
+        .downcast_mut::<VkContext>()
+        .expect("[VkShader] -->\t Cannot retrieve Vulkan instance : Renderer not Vulkan!");
+    return match unsafe { vk_context.get_handle().create_shader_module(&shader_module_create_info, None) } {
+      Ok(shader_module) => Ok(shader_module),
+      #[allow(unused)]
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[VkShader] -->\t Cannot create Vulkan shader module : \
           Vulkan returned with error => {err:#?}");
-          Err(shader::EnumError::from(EnumError::ShaderModuleError))
-        }
-      };
-    }
+        Err(shader::EnumError::from(EnumError::ShaderModuleError))
+      }
+    };
   }
 }

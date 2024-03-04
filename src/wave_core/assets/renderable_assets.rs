@@ -30,8 +30,10 @@ use once_cell::sync::Lazy;
 
 use crate::wave_core::math::{Vec2, Vec3};
 use crate::log;
+use crate::wave_core::assets::asset_loader::ResLoader;
+use crate::wave_core::Engine;
 use crate::wave_core::graphics::color::Color;
-use crate::wave_core::graphics::renderer::{EnumError, Renderer};
+use crate::wave_core::graphics::renderer::{EnumError};
 use crate::wave_core::graphics::shader::Shader;
 use crate::wave_core::math::{Mat4};
 
@@ -62,12 +64,24 @@ pub enum EnumVertexMemberOffset {
   AtTexCoords = size_of::<u32>() + (size_of::<f32>() * 3) + (size_of::<f32>() * 3) + size_of::<Color>()
 }
 
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
+pub enum EnumEntityType {
+  Object,
+  Text
+}
+
+pub(crate) trait TraitVertex {
+  fn get_id(&self) -> u32;
+  fn register(&mut self, id: u32);
+  fn clear(&mut self);
+}
+
 #[repr(C)]
 pub struct Vertex {
   pub m_id: u32,
   pub m_position: Vec3<f32>,
   pub m_normal: Vec3<f32>,
-  pub color: Color,
+  pub m_color: Color,
   pub m_texture_coords: Vec2<f32>
 }
 
@@ -77,15 +91,33 @@ impl Vertex {
       m_id: u32::MAX,
       m_position: Vec3::default(),
       m_normal: Vec3::new(&[0.0, 0.0, 1.0]),
-      color: Color::default(),
+      m_color: Color::default(),
       m_texture_coords: Vec2::default()
     }
   }
 }
 
+impl TraitVertex for Vertex {
+  fn get_id(&self) -> u32 {
+    return self.m_id;
+  }
+  
+  fn register(&mut self, id: u32) {
+    self.m_id = id;
+  }
+  
+  fn clear(&mut self) {
+    self.m_position = Vec3::default();
+    self.m_normal = Vec3::default();
+    self.m_texture_coords = Vec2::default();
+    self.m_color = Color::default();
+  }
+}
+
 pub struct REntity {
   // Mouse picking ID per vertex.
-  pub m_data: Vec<Vertex>,
+  pub(crate) m_data: Vec<Vertex>,
+  pub(crate) m_type: EnumEntityType,
   // UUID given by the renderer to differentiate entities in batch rendering.
   m_renderer_id: u64,
   // Transformations applied to the entity, to be eventually applied to the model matrix.
@@ -97,25 +129,33 @@ pub struct REntity {
 
 impl REntity {
   pub fn default() -> Self {
-    return REntity {
-      m_data: Vec::new(),
+    let mut new_entity: REntity = REntity {
+      m_data: ResLoader::new("cube.obj").expect("Error loading basic obj cube!"),
+      m_type: EnumEntityType::Object,
       m_renderer_id: u64::MAX,
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
       m_changed: false,
       m_flat_shaded: false
     };
+    
+    new_entity.register();
+    new_entity.translate(Vec3::new(&[0.0, 0.0, 10.0]));
+    return new_entity;
   }
-  
-  pub fn new(data: Vec<Vertex>, is_flat_shaded: bool) -> Self {
-    return REntity {
+  pub fn new(data: Vec<Vertex>, data_type: EnumEntityType, is_flat_shaded: bool) -> Self {
+    let mut new_entity: REntity = REntity {
       m_data: data,
+      m_type: data_type,
       m_renderer_id: u64::MAX,
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
       m_changed: false,
       m_flat_shaded: is_flat_shaded
     };
+    
+    new_entity.register();
+    return new_entity;
   }
   
   pub fn size_of() -> usize {
@@ -143,8 +183,12 @@ impl REntity {
       }
     }
     for index in 0..self.m_data.len() {
-      self.m_data[index].m_id = new_id;
+      self.m_data[index].register(new_id);
     }
+  }
+  
+  pub fn set_type(&mut self, new_type: EnumEntityType) {
+    self.m_type = new_type;
   }
   
   pub fn translate(&mut self, amount: Vec3<f32>) {
@@ -156,8 +200,8 @@ impl REntity {
     let mut copy = self.m_transform[1];
     
     // Inverse x and y to correspond to the right orientation.
-    copy.x = amount.x;
-    copy.y = amount.y;
+    copy.x = amount.y;
+    copy.y = amount.x;
     copy.z = -amount.z;
     
     self.m_transform[1] += copy;
@@ -167,6 +211,10 @@ impl REntity {
   pub fn scale(&mut self, amount: Vec3<f32>) {
     self.m_transform[2] += amount;
     self.m_changed = true;
+  }
+  
+  pub fn get_uuid(&self) -> u64 {
+    return self.m_renderer_id;
   }
   
   pub fn get_matrix(&self) -> Mat4 {
@@ -187,7 +235,7 @@ impl Display for REntity {
 
 impl PartialEq for REntity {
   fn eq(&self, other: &Self) -> bool {
-    return self.m_data[0].m_id == other.m_data[0].m_id;
+    return self.m_type == other.m_type && self.m_data[0].get_id() == other.m_data[0].get_id();
   }
   
   fn ne(&self, other: &Self) -> bool {
@@ -205,7 +253,7 @@ impl TraitRenderableEntity for REntity {
     
     // Only update if the entity changed.
     if self.m_changed {
-      let renderer = Renderer::get_active();
+      let renderer = Engine::get_active_renderer();
       renderer.update(shader_associated, self.get_matrix())?;
       self.m_changed = false;
     }
@@ -213,7 +261,7 @@ impl TraitRenderableEntity for REntity {
   }
   
   fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError> {
-    let renderer = Renderer::get_active();
+    let renderer = Engine::get_active_renderer();
     
     return match renderer.enqueue(self, shader_associated) {
       Ok(_) => {
@@ -234,15 +282,15 @@ impl TraitRenderableEntity for REntity {
   }
   
   fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumError> {
-    let renderer = Renderer::get_active();
+    let renderer = Engine::get_active_renderer();
     
-    return match renderer.dequeue(&self.m_renderer_id) {
+    return match renderer.dequeue(self.m_renderer_id) {
       Ok(_) => {
         self.m_sent = false;
         self.m_changed = false;
         Ok(())
       }
-      Err(err) => { Err(err) }
+      Err(err) => Err(err)
     };
   }
   

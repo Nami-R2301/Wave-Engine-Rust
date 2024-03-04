@@ -30,9 +30,10 @@ use gl::types::{GLenum, GLsizei};
 use crate::{check_gl_call, log};
 use crate::wave_core::graphics::open_gl::buffer::{GLboolean, GLchar, GLfloat, GLint, GLuint};
 use crate::wave_core::graphics::open_gl::renderer::S_GL_4_6;
-use crate::wave_core::graphics::renderer::{EnumApi, Renderer, S_RENDERER};
+use crate::wave_core::graphics::renderer::{EnumApi, Renderer};
 use crate::wave_core::graphics::shader::{self, EnumShaderSource, EnumShaderStage, ShaderStage, TraitShader};
 use crate::wave_core::math::Mat4;
+use crate::wave_core::S_ENGINE;
 
 /*
 ///////////////////////////////////   OpenGL shader    ///////////////////////////////////

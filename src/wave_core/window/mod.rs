@@ -36,7 +36,6 @@ use crate::wave_core::graphics::renderer::{EnumApi};
 use crate::wave_core::input::{self, EnumKey};
 
 pub(crate) static mut S_WINDOW_CONTEXT: Option<*mut glfw::Glfw> = None;
-pub(crate) static mut S_WINDOW: Option<*mut Window> = None;
 
 pub(crate) static mut S_PREVIOUS_WIDTH: u32 = 640;
 pub(crate) static mut S_PREVIOUS_HEIGHT: u32 = 480;
@@ -299,13 +298,6 @@ impl<'a> Window {
             log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
             true
           }
-          EnumKey::R => {
-            // Resize should force the window to "refresh"
-            let (window_width, window_height) = self.m_api_window.get_size();
-            self.m_api_window.set_size(window_width + 1, window_height);
-            self.m_api_window.set_size(window_width, window_height);
-            true
-          }
           EnumKey::Enter => {
             if modifiers.intersects(Modifiers::Alt) {
               self.toggle_fullscreen();
@@ -438,13 +430,6 @@ impl<'a> Window {
       });
     }
     return (self.m_window_resolution.0 as u32, self.m_window_resolution.1 as u32);
-  }
-  
-  pub fn get_active() -> &'a mut Window {
-    unsafe {
-      return &mut *S_WINDOW.expect("[Window] -->\t Cannot retrieve window : No active window \
-      contexts!");
-    };
   }
 }
 

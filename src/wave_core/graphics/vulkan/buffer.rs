@@ -26,7 +26,7 @@
 use ash::vk;
 
 use crate::log;
-use crate::wave_core::graphics::renderer::{Renderer};
+use crate::wave_core::Engine;
 use crate::wave_core::graphics::vulkan::renderer::VkContext;
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -64,12 +64,10 @@ impl VkVertexAttribute {
   
   #[allow(unused)]
   pub(crate) fn new(binding: u32, location: u32, format: vk::Format, offset: u32) -> Result<Self, EnumError> {
-    let vk_renderer = unsafe {
-      ((*Renderer::get_active())
-        .get_api_handle()
-        .downcast_mut::<VkContext>()
-        .expect("[VkBuffer] --> Cannot create VkVertexAttribute : Renderer is not Vulkan!"))
-    };
+    let vk_renderer = Engine::get_active_renderer()
+      .get_api_handle()
+      .downcast_mut::<VkContext>()
+      .expect("[VkBuffer] --> Cannot create VkVertexAttribute : Renderer is not Vulkan!");
     
     let physical_device_limits: vk::PhysicalDeviceLimits = vk_renderer.get_limits();
     
@@ -125,13 +123,11 @@ impl VkVbo {
   
   #[allow(unused)]
   pub(crate) fn new(alloc_size: usize, binding: u32, stride: u32, input_rate: vk::VertexInputRate,
-             device: &mut ash::Device, concurrent_queues: Option<&[u32]>) -> Result<Self, EnumError> {
-    let vk_renderer = unsafe {
-      ((*Renderer::get_active())
-        .get_api_handle()
-        .downcast_mut::<VkContext>()
-        .expect("[VkBuffer] --> Cannot create VkVbo : Renderer is not Vulkan!"))
-    };
+                    device: &mut ash::Device, concurrent_queues: Option<&[u32]>) -> Result<Self, EnumError> {
+    let vk_renderer = Engine::get_active_renderer()
+      .get_api_handle()
+      .downcast_mut::<VkContext>()
+      .expect("[VkBuffer] --> Cannot create VkVbo : Renderer is not Vulkan!");
     
     let physical_device_limits: vk::PhysicalDeviceLimits = vk_renderer.get_limits();
     
@@ -239,11 +235,11 @@ impl VkVao {
     vertex_input_create_info.vertex_attribute_description_count = attributes.len() as u32;
     vertex_input_create_info.vertex_binding_description_count = vbo_array.len() as u32;
     vertex_input_create_info.p_vertex_attribute_descriptions = attributes.iter()
-      .map(|element| return element.m_attr_desc)
+      .map(|element| element.m_attr_desc)
       .collect::<Vec<vk::VertexInputAttributeDescription>>()
       .as_ptr();
     vertex_input_create_info.p_vertex_binding_descriptions = vbo_array.iter()
-      .map(|element| return element.m_input_desc)
+      .map(|element| element.m_input_desc)
       .collect::<Vec<vk::VertexInputBindingDescription>>()
       .as_ptr();
     

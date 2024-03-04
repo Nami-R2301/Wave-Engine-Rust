@@ -33,10 +33,10 @@ use std::ops::{BitAnd, BitOr};
 use ash::extensions::{ext, khr};
 pub(crate) use ash::vk::{self, PhysicalDeviceType, TaggedStructure};
 
-use crate::log;
+use crate::{log};
 use crate::wave_core::assets::renderable_assets::{EnumVertexMemberOffset, REntity};
 use crate::wave_core::camera::Camera;
-use crate::wave_core::events;
+use crate::wave_core::{Engine, events};
 use crate::wave_core::graphics::{renderer, vulkan};
 use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumFeature, EnumState, TraitContext};
 use crate::wave_core::graphics::shader::Shader;
@@ -791,7 +791,7 @@ impl VkContext {
       });
     }
     
-    let (width, height) = Window::get_active().m_api_window.get_framebuffer_size();
+    let (width, height) = Engine::get_active_window().m_api_window.get_framebuffer_size();
     let actual_width: u32 = clamp(width as u32, surface_capabilities.min_image_extent.width,
       surface_capabilities.max_image_extent.width);
     let actual_height: u32 = clamp(height as u32, surface_capabilities.min_image_extent.height,
@@ -967,8 +967,8 @@ impl TraitContext for VkContext {
     todo!()
   }
   
-  fn on_event(&mut self, _event: &events::EnumEvent) -> bool {
-    return false;
+  fn on_event(&mut self, _event: &events::EnumEvent) -> Result<bool, renderer::EnumError> {
+    return Ok(false);
   }
   
   fn on_render(&mut self) -> Result<(), renderer::EnumError> {
@@ -981,7 +981,7 @@ impl TraitContext for VkContext {
       self.toggle(*feature)?;
     }
     
-    let window = Window::get_active();
+    let window = Engine::get_active_window();
     // Create swap chain.
     self.create_swap_chain(window.m_vsync)?;
     
@@ -1123,7 +1123,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn flush(&mut self) {
+  fn flush(&mut self) -> Result<(), renderer::EnumError> {
     todo!()
   }
   
@@ -1135,7 +1135,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn dequeue(&mut self, _id: &u64) -> Result<(), renderer::EnumError> {
+  fn dequeue(&mut self, _id: u64) -> Result<(), renderer::EnumError> {
     todo!()
   }
   

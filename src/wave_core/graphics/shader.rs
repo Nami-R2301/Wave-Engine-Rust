@@ -25,6 +25,7 @@
 use std::fmt::{Display, Formatter};
 
 use crate::log;
+use crate::wave_core::Engine;
 use crate::wave_core::graphics::open_gl;
 use crate::wave_core::graphics::open_gl::shader::GlShader;
 use crate::wave_core::graphics::renderer::{EnumApi, Renderer};
@@ -226,7 +227,7 @@ impl Shader {
       return Err(EnumError::NoShaderStagesProvided);
     }
     
-    let renderer: &mut Renderer = Renderer::get_active();
+    let renderer: &mut Renderer = Engine::get_active_renderer();
     let mut shader_program: Shader = Shader::default();
     
     for shader_stage in shader_stages.iter_mut() {
@@ -277,7 +278,7 @@ impl Shader {
   }
   
   pub fn check_cache(shader_file_path: &std::path::Path) -> Result<Vec<u8>, EnumError> {
-    let renderer = Renderer::get_active();
+    let renderer = Engine::get_active_renderer();
     if renderer.m_type == EnumApi::OpenGL && !renderer.check_extension("GL_ARB_gl_spirv") {
       log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Cannot load from cached SPIR-V binary : \
           \n{0:113}Current OpenGL renderer doesn't support the extension required 'GL_ARB_gl_spirv'\
@@ -361,8 +362,8 @@ impl Shader {
         version_number_str.1.get(1..4).unwrap()));
     
     
-    let renderer = Renderer::get_active();
-    let max_version = (*renderer).get_max_shader_version_available();
+    let renderer = Engine::get_active_renderer();
+    let max_version = renderer.get_max_shader_version_available();
     // If the shader source version number is higher than supported.
     if max_version < version_number {
       // Try loading a source file with the appropriate version number.
@@ -439,7 +440,7 @@ impl Shader {
       return Ok(());
     }
     
-    let renderer = Renderer::get_active();
+    let renderer = Engine::get_active_renderer();
     self.m_api_data.on_delete(renderer)?;
     self.m_state = EnumState::Deleted;
     return Ok(());

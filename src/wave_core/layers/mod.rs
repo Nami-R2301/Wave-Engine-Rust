@@ -48,7 +48,7 @@ pub struct Layer {
 
 pub trait TraitLayer {
   fn on_new(&mut self) -> Result<(), wave_core::EnumError>;
-  fn on_event(&mut self, event: &events::EnumEvent) -> bool;
+  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, wave_core::EnumError>;
   fn on_update(&mut self, time_step: f64) -> Result<(), wave_core::EnumError>;
   fn on_render(&mut self) -> Result<(), wave_core::EnumError>;
   fn on_delete(&mut self) -> Result<(), wave_core::EnumError>;
@@ -76,7 +76,7 @@ impl Layer {
     return self.m_data.on_new();
   }
   
-  pub fn on_event(&mut self, event: &events::EnumEvent) -> bool {
+  pub fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, wave_core::EnumError> {
     return self.m_data.on_event(event);
   }
   

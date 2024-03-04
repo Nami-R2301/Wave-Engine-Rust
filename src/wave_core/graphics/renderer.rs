@@ -26,8 +26,8 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
-use crate::log;
-use crate::wave_core::assets::renderable_assets::REntity;
+use crate::{log};
+use crate::wave_core::assets::renderable_assets::{REntity};
 use crate::wave_core::camera::{Camera};
 use crate::wave_core::events;
 use crate::wave_core::graphics::{open_gl};
@@ -40,8 +40,6 @@ use crate::wave_core::graphics::{vulkan};
 use crate::wave_core::graphics::vulkan::renderer::VkContext;
 use crate::wave_core::math::{Mat4};
 use crate::wave_core::window::Window;
-
-pub(crate) static mut S_RENDERER: Option<*mut Renderer> = None;
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub enum EnumCallCheckingType {
@@ -154,17 +152,17 @@ pub(crate) trait TraitContext {
   fn get_api_version(&self) -> f32;
   fn get_max_shader_version_available(&self) -> u16;
   fn check_extension(&self, desired_extension: &str) -> bool;
-  fn on_event(&mut self, event: &events::EnumEvent) -> bool;
+  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError>;
   fn on_render(&mut self) -> Result<(), EnumError>;
   fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError>;
   fn get_max_msaa_count(&self) -> u8;
   fn to_string(&self) -> String;
   fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError>;
   fn setup_camera(&mut self, camera: &Camera) -> Result<(), EnumError>;
-  fn flush(&mut self);
+  fn flush(&mut self) -> Result<(), EnumError>;
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
-  fn dequeue(&mut self, id: &u64) -> Result<(), EnumError>;
-  fn update(&mut self, shader_associated: &mut Shader, transform: Mat4)-> Result<(), EnumError>;
+  fn dequeue(&mut self, id: u64) -> Result<(), EnumError>;
+  fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), EnumError>;
   fn on_delete(&mut self) -> Result<(), EnumError>;
 }
 
@@ -238,15 +236,20 @@ impl<'a> Renderer {
   }
   
   pub fn submit(&mut self) -> Result<(), EnumError> {
-    return Ok(self.m_api.submit(&self.m_features)?);
+    return self.m_api.submit(&self.m_features);
   }
   
   pub fn check_extension(&self, desired_extension: &str) -> bool {
     return self.m_api.check_extension(desired_extension);
   }
   
-  pub fn on_event(&mut self, event: &events::EnumEvent) -> bool {
+  pub fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
     return self.m_api.on_event(event);
+  }
+  
+  pub fn flush(&mut self) -> Result<(), EnumError> {
+    log!("INFO", "[Renderer] -->\t User called for manual flushing of rendered assets");
+    return self.m_api.flush();
   }
   
   pub fn on_render(&mut self) -> Result<(), EnumError> {
@@ -276,22 +279,19 @@ impl<'a> Renderer {
     return Ok(());
   }
   
-  pub fn enqueue(&mut self, r_entity: &REntity, associated_shader: &mut Shader) -> Result<(), EnumError> {
-    return self.m_api.enqueue(r_entity, associated_shader);
+  pub fn enqueue(&mut self, r_entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError> {
+    log!("INFO", "[Renderer] -->\t Enqueuing entity : {0}, associated with shader : {1}", r_entity.get_uuid(), shader_associated.get_id());
+    return self.m_api.enqueue(r_entity, shader_associated);
   }
   
-  pub fn dequeue(&mut self, id: &u64) -> Result<(), EnumError> {
+  pub fn dequeue(&mut self, id: u64) -> Result<(), EnumError> {
+    log!("INFO", "[Renderer] -->\t De-queuing entity : {0}", id);
     return self.m_api.dequeue(id);
   }
   
   pub fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), EnumError> {
+    log!("INFO", "[Renderer] -->\t Updating shader : {0} with transform matrix : \n{1}", shader_associated.get_id(), transform);
     return self.m_api.update(shader_associated, transform);
-  }
-  
-  pub fn get_active() -> &'a mut Renderer {
-    return unsafe {
-      &mut *S_RENDERER.expect("[Renderer] -->\t Cannot retrieve active renderer : No active renderers!")
-    };
   }
   
   pub fn get_version(&self) -> f32 {
@@ -312,20 +312,17 @@ impl Display for Renderer {
 impl Drop for Renderer {
   fn drop(&mut self) {
     if self.m_state != EnumState::Deleted && self.m_state != EnumState::NotCreated {
-      unsafe {
-        log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Dropping renderer...");
-        match self.on_delete() {
-          Ok(_) => {
-            log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Dropped renderer successfully...");
-          }
-          #[allow(unused)]
-          Err(err) => {
-            log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error while dropping renderer : \
-        Error => {:?}", err);
-            log!(EnumLogColor::Red, "INFO", "[Renderer] -->\t Dropped renderer unsuccessfully...");
-          }
+      log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Dropping renderer...");
+      match self.on_delete() {
+        Ok(_) => {
+          log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Dropped renderer successfully...");
         }
-        S_RENDERER = None;
+        #[allow(unused)]
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Error while dropping renderer : \
+        Error => {:?}", err);
+          log!(EnumLogColor::Red, "INFO", "[Renderer] -->\t Dropped renderer unsuccessfully...");
+        }
       }
     }
   }

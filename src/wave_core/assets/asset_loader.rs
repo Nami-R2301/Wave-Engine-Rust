@@ -26,7 +26,7 @@ use std::fmt::{Display, Formatter};
 use std::io::BufRead;
 
 use crate::log;
-use crate::wave_core::assets::renderable_assets::{Vertex, REntity};
+use crate::wave_core::assets::renderable_assets::{Vertex};
 use crate::wave_core::math::{Vec2, Vec3};
 
 /*
@@ -57,7 +57,7 @@ impl std::error::Error for EnumError {
 pub struct ResLoader {}
 
 impl ResLoader {
-  /// Generate a [Vertex] asset, given a file path to the desired asset file to load data from.
+  /// Generate a [Object3D] asset, given a file path to the desired asset file to load data from.
   /// The supported file types are **obj** and **gltf**. Additionally, the base resource path will be
   /// automatically supplied when looking for the file (i.e. "test.obj" => "res/assets/test.obj").
   /// Thus, only supply file paths below the **assets/** file tree.
@@ -90,7 +90,7 @@ impl ResLoader {
   /// assert_eq!(diamond, EnumError::InvalidPath);
   /// assert!(pyramid.is_ok());
   /// ```
-  pub fn new(file_name: &str) -> Result<REntity, EnumError> {
+  pub fn new(file_name: &str) -> Result<Vec<Vertex>, EnumError> {
     let asset_path = &("res/assets/".to_string() + file_name);
     let path = std::path::Path::new(asset_path).extension();
     
@@ -137,7 +137,7 @@ impl ResLoader {
   ///     + [EnumError::InvalidShapeData] : If the file could not be loaded properly due to data
   ///     corruption or invalid shape data.
   ///
-  fn load_obj(file_name: &str) -> Result<REntity, EnumError> {
+  fn load_obj(file_name: &str) -> Result<Vec<Vertex>, EnumError> {
     let file = std::fs::File::open(file_name);
     return match file {
       Ok(_) => {
@@ -365,19 +365,12 @@ impl ResLoader {
   // }
   
   fn reorganize_data_aos(vertices: &Vec<f32>, indices: &Vec<usize>, normals: &Vec<f32>,
-                         texture_coords: &Vec<f32>) -> REntity {
-    let mut object: REntity = REntity::default();
+                         texture_coords: &Vec<f32>) -> Vec<Vertex> {
+    let mut entity: Vec<Vertex> = Vec::with_capacity(indices.len());
+    let mut normals_counted: Vec<Vec3<f32>> = Vec::new();
     
     for index in (0..indices.len()).step_by(3) {
       let mut vertex: Vertex = Vertex::default();
-      
-      vertex.m_position = Vec3::new(&[vertices[indices[index] * 3],
-        vertices[(indices[index] * 3) + 1], 0.0]);
-      
-      // If our vertex is in 3D space.
-      if vertices.len() % 3 == 0 {
-        vertex.m_position.z = vertices[(indices[index] * 3) + 2];
-      }
       
       // If we have texture coordinates, add them.
       if indices[index + 1] != usize::MAX - 1 {
@@ -387,25 +380,22 @@ impl ResLoader {
         }
       }
       
-      // If we have normals, add them.
-      if indices[index + 2] != usize::MAX - 1 {
-        if normals[indices[index + 2] * 3] != f32::MIN {
-          vertex.m_normal = Vec3::new(&[normals[indices[index + 2] * 3],
-            normals[(indices[index + 2] * 3) + 1], 0.0]);
-          
-          // If our normal is in 3D space.
-          if normals[(indices[index + 2] * 3) + 2] != f32::MIN {
-            vertex.m_normal.z = normals[(indices[index + 2] * 3) + 2];
-          }
+      if normals[indices[index + 2] * 3] != f32::MIN {
+        vertex.m_position = Vec3::new(&[vertices[indices[index] * 3], vertices[(indices[index] * 3) + 1],
+          vertices[(indices[index] * 3) + 2]]);
+        
+        // If we have normals, add them.
+        if indices[index + 2] != usize::MAX - 1 {
+            normals_counted.push(Vec3::new(&[normals[indices[index + 2] * 3],
+              normals[(indices[index + 2] * 3) + 1], normals[(indices[index + 2] * 3) + 2]]));
         }
       }
-      object.m_data.push(vertex);
+      entity.push(vertex);
     }
-    object.register();  // Assign a random entity ID common for all vertices.
-    return object;
+    return entity;
   }
   
-  fn load_gltf(_file_name: &str) -> Result<REntity, EnumError> {
+  fn load_gltf(_file_name: &str) -> Result<Vec<Vertex>, EnumError> {
     todo!()
   }
 }

@@ -43,8 +43,8 @@ impl TraitLayer for ImguiLayer {
     return Ok(());
   }
   
-  fn on_event(&mut self, event: &events::EnumEvent) -> bool {
-    return self.m_ui.on_event(event);
+  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
+    return Ok(self.m_ui.on_event(event));
   }
   
   fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {

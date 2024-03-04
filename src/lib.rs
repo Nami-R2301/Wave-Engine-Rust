@@ -23,12 +23,13 @@
 */
 
 pub mod wave_core {
+  use std::collections::BinaryHeap;
   use once_cell::sync::Lazy;
   
-  use graphics::renderer::{self, EnumApi, Renderer, S_RENDERER};
+  use graphics::renderer::{self, EnumApi, Renderer};
   use graphics::shader::{self};
   use utils::Time;
-  use window::{EnumWindowMode, S_WINDOW, Window};
+  use window::{EnumWindowMode, Window};
   
   use crate::log;
   use crate::wave_core::events::{EnumEvent};
@@ -112,7 +113,7 @@ pub mod wave_core {
   
   pub trait TraitApp {
     fn on_new(&mut self) -> Result<(), EnumError>;
-    fn on_event(&mut self, event: &EnumEvent) -> bool;
+    fn on_event(&mut self, event: &EnumEvent) -> Result<bool, EnumError>;
     fn on_update(&mut self, time_step: f64) -> Result<(), EnumError>;
     fn on_render(&mut self) -> Result<(), EnumError>;
     fn on_delete(&mut self) -> Result<(), EnumError>;
@@ -125,7 +126,7 @@ pub mod wave_core {
     m_renderer: Renderer,
     m_time_step: f64,
     m_tick_rate: f32,
-    m_state: EnumState
+    m_state: EnumState,
   }
   
   impl<'a> Engine {
@@ -175,18 +176,16 @@ pub mod wave_core {
       let renderer = Renderer::new(api_preference, &mut window)?;
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Started renderer successfully");
       
-      let layers: Vec<Layer> = vec![];
-      
       Ok({
         log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
         Engine {
           m_app: app_provided.unwrap_or(Box::new(EmptyApp::default())),
-          m_layers: layers,
+          m_layers: Vec::new(),
           m_window: window,
           m_renderer: renderer,
           m_time_step: 0.0,
           m_tick_rate: 0.0,
-          m_state: EnumState::NotStarted
+          m_state: EnumState::NotStarted,
         }
       })
     }
@@ -201,16 +200,9 @@ pub mod wave_core {
       
       let window_layer: Layer = Layer::new("Main Window", EnumLayerType::Window, WindowLayer::new(&mut self.m_window));
       let renderer_layer: Layer = Layer::new("Renderer", EnumLayerType::Renderer, RendererLayer::new(&mut self.m_renderer));
-      
-      #[cfg(feature = "imgui")]
-      let imgui_layer: Layer = Layer::new("Imgui", EnumLayerType::Imgui,
-        ImguiLayer::new(Imgui::new(self.m_renderer.m_type, &mut self.m_window)));
-      
       let app_layer: Layer = Layer::new("App", EnumLayerType::App, AppLayer::new(self.m_app.as_mut()));
       
       self.m_layers.push(window_layer);
-      #[cfg(feature = "imgui")]
-      self.m_layers.push(imgui_layer);
       self.m_layers.push(renderer_layer);
       self.m_layers.push(app_layer);
       
@@ -256,10 +248,9 @@ pub mod wave_core {
         
         let mut any_event_processed: bool = false;
         for (_, glfw_event) in glfw::flush_messages(&self.m_window.m_api_window_events) {
-          
           let event = EnumEvent::from(glfw_event);
           for layer in self.m_layers.iter_mut().rev() {
-            if layer.on_event(&event) {
+            if layer.on_event(&event)? {
               any_event_processed = true;
               break;
             }
@@ -318,6 +309,16 @@ pub mod wave_core {
       return Ok(());
     }
     
+    #[cfg(feature = "imgui")]
+    pub fn push_imgui_layer() -> () {
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
+      
+      let imgui_layer: Layer = Layer::new("Imgui", EnumLayerType::Imgui,
+        ImguiLayer::new(Imgui::new(engine.m_renderer.m_type, &mut engine.m_window)));
+      
+      engine.m_layers.push(imgui_layer);
+    }
+    
     pub fn push_layer(new_layer: Layer) -> () {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
       engine.m_layers.push(new_layer);
@@ -342,12 +343,12 @@ pub mod wave_core {
       return engine.m_time_step;
     }
     
-    pub fn get_renderer() -> &'a mut Renderer {
+    pub fn get_active_renderer() -> &'a mut Renderer {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve engine, no active engine!") };
       return &mut engine.m_renderer;
     }
     
-    pub fn get_window() -> &'a mut Window {
+    pub fn get_active_window() -> &'a mut Window {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve engine, no active engine!") };
       return &mut engine.m_window;
     }
@@ -363,11 +364,7 @@ pub mod wave_core {
     }
     
     pub fn set_singleton(engine: &mut Engine) -> () {
-      unsafe {
-        S_ENGINE = Some(engine);
-        S_RENDERER = Some(&mut (*engine).m_renderer);
-        S_WINDOW = Some(&mut (*engine).m_window);
-      }
+      unsafe { S_ENGINE = Some(engine) };
     }
   }
   
@@ -410,8 +407,8 @@ pub mod wave_core {
       return Ok(());
     }
     
-    fn on_event(&mut self, _event: &EnumEvent) -> bool {
-      return false;
+    fn on_event(&mut self, _event: &EnumEvent) -> Result<bool, EnumError> {
+      return Ok(false);
     }
     
     fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {

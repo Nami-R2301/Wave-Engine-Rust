@@ -34,7 +34,7 @@ impl TraitLayer for AppLayer {
     return unsafe { (*self.m_app).on_new() };
   }
   
-  fn on_event(&mut self, event: &events::EnumEvent) -> bool {
+  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
     return unsafe { (*self.m_app).on_event(event) };
   }
   
