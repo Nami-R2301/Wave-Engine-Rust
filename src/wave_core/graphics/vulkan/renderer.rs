@@ -54,6 +54,7 @@ use crate::wave_core::window::Window;
 #[derive(Debug, PartialEq)]
 pub enum EnumError {
   NotSupported,
+  NoActiveWindow,
   LayerError,
   ExtensionError,
   InstanceError,
@@ -960,7 +961,12 @@ impl TraitContext for VkContext {
   }
   
   fn get_max_shader_version_available(&self) -> u16 {
-    return 1;
+    let device_properties =
+      unsafe {
+        self.m_instance.get_physical_device_properties(self.m_physical_device)
+      };
+    let to_float: f32 = format!("{0}.{1}", vk::api_version_major(device_properties.api_version), vk::api_version_minor(device_properties.api_version)).parse().unwrap();
+    return (to_float * 10.0) as u16;
   }
   
   fn check_extension(&self, _desired_extension: &str) -> bool {
@@ -981,7 +987,7 @@ impl TraitContext for VkContext {
       self.toggle(*feature)?;
     }
     
-    let window = Engine::get_active_window();
+    let window =  Engine::get_active_window();
     // Create swap chain.
     self.create_swap_chain(window.m_vsync)?;
     
@@ -1005,7 +1011,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn get_max_msaa_count(&self) -> u8 {
+  fn get_max_msaa_count(&self) -> Result<u8, renderer::EnumError> {
     let device_properties =
       unsafe {
         self.m_instance.get_physical_device_properties(self.m_physical_device)
@@ -1015,24 +1021,24 @@ impl TraitContext for VkContext {
     let max_sample_count = max_color_sample_count.min(max_depth_sample_count);
     
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_64) {
-      return 64;
+      return Ok(64);
     }
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_32) {
-      return 32;
+      return Ok(32);
     }
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_16) {
-      return 16;
+      return Ok(16);
     }
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_8) {
-      return 8;
+      return Ok(8);
     }
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_4) {
-      return 4;
+      return Ok(4);
     }
     if max_sample_count.contains(vk::SampleCountFlags::TYPE_2) {
-      return 2;
+      return Ok(2);
     }
-    return 1;
+    return Ok(1);
   }
   
   fn to_string(&self) -> String {
@@ -1098,7 +1104,7 @@ impl TraitContext for VkContext {
         #[allow(unused)]
           let mut max_sample_count: u8 = 1;
         if sample_count.is_some() {
-          max_sample_count = self.get_max_msaa_count();
+          max_sample_count = self.get_max_msaa_count()?;
           if sample_count.unwrap() > max_sample_count && sample_count.unwrap() > 2 {
             log!(EnumLogColor::Yellow, "WARN", "[VkContext] -->\t Cannot enable MSAA with X{0}! \
               Defaulting to {1}...", sample_count.unwrap(), max_sample_count);

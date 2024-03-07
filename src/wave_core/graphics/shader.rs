@@ -214,7 +214,7 @@ impl Shader {
   pub fn default() -> Self {
     return Self {
       m_state: EnumState::NotCreated,
-      m_version: 330,
+      m_version: 420,
       m_shader_lang: EnumShaderLanguageType::Glsl,
       m_api_data: Box::new(GlShader::default()),
     };
@@ -278,7 +278,7 @@ impl Shader {
   }
   
   pub fn check_cache(shader_file_path: &std::path::Path) -> Result<Vec<u8>, EnumError> {
-    let renderer = Engine::get_active_renderer();
+    let renderer: &mut Renderer = Engine::get_active_renderer();
     if renderer.m_type == EnumApi::OpenGL && !renderer.check_extension("GL_ARB_gl_spirv") {
       log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Cannot load from cached SPIR-V binary : \
           \n{0:113}Current OpenGL renderer doesn't support the extension required 'GL_ARB_gl_spirv'\
@@ -362,15 +362,19 @@ impl Shader {
         version_number_str.1.get(1..4).unwrap()));
     
     
-    let renderer = Engine::get_active_renderer();
-    let max_version = renderer.get_max_shader_version_available();
-    // If the shader source version number is higher than supported.
-    if max_version < version_number {
-      // Try loading a source file with the appropriate version number.
-      log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Attempting to load a source file compatible with glsl {0}", max_version);
-      std::fs::read_to_string(&source.replace("#version 420", &("#version ".to_owned() + &max_version.to_string())))?;
+    let renderer: &mut Renderer = Engine::get_active_renderer();
+    
+    if renderer.m_type == EnumApi::OpenGL {
+      let max_version = renderer.get_max_shader_version_available();
+      // If the shader source version number is higher than supported.
+      if max_version < version_number {
+        // Try loading a source file with the appropriate version number.
+        log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Attempting to load a source file compatible with glsl {0}", max_version);
+        std::fs::read_to_string(&source.replace("#version 420", &("#version ".to_owned() + &max_version.to_string())))?;
+        return Ok(max_version);
+      }
     }
-    return Ok(max_version);
+    return Ok(renderer.get_max_shader_version_available());
   }
   
   fn parse_language(&mut self, shader_stage: &ShaderStage) -> Result<(), EnumError> {
@@ -440,7 +444,7 @@ impl Shader {
       return Ok(());
     }
     
-    let renderer = Engine::get_active_renderer();
+    let renderer: &mut Renderer = Engine::get_active_renderer();
     self.m_api_data.on_delete(renderer)?;
     self.m_state = EnumState::Deleted;
     return Ok(());

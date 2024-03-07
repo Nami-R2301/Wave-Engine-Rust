@@ -62,7 +62,7 @@ impl TraitLayer for RendererLayer {
     return Ok(());
   }
   
-  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, wave_core::EnumError> {
+  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
     return unsafe { (*self.m_context).on_event(event).map_err(|err| wave_core::EnumError::from(err)) };
   }
   

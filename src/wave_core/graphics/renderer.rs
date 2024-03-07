@@ -78,7 +78,7 @@ pub enum EnumFeature {
 pub enum EnumError {
   Init,
   NoApi,
-  NoActiveRendererError,
+  NoActiveRenderer,
   InvalidApi,
   UnsupportedApi,
   NotImplemented,
@@ -163,7 +163,7 @@ pub(crate) trait TraitContext {
   fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError>;
   fn on_render(&mut self) -> Result<(), EnumError>;
   fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError>;
-  fn get_max_msaa_count(&self) -> u8;
+  fn get_max_msaa_count(&self) -> Result<u8, EnumError>;
   fn to_string(&self) -> String;
   fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError>;
   fn setup_camera(&mut self, camera: &Camera) -> Result<(), EnumError>;
@@ -298,7 +298,6 @@ impl<'a> Renderer {
   }
   
   pub fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), EnumError> {
-    log!("INFO", "[Renderer] -->\t Updating shader : {0} with transform matrix : \n{1}", shader_associated.get_id(), transform);
     return self.m_api.update(shader_associated, transform);
   }
   

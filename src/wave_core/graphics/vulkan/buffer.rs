@@ -26,7 +26,7 @@
 use ash::vk;
 
 use crate::log;
-use crate::wave_core::Engine;
+use crate::wave_core::{Engine};
 use crate::wave_core::graphics::vulkan::renderer::VkContext;
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -124,7 +124,7 @@ impl VkVbo {
   #[allow(unused)]
   pub(crate) fn new(alloc_size: usize, binding: u32, stride: u32, input_rate: vk::VertexInputRate,
                     device: &mut ash::Device, concurrent_queues: Option<&[u32]>) -> Result<Self, EnumError> {
-    let vk_renderer = Engine::get_active_renderer()
+    let vk_renderer =  Engine::get_active_renderer()
       .get_api_handle()
       .downcast_mut::<VkContext>()
       .expect("[VkBuffer] --> Cannot create VkVbo : Renderer is not Vulkan!");

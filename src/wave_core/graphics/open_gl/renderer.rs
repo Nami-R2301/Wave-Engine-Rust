@@ -267,7 +267,7 @@ impl TraitContext for GlContext {
   
   fn on_event(&mut self, event: &EnumEvent) -> Result<bool, renderer::EnumError> {
     return match event {
-     EnumEvent::WindowResizeEvent(width, height) => {
+     EnumEvent::FramebufferEvent(width, height) => {
         check_gl_call!("GlContext", gl::Viewport(0, 0, *width as GLsizei, *height as GLsizei));
         Ok(true)
       }
@@ -294,8 +294,6 @@ impl TraitContext for GlContext {
     }
     
     let window = Engine::get_active_window();
-    
-    let window = window;
     let window_framebuffer_size = window.get_framebuffer_size();
     check_gl_call!("Renderer", gl::Viewport(0, 0, window_framebuffer_size.0 as i32, window_framebuffer_size.1 as i32));
     check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
@@ -304,13 +302,13 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn get_max_msaa_count(&self) -> u8 {
+  fn get_max_msaa_count(&self) -> Result<u8, renderer::EnumError> {
     // let framebuffer_color_sample_count: u8 = self.m_framebuffer.max_color_sample_count;
     // let framebuffer_depth_sample_count: u8 = self.m_framebuffer.max_depth_sample_count;
     //
     // return framebuffer_color_sample_count.min(framebuffer_depth_sample_count);
     let window = Engine::get_active_window();
-    return window.m_samples;
+    return Ok(window.m_samples);
   }
   
   fn to_string(&self) -> String {
@@ -385,7 +383,7 @@ impl TraitContext for GlContext {
         #[allow(unused)]
           let mut max_sample_count: u8 = 1;
         if sample_count.is_some() {
-          max_sample_count = self.get_max_msaa_count();
+          max_sample_count = self.get_max_msaa_count()?;
           if max_sample_count < 2 {
             log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot enable MSAA!");
             return Err(renderer::EnumError::from(EnumError::MSAAError));

@@ -31,7 +31,7 @@ pub mod wave_core {
   use window::{EnumWindowMode, Window};
   
   use crate::log;
-  use crate::wave_core::events::{EnumEvent};
+  use crate::wave_core::events::{AsyncCallback, EnumEvent, EnumEventMask};
   use crate::wave_core::input::{EnumAction, EnumKey, EnumMouseButton, Input};
   use crate::wave_core::layers::{EnumLayerType, Layer};
   use crate::wave_core::layers::app_layer::AppLayer;
@@ -55,8 +55,7 @@ pub mod wave_core {
   pub mod layers;
   
   static mut S_ENGINE: Option<*mut Engine> = None;
-  
-  static S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::logger::init().unwrap());
+  pub(crate) static S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::logger::init().unwrap());
   
   #[derive(Debug, Copy, Clone, PartialEq)]
   enum EnumState {
@@ -71,6 +70,7 @@ pub mod wave_core {
   
   #[derive(Debug, PartialEq)]
   pub enum EnumError {
+    NoActiveEngine,
     UndefinedError,
     AppError,
     ResourceError(assets::asset_loader::EnumError),
@@ -79,6 +79,7 @@ pub mod wave_core {
     WindowError(window::EnumError),
     InputError(input::EnumError),
     UiError(ui::EnumError),
+    EventError(events::EnumError),
   }
   
   macro_rules! impl_enum_error {
@@ -110,9 +111,12 @@ pub mod wave_core {
   // Convert ui errors to wave_core::EnumError.
   impl_enum_error!(ui::EnumError, EnumError::UiError);
   
+  impl_enum_error!(events::EnumError, EnumError::EventError);
+  
   pub trait TraitApp {
     fn on_new(&mut self) -> Result<(), EnumError>;
-    fn on_event(&mut self, event: &EnumEvent) -> Result<bool, EnumError>;
+    fn on_sync_event(&mut self) -> Result<bool, EnumError>;
+    fn on_async_event(&mut self, event: &EnumEvent) -> Result<bool, EnumError>;
     fn on_update(&mut self, time_step: f64) -> Result<(), EnumError>;
     fn on_render(&mut self) -> Result<(), EnumError>;
     fn on_delete(&mut self) -> Result<(), EnumError>;
@@ -120,7 +124,7 @@ pub mod wave_core {
   
   pub struct Engine {
     m_app: Box<dyn TraitApp>,
-    m_layers: Vec<Layer>,
+    m_layers_vec: Vec<Layer>,
     m_window: Window,
     m_renderer: Renderer,
     m_time_step: f64,
@@ -161,13 +165,12 @@ pub mod wave_core {
     /// engine.on_delete();
     /// return Ok(());
     /// ```
-    pub fn new(api_preference: Option<EnumApi>, app_provided: Option<Box<dyn TraitApp>>) -> Result<Self, EnumError> {
+    pub fn new(api_preference: Option<EnumApi>, app_provided: Box<dyn TraitApp>) -> Result<Self, EnumError> {
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
       
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Opening window...");
-      // Setup window context.
-      let mut window = Window::new(api_preference, Some((1920, 1080)),
-        None, None, EnumWindowMode::Windowed)?;
+      // Create window context.
+      let mut window = Window::new(api_preference, Some((1920, 1080)), None, None, EnumWindowMode::Windowed)?;
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Opened window successfully");
       
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Starting renderer...");
@@ -178,8 +181,8 @@ pub mod wave_core {
       Ok({
         log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
         Engine {
-          m_app: app_provided.unwrap_or(Box::new(EmptyApp::default())),
-          m_layers: Vec::new(),
+          m_app: app_provided,
+          m_layers_vec: Vec::new(),
           m_window: window,
           m_renderer: renderer,
           m_time_step: 0.0,
@@ -201,15 +204,15 @@ pub mod wave_core {
       let renderer_layer: Layer = Layer::new("Renderer", EnumLayerType::Renderer, RendererLayer::new(&mut self.m_renderer));
       let app_layer: Layer = Layer::new("App", EnumLayerType::App, AppLayer::new(self.m_app.as_mut()));
       
-      self.m_layers.push(window_layer);
-      self.m_layers.push(renderer_layer);
-      self.m_layers.push(app_layer);
+      self.m_layers_vec.push(window_layer);
+      self.m_layers_vec.push(renderer_layer);
+      self.m_layers_vec.push(app_layer);
       
       Engine::set_singleton(self);
       
-      for layer in self.m_layers.iter_mut() {
-        layer.on_new()?;
-      }
+      self.m_layers_vec[0].on_new()?;
+      self.m_layers_vec[1].on_new()?;
+      self.m_layers_vec[2].on_new()?;
       
       self.m_state = EnumState::Started;
       return Ok(());
@@ -236,19 +239,31 @@ pub mod wave_core {
       
       let title_cache: String = format!("Wave Engine (Rust) | {0:?}", self.m_renderer.m_type);
       self.m_window.set_title(&title_cache);
+      let window_ref: *mut Window = &mut self.m_window;
       
       // Loop until the user closes the window
       while !self.m_window.is_closing() {
         self.m_time_step = Time::get_delta(frame_start, Time::from(chrono::Utc::now())).to_secs();
         frame_start = Time::from(chrono::Utc::now());
         
-        // Engine routine.
-        self.m_window.get_api_mut().poll_events();
-        
         let mut any_event_processed: bool = false;
-        for (_, glfw_event) in glfw::flush_messages(&self.m_window.m_api_window_events) {
+        self.m_window.poll_events();
+        
+        // Async event polling.
+        for (_, glfw_event) in glfw::flush_messages(unsafe { &(*window_ref).m_api_window_events }) {
           let event = EnumEvent::from(glfw_event);
-          for layer in self.m_layers.iter_mut().rev() {
+          
+          match event {
+            EnumEvent::FramebufferEvent(_, _) | EnumEvent::WindowPosEvent(_, _) => {
+              any_event_processed = self.m_window.on_event(&event);
+              if any_event_processed {
+                continue;
+              }
+            }
+            _ => {}
+          }
+          
+          for layer in self.m_layers_vec.iter_mut().rev() {
             if layer.on_event(&event)? {
               any_event_processed = true;
               break;
@@ -256,18 +271,18 @@ pub mod wave_core {
           }
         }
         
-        // Update key and mouse button states for synchronous event polling in app.
+        // Sync event polling.
         if !any_event_processed {
-          Input::reset();
+          self.m_app.on_sync_event()?;
         }
         
         // Update layers.
-        for layer in self.m_layers.iter_mut().rev() {
+        for layer in self.m_layers_vec.iter_mut().rev() {
           layer.on_update(self.m_time_step)?;
         }
         
         // Render layers.
-        for layer in self.m_layers.iter_mut().rev() {
+        for layer in self.m_layers_vec.iter_mut().rev() {
           layer.on_render()?;
         }
         
@@ -309,26 +324,30 @@ pub mod wave_core {
     }
     
     #[cfg(feature = "imgui")]
-    pub fn push_imgui_layer() -> () {
+    pub fn push_imgui_layer() {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
       
       let imgui_layer: Layer = Layer::new("Imgui", EnumLayerType::Imgui,
         ImguiLayer::new(Imgui::new(engine.m_renderer.m_type, &mut engine.m_window)));
       
-      engine.m_layers.push(imgui_layer);
+      engine.m_layers_vec.push(imgui_layer);
+      engine.m_layers_vec.sort_unstable();
     }
     
-    pub fn push_layer(new_layer: Layer) -> () {
+    pub fn push_layer(new_layer: Layer) {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
-      engine.m_layers.push(new_layer);
+      engine.m_layers_vec.push(new_layer);
+      engine.m_layers_vec.sort_unstable();
     }
     
     pub fn pop_layer(layer_type: EnumLayerType) -> bool {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
       
-      // Reverse iterator to get the last layer corresponding to the requested layer to remove.
-      if engine.m_layers.iter().rev().any(|layer| layer.is(layer_type)) {
-        return true;
+      for index in 0..engine.m_layers_vec.len() {
+        if engine.m_layers_vec[index].is(layer_type) {
+          engine.m_layers_vec.remove(index);
+          return true;
+        }
       }
       return false;
     }
@@ -338,31 +357,41 @@ pub mod wave_core {
     }
     
     pub fn get_time_step() -> f64 {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
       return engine.m_time_step;
     }
     
     pub fn get_active_renderer() -> &'a mut Renderer {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve engine, no active engine!") };
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
       return &mut engine.m_renderer;
     }
     
     pub fn get_active_window() -> &'a mut Window {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve engine, no active engine!") };
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
       return &mut engine.m_window;
     }
     
     pub fn is_key(key: EnumKey, state: EnumAction) -> bool {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve engine, no active engine!") };
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
       return Input::get_key_state(&engine.m_window, key, state);
     }
     
     pub fn is_mouse_btn(button: EnumMouseButton, state: EnumAction) -> bool {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve engine, no active engine!") };
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
       return Input::get_mouse_button_state(&engine.m_window, button, state);
     }
     
-    pub fn set_singleton(engine: &mut Engine) -> () {
+    pub fn enable_polling(event_mask: EnumEventMask, callback: Option<AsyncCallback>) {
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
+      engine.m_window.set_polling(event_mask, callback);
+    }
+    
+    pub fn disable_polling(event_mask: EnumEventMask) {
+      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
+      engine.m_window.unset_polling(event_mask);
+    }
+    
+    fn set_singleton(engine: &mut Engine) -> () {
       unsafe { S_ENGINE = Some(engine) };
     }
   }
@@ -406,7 +435,12 @@ pub mod wave_core {
       return Ok(());
     }
     
-    fn on_event(&mut self, _event: &EnumEvent) -> Result<bool, EnumError> {
+    fn on_sync_event(&mut self) -> Result<bool, EnumError> {
+      todo!()
+    }
+    
+    fn on_async_event(&mut self, _event: &EnumEvent) -> Result<bool, EnumError> {
+      log!(EnumLogColor::Red, "DEBUG", "[App] -->\t on_event() CALLED!!!!!!!!!!");
       return Ok(false);
     }
     

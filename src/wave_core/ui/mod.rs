@@ -54,7 +54,7 @@ pub(crate) mod ui_imgui {
   pub use glfw;
   
   use glfw::ffi::GLFWwindow;
-  use glfw::{Context, Key, Modifiers, StandardCursor};
+  use glfw::{Context, Key, StandardCursor};
   use imgui::{Condition, ConfigFlags, Key as ImGuiKey, MouseCursor};
   use imgui_opengl_renderer::Renderer;
   use std::ffi::CStr;
@@ -62,7 +62,7 @@ pub(crate) mod ui_imgui {
   #[allow(unused)]
   use crate::log;
   use crate::wave_core::events::EnumEvent;
-  use crate::wave_core::input::EnumMouseButton;
+  use crate::wave_core::input::{EnumAction, EnumModifiers, EnumMouseButton};
   use crate::wave_core::ui::EnumError;
   
   struct GlfwClipboardBackend(*mut c_void);
@@ -143,7 +143,7 @@ pub(crate) mod ui_imgui {
     fn on_event(&mut self, event: &EnumEvent) -> bool {
       if self.m_imgui_handle.io_mut().want_capture_keyboard {
         return match event {
-          EnumEvent::MouseBtnPressedEvent(mouse_btn, _modifiers) => {
+          EnumEvent::MouseBtnEvent(mouse_btn, action, _modifiers) => {
             let index = match mouse_btn {
               EnumMouseButton::LeftButton => 0,
               EnumMouseButton::RightButton => 1,
@@ -152,8 +152,9 @@ pub(crate) mod ui_imgui {
               EnumMouseButton::Button5 => 4,
               _ => 0,
             };
-            self.m_mouse_press[index] = true;
-            self.m_imgui_handle.io_mut().mouse_down = self.m_mouse_press;
+            self.m_mouse_press[index] = action == &EnumAction::Pressed;
+            
+            self.m_imgui_handle.io_mut().mouse_down[index] = action != &EnumAction::Released;
             true
           },
           // WindowEvent::CursorPos(w, h) => {
@@ -169,14 +170,14 @@ pub(crate) mod ui_imgui {
           //   self.m_imgui_handle.io_mut().add_input_character(character);
           //   true
           // }
-          EnumEvent::KeyPressedEvent(key, modifier) => {
+          EnumEvent::KeyEvent(key, action, _repeat_count, modifier) => {
             // GLFW modifiers.
-            self.m_imgui_handle.io_mut().key_ctrl = modifier.intersects(Modifiers::Control);
-            self.m_imgui_handle.io_mut().key_alt = modifier.intersects(Modifiers::Alt);
-            self.m_imgui_handle.io_mut().key_shift = modifier.intersects(Modifiers::Shift);
-            self.m_imgui_handle.io_mut().key_super = modifier.intersects(Modifiers::Super);
+            self.m_imgui_handle.io_mut().key_ctrl = modifier.intersects(EnumModifiers::Control);
+            self.m_imgui_handle.io_mut().key_alt = modifier.intersects(EnumModifiers::Alt);
+            self.m_imgui_handle.io_mut().key_shift = modifier.intersects(EnumModifiers::Shift);
+            self.m_imgui_handle.io_mut().key_super = modifier.intersects(EnumModifiers::Super);
             
-            self.m_imgui_handle.io_mut().keys_down[*key as usize] = true;
+            self.m_imgui_handle.io_mut().keys_down[*key as usize] = action != &EnumAction::Released;
             true
           }
           _ => false

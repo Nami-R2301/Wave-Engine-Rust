@@ -24,7 +24,7 @@
 
 use std::fmt::{Display, Formatter};
 
-use crate::log;
+use crate::{log};
 use crate::wave_core::math::Vec2;
 use crate::wave_core::window::{Window};
 
@@ -34,8 +34,8 @@ const C_NUM_KEYS: usize = glfw::ffi::KEY_LAST as usize;
 // Highest glfw key index (348). Glfw key indices => [0, 7].
 const C_NUM_MOUSE_BUTTONS: usize = glfw::ffi::MOUSE_BUTTON_LAST as usize;
 
-static mut S_KEY_STATES: [(EnumAction, EnumAction); C_NUM_KEYS] = [(EnumAction::Released, EnumAction::Released); C_NUM_KEYS];
-static mut S_MOUSE_BUTTON_STATES: [(EnumAction, EnumAction); C_NUM_MOUSE_BUTTONS] = [(EnumAction::Released, EnumAction::Released); C_NUM_MOUSE_BUTTONS];
+static mut S_KEY_STATES: [(EnumAction, Option<u32>); C_NUM_KEYS] = [(EnumAction::Released, None); C_NUM_KEYS];
+static mut S_MOUSE_BUTTON_STATES: [EnumAction; C_NUM_MOUSE_BUTTONS] = [EnumAction::Released; C_NUM_MOUSE_BUTTONS];
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum EnumError {
@@ -229,28 +229,32 @@ impl From<EnumAction> for glfw::Action {
   }
 }
 
+use bitflags::bitflags;
 
-#[doc = "Key modifiers (e.g., Shift, Control, Alt, Super)."]
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
-pub enum EnumModifier {
-  Shift,
-  Control,
-  Alt,
-  Super,
-  CapsLock,
-  NumLock,
+bitflags! {
+  #[doc = "Key modifiers (e.g., Shift, Control, Alt, Super)."]
+  #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub struct EnumModifiers: ::std::os::raw::c_int {
+        const Shift       = glfw::ffi::MOD_SHIFT;
+        const Control     = glfw::ffi::MOD_CONTROL;
+        const Alt         = glfw::ffi::MOD_ALT;
+        const Super       = glfw::ffi::MOD_SUPER;
+        const CapsLock    = glfw::ffi::MOD_CAPS_LOCK;
+        const NumLock     = glfw::ffi::MOD_NUM_LOCK;
+    }
 }
 
-impl From<EnumModifier> for glfw::Modifiers {
-  fn from(value: EnumModifier) -> Self {
+impl From<glfw::Modifiers> for EnumModifiers {
+  fn from(value: glfw::Modifiers) -> Self {
     return match value {
-      EnumModifier::Shift => glfw::Modifiers::Shift,
-      EnumModifier::Control => glfw::Modifiers::Control,
-      EnumModifier::Alt => glfw::Modifiers::Alt,
-      EnumModifier::Super => glfw::Modifiers::Super,
-      EnumModifier::CapsLock => glfw::Modifiers::CapsLock,
-      EnumModifier::NumLock => glfw::Modifiers::NumLock
-    }
+      glfw::Modifiers::Shift => EnumModifiers::Shift,
+      glfw::Modifiers::Control => EnumModifiers::Control,
+      glfw::Modifiers::Alt => EnumModifiers::Alt,
+      glfw::Modifiers::Super => EnumModifiers::Super,
+      glfw::Modifiers::CapsLock => EnumModifiers::CapsLock,
+      glfw::Modifiers::NumLock => EnumModifiers::NumLock,
+      _ => EnumModifiers::empty()
+    };
   }
 }
 
@@ -558,35 +562,33 @@ impl Display for EnumError {
 pub struct Input {}
 
 impl Input {
-  pub fn reset() {
+  #[allow(unused)]
+  pub(crate) fn reset() {
     unsafe {
       for key in 0..S_KEY_STATES.len() {
-        let old_state = S_KEY_STATES[key].1;
-        S_KEY_STATES[key] = (old_state, EnumAction::Released);
+        S_KEY_STATES[key] = (EnumAction::Released, None);
       }
       
       for mouse_button in 0..S_MOUSE_BUTTON_STATES.len() {
-        let old_state = S_MOUSE_BUTTON_STATES[mouse_button].1;
-        S_MOUSE_BUTTON_STATES[mouse_button] = (old_state, EnumAction::Released);
+        S_MOUSE_BUTTON_STATES[mouse_button] = EnumAction::Released;
       }
     }
   }
   
   // KEY QUERY FUNCTIONS.
-  pub fn get_key_state(window: &Window, key_code: EnumKey, key_action: EnumAction) -> bool{
+  pub fn get_key_state(window: &Window, key_code: EnumKey, key_action: EnumAction) -> bool {
     let api_key = convert_key_to_api_key(key_code);
     let old_state: EnumAction = unsafe {
       S_KEY_STATES[api_key as usize].0
     };
     
     let new_state = window.m_api_window.get_key(api_key);
-    
-    unsafe { S_KEY_STATES[api_key as usize] = (old_state, EnumAction::from(new_state)) };
+    let old_repeat_count: Option<u32> = unsafe { S_KEY_STATES[api_key as usize].1 };
+    unsafe { S_KEY_STATES[api_key as usize] = (EnumAction::from(new_state), old_repeat_count) };
     
     return match key_action {
       EnumAction::Released => {
-        old_state == EnumAction::Pressed &&
-          new_state == glfw::Action::Release
+        old_state == EnumAction::Pressed && new_state == glfw::Action::Release
       }
       EnumAction::Pressed => {
         old_state == EnumAction::Released &&
@@ -596,10 +598,11 @@ impl Input {
         (old_state == EnumAction::Pressed || old_state == EnumAction::Held) &&
           (new_state == glfw::Action::Press || new_state == glfw::Action::Repeat)
       }
-    };
+    }
   }
   
-  pub fn get_key_name(key_code: EnumKey) -> Result<String, EnumError> {
+  #[allow(unused)]
+  pub(crate) fn get_key_name(key_code: EnumKey) -> Result<String, EnumError> {
     let api_key = convert_key_to_api_key(key_code);
     if api_key.get_name().is_some() {
       return Ok(api_key.get_name().unwrap());
@@ -609,81 +612,91 @@ impl Input {
     return Err(EnumError::InvalidKey);
   }
   
-  pub fn get_modifier_key_combo(window: &Window, first_key: EnumKey, second_key: EnumModifier) -> bool {
-    return match second_key {
-      EnumModifier::Shift => {
-        // Pressed down first key while holding down second key.
+  #[allow(unused)]
+  pub(crate) fn get_key_repeat(key: EnumKey) -> Option<u32> {
+    unsafe {
+      let (_, repeat_count) = S_KEY_STATES[key as usize];
+      return repeat_count;
+    }
+  }
+  
+  #[allow(unused)]
+  pub(crate) fn set_key_repeat(key: EnumKey, count: u32) {
+    unsafe {
+      S_KEY_STATES[key as usize].1 = Some(count);
+    }
+  }
+  
+  #[allow(unused)]
+  pub fn get_modifier_key_combo(window: &Window, first_key: EnumKey, second_key: EnumModifiers) -> bool {
+    if second_key.contains(EnumModifiers::Shift) {
+      // Pressed down first key while holding down second key.
+      return (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
+        Input::get_key_state(window, EnumKey::LeftShift, EnumAction::Held)) ||
+        // Pressed down second key while holding down first key.
+        (Input::get_key_state(window, EnumKey::LeftShift, EnumAction::Pressed) &&
+          Input::get_key_state(window, first_key, EnumAction::Held)) ||
+        // Right version.
         (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
-          Input::get_key_state(window, EnumKey::LeftShift, EnumAction::Held)) ||
-          // Pressed down second key while holding down first key.
-          (Input::get_key_state(window, EnumKey::LeftShift, EnumAction::Pressed) &&
-            Input::get_key_state(window, first_key, EnumAction::Held)) ||
-          // Right version.
-          (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
-            Input::get_key_state(window, EnumKey::RightShift, EnumAction::Held)) ||
-          // Pressed down second key while holding down first key.
-          (Input::get_key_state(window, EnumKey::RightShift, EnumAction::Pressed) &&
-            Input::get_key_state(window, first_key, EnumAction::Held))
-      }
-      EnumModifier::Control => {
-        // Pressed down first key while holding down second key.
+          Input::get_key_state(window, EnumKey::RightShift, EnumAction::Held)) ||
+        // Pressed down second key while holding down first key.
+        (Input::get_key_state(window, EnumKey::RightShift, EnumAction::Pressed) &&
+          Input::get_key_state(window, first_key, EnumAction::Held));
+    } else if second_key.contains(EnumModifiers::Control) {
+      // Pressed down first key while holding down second key.
+      return (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
+        Input::get_key_state(window, EnumKey::LeftControl, EnumAction::Held)) ||
+        // Pressed down second key while holding down first key.
+        (Input::get_key_state(window, EnumKey::LeftControl, EnumAction::Pressed) &&
+          Input::get_key_state(window, first_key, EnumAction::Held)) ||
+        // Right version.
         (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
-          Input::get_key_state(window, EnumKey::LeftControl, EnumAction::Held)) ||
-          // Pressed down second key while holding down first key.
-          (Input::get_key_state(window, EnumKey::LeftControl, EnumAction::Pressed) &&
-            Input::get_key_state(window, first_key, EnumAction::Held)) ||
-          // Right version.
-          (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
-            Input::get_key_state(window, EnumKey::RightControl, EnumAction::Held)) ||
-          // Pressed down second key while holding down first key.
-          (Input::get_key_state(window, EnumKey::RightControl, EnumAction::Pressed) &&
-            Input::get_key_state(window, first_key, EnumAction::Held))
-      }
-      EnumModifier::Alt => {
-        // Pressed down first key while holding down second key.
+          Input::get_key_state(window, EnumKey::RightControl, EnumAction::Held)) ||
+        // Pressed down second key while holding down first key.
+        (Input::get_key_state(window, EnumKey::RightControl, EnumAction::Pressed) &&
+          Input::get_key_state(window, first_key, EnumAction::Held));
+    } else if second_key.contains(EnumModifiers::Alt) {
+      // Pressed down first key while holding down second key.
+      return (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
+        Input::get_key_state(window, EnumKey::LeftAlt, EnumAction::Held)) ||
+        // Pressed down second key while holding down first key.
+        (Input::get_key_state(window, EnumKey::LeftAlt, EnumAction::Pressed) &&
+          Input::get_key_state(window, first_key, EnumAction::Held)) ||
+        // Right version.
         (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
-          Input::get_key_state(window, EnumKey::LeftAlt, EnumAction::Held)) ||
-          // Pressed down second key while holding down first key.
-          (Input::get_key_state(window, EnumKey::LeftAlt, EnumAction::Pressed) &&
-            Input::get_key_state(window, first_key, EnumAction::Held)) ||
-          // Right version.
-          (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
-            Input::get_key_state(window, EnumKey::RightAlt, EnumAction::Held)) ||
-          // Pressed down second key while holding down first key.
-          (Input::get_key_state(window, EnumKey::RightAlt, EnumAction::Pressed) &&
-            Input::get_key_state(window, first_key, EnumAction::Held))
-      }
-      EnumModifier::Super => {
-        // Pressed down first key while holding down second key.
+          Input::get_key_state(window, EnumKey::RightAlt, EnumAction::Held)) ||
+        // Pressed down second key while holding down first key.
+        (Input::get_key_state(window, EnumKey::RightAlt, EnumAction::Pressed) &&
+          Input::get_key_state(window, first_key, EnumAction::Held));
+    } else if second_key.contains(EnumModifiers::Super) {
+      // Pressed down first key while holding down second key.
+      return (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
+        Input::get_key_state(window, EnumKey::LeftSuper, EnumAction::Held)) ||
+        // Pressed down second key while holding down first key.
+        (Input::get_key_state(window, EnumKey::LeftSuper, EnumAction::Pressed) &&
+          Input::get_key_state(window, first_key, EnumAction::Held)) ||
+        // Right version.
         (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
-          Input::get_key_state(window, EnumKey::LeftSuper, EnumAction::Held)) ||
-          // Pressed down second key while holding down first key.
-          (Input::get_key_state(window, EnumKey::LeftSuper, EnumAction::Pressed) &&
-            Input::get_key_state(window, first_key, EnumAction::Held)) ||
-          // Right version.
-          (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
-            Input::get_key_state(window, EnumKey::RightSuper, EnumAction::Held)) ||
-          // Pressed down second key while holding down first key.
-          (Input::get_key_state(window, EnumKey::RightSuper, EnumAction::Pressed) &&
-            Input::get_key_state(window, first_key, EnumAction::Held))
-      }
-      EnumModifier::CapsLock => {
-        // Pressed down first key while holding down second key.
-        (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
-          Input::get_key_state(window, EnumKey::CapsLock, EnumAction::Held)) ||
-          // Pressed down second key while holding down first key.
-          (Input::get_key_state(window, EnumKey::CapsLock, EnumAction::Pressed) &&
-            Input::get_key_state(window, first_key, EnumAction::Held))
-      }
-      EnumModifier::NumLock => {
-        // Pressed down first key while holding down second key.
-        (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
-          Input::get_key_state(window, EnumKey::NumLock, EnumAction::Held)) ||
-          // Pressed down second key while holding down first key.
-          (Input::get_key_state(window, EnumKey::NumLock, EnumAction::Pressed) &&
-            Input::get_key_state(window, first_key, EnumAction::Held))
-      }
-    };
+          Input::get_key_state(window, EnumKey::RightSuper, EnumAction::Held)) ||
+        // Pressed down second key while holding down first key.
+        (Input::get_key_state(window, EnumKey::RightSuper, EnumAction::Pressed) &&
+          Input::get_key_state(window, first_key, EnumAction::Held));
+    } else if second_key.contains(EnumModifiers::CapsLock) {
+      // Pressed down first key while holding down second key.
+      return (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
+        Input::get_key_state(window, EnumKey::CapsLock, EnumAction::Held)) ||
+        // Pressed down second key while holding down first key.
+        (Input::get_key_state(window, EnumKey::CapsLock, EnumAction::Pressed) &&
+          Input::get_key_state(window, first_key, EnumAction::Held));
+    } else if second_key.contains(EnumModifiers::NumLock) {
+      // Pressed down first key while holding down second key.
+      return (Input::get_key_state(window, first_key, EnumAction::Pressed) &&
+        Input::get_key_state(window, EnumKey::NumLock, EnumAction::Held)) ||
+        // Pressed down second key while holding down first key.
+        (Input::get_key_state(window, EnumKey::NumLock, EnumAction::Pressed) &&
+          Input::get_key_state(window, first_key, EnumAction::Held));
+    }
+    return false;
   }
   
   // MOUSE BUTTON QUERY FUNCTIONS.
@@ -691,11 +704,11 @@ impl Input {
     let api_mouse_button = convert_mouse_btn_to_api_mouse_btn(mouse_button);
     
     let old_state = unsafe {
-      S_MOUSE_BUTTON_STATES[api_mouse_button as usize].0
+      S_MOUSE_BUTTON_STATES[api_mouse_button as usize]
     };
     let new_state = window.m_api_window.get_mouse_button(api_mouse_button);
     
-    unsafe { S_MOUSE_BUTTON_STATES[api_mouse_button as usize] = (old_state, EnumAction::from(new_state)) };
+    unsafe { S_MOUSE_BUTTON_STATES[api_mouse_button as usize] = EnumAction::from(new_state) };
     
     return match mouse_button_action {
       EnumAction::Released => {
@@ -714,19 +727,23 @@ impl Input {
   }
   
   // MOUSE MOVEMENT STATIC FUNCTIONS.
-  pub fn get_mouse_cursor_position() {
+  #[allow(unused)]
+  pub(crate) fn get_mouse_cursor_position() {
     todo!()
   }
   
-  pub fn get_mouse_cursor_attribute(window: &Window) -> Result<glfw::CursorMode, EnumError> {
+  #[allow(unused)]
+  pub(crate) fn get_mouse_cursor_attribute(window: &Window) -> Result<glfw::CursorMode, EnumError> {
     return Ok(window.m_api_window.get_cursor_mode());
   }
   
-  pub fn set_mouse_cursor_attribute(window: &mut Window, cursor_mode: glfw::CursorMode) {
+  #[allow(unused)]
+  pub(crate) fn set_mouse_cursor_attribute(window: &mut Window, cursor_mode: glfw::CursorMode) {
     return window.m_api_window.set_cursor_mode(cursor_mode);
   }
   
-  pub fn set_mouse_cursor_position(window: &mut Window, cursor_position: Vec2<f32>) {
+  #[allow(unused)]
+  pub(crate) fn set_mouse_cursor_position(window: &mut Window, cursor_position: Vec2<f32>) {
     return window.m_api_window.set_cursor_pos(cursor_position.x as f64, cursor_position.y as f64);
   }
 }

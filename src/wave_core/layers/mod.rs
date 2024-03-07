@@ -22,6 +22,7 @@
  SOFTWARE.
 */
 
+use std::cmp::Ordering;
 use std::ops::Deref;
 use crate::wave_core;
 use crate::wave_core::events;
@@ -31,19 +32,41 @@ pub mod window_layer;
 pub mod renderer_layer;
 pub mod imgui_layer;
 
+#[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumLayerType {
-  Window,
-  Imgui,
-  Renderer,
-  App
+  Window = 0,
+  Imgui = 1,
+  Renderer = 2,
+  App = 3
 }
 
 pub struct Layer {
   pub m_uuid: u64,
   pub m_name: &'static str,
+  m_priority: u32,
   m_type: EnumLayerType,
   m_data: Box<dyn TraitLayer>,
+}
+
+impl Eq for Layer {}
+
+impl PartialEq<Self> for Layer {
+  fn eq(&self, other: &Self) -> bool {
+    return self.m_type == other.m_type;
+  }
+}
+
+impl PartialOrd<Self> for Layer {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    return Option::from(self.m_priority.cmp(&other.m_priority));
+  }
+}
+
+impl Ord for Layer {
+  fn cmp(&self, other: &Self) -> Ordering {
+    return self.partial_cmp(other).unwrap();
+  }
 }
 
 pub trait TraitLayer {
@@ -59,6 +82,7 @@ impl Layer {
     return Self {
       m_uuid: 0,
       m_name: name,
+      m_priority: ty as u32,
       m_type: ty,
       m_data: Box::new(data),
     }

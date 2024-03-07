@@ -31,9 +31,9 @@ use once_cell::sync::Lazy;
 use crate::wave_core::math::{Vec2, Vec3};
 use crate::log;
 use crate::wave_core::assets::asset_loader::ResLoader;
-use crate::wave_core::Engine;
+use crate::wave_core::{Engine};
+use crate::wave_core::graphics::renderer;
 use crate::wave_core::graphics::color::Color;
-use crate::wave_core::graphics::renderer::{EnumError};
 use crate::wave_core::graphics::shader::Shader;
 use crate::wave_core::math::{Mat4};
 
@@ -44,15 +44,6 @@ use crate::wave_core::math::{Mat4};
  */
 
 static mut S_ENTITIES_ID_CACHE: Lazy<HashSet<u32>> = Lazy::new(|| HashSet::new());
-
-pub trait TraitRenderableEntity {
-  fn resend_transform(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
-  fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
-  fn resend(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
-  fn free(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError>;
-  fn is_sent(&self) -> bool;
-  fn has_changed(&self) -> bool;
-}
 
 #[repr(usize)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
@@ -128,7 +119,7 @@ pub struct REntity {
 }
 
 impl REntity {
-  pub fn default() -> Result<Self, EnumError> {
+  pub fn default() -> Result<Self, renderer::EnumError> {
     let mut new_entity: REntity = REntity {
       m_data: ResLoader::new("cube.obj")?,
       m_type: EnumEntityType::Object,
@@ -213,6 +204,64 @@ impl REntity {
     self.m_changed = true;
   }
   
+  pub fn resend_transform(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+    if !self.m_sent {
+      log!(EnumLogColor::Red, "ERROR", "[RAssets] -->\t Cannot update shader ({0}) of entity, entity not sent previously!",
+        shader_associated.get_id());
+      return Err(renderer::EnumError::EntityNotFound);
+    }
+    
+    // Only update if the entity changed.
+    if self.m_changed {
+      let renderer = Engine::get_active_renderer();
+      renderer.update(shader_associated, self.get_matrix())?;
+      self.m_changed = false;
+    }
+    return Ok(());
+  }
+  
+  pub fn send(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+    let renderer = Engine::get_active_renderer();
+    
+    return match renderer.enqueue(self, shader_associated) {
+      Ok(_) => {
+        self.m_sent = true;
+        self.m_changed = false;
+        Ok(())
+      }
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Entity sent unsuccessfully to GPU! \
+              Error => {0:?}", err);
+        Err(err)
+      }
+    };
+  }
+  
+  pub fn resend(&mut self, _shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+    todo!()
+  }
+  
+  pub fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+    let renderer = Engine::get_active_renderer();
+    
+    return match renderer.dequeue(self.m_renderer_id) {
+      Ok(_) => {
+        self.m_sent = false;
+        self.m_changed = false;
+        Ok(())
+      }
+      Err(err) => Err(err)
+    };
+  }
+  
+  pub fn is_sent(&self) -> bool {
+    return self.m_sent;
+  }
+  
+  pub fn has_changed(&self) -> bool {
+    return self.m_changed;
+  }
+  
   pub fn get_uuid(&self) -> u64 {
     return self.m_renderer_id;
   }
@@ -240,65 +289,5 @@ impl PartialEq for REntity {
   
   fn ne(&self, other: &Self) -> bool {
     return !self.eq(other);
-  }
-}
-
-impl TraitRenderableEntity for REntity {
-  fn resend_transform(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError> {
-    if !self.m_sent {
-      log!(EnumLogColor::Red, "ERROR", "[RAssets] -->\t Cannot update shader ({0}) of entity, entity not sent previously!",
-        shader_associated.get_id());
-      return Err(EnumError::EntityNotFound);
-    }
-    
-    // Only update if the entity changed.
-    if self.m_changed {
-      let renderer = Engine::get_active_renderer();
-      renderer.update(shader_associated, self.get_matrix())?;
-      self.m_changed = false;
-    }
-    return Ok(());
-  }
-  
-  fn send(&mut self, shader_associated: &mut Shader) -> Result<(), EnumError> {
-    let renderer = Engine::get_active_renderer();
-    
-    return match renderer.enqueue(self, shader_associated) {
-      Ok(_) => {
-        self.m_sent = true;
-        self.m_changed = false;
-        Ok(())
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Entity sent unsuccessfully to GPU! \
-              Error => {0:?}", err);
-        Err(err)
-      }
-    };
-  }
-  
-  fn resend(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumError> {
-    todo!()
-  }
-  
-  fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumError> {
-    let renderer = Engine::get_active_renderer();
-    
-    return match renderer.dequeue(self.m_renderer_id) {
-      Ok(_) => {
-        self.m_sent = false;
-        self.m_changed = false;
-        Ok(())
-      }
-      Err(err) => Err(err)
-    };
-  }
-  
-  fn is_sent(&self) -> bool {
-    return self.m_sent;
-  }
-  
-  fn has_changed(&self) -> bool {
-    return self.m_changed;
   }
 }

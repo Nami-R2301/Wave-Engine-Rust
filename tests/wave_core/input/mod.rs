@@ -25,17 +25,16 @@
 use std::collections::HashMap;
 
 use wave_engine::wave_core::EnumError;
-use wave_engine::wave_core::input::{EnumAction, EnumKey, EnumModifier, EnumMouseButton, Input};
+use wave_engine::wave_core::input::{EnumAction, EnumKey, EnumModifiers, EnumMouseButton, Input};
 use wave_engine::wave_core::window::{EnumWindowMode, Window};
 
 fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, bool>, action_required: EnumAction,
-                               modifier: Option<EnumModifier>) -> Result<(), EnumError> {
+                               modifier: EnumModifiers) -> Result<(), EnumError> {
   let copy = keys.clone();
   while !window.is_closing() {
     // Migrates new states from last frame to old ones to avoid reading an input multiple times.
     // Needs to be updated every frame. Normally, this is done automatically in the main engine render
     // loop, but here we state it explicitly for testing and clarity purposes.
-    Input::reset();
     window.get_api_mut().poll_events();
     
     if Input::get_key_state(window, EnumKey::Escape, EnumAction::Pressed) {
@@ -43,10 +42,8 @@ fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, 
     }
     
     for (&key, _) in copy.iter() {
-      if modifier.is_some() {
-        if Input::get_modifier_key_combo(window, key, modifier.unwrap()) && !keys.get(&key).unwrap() {
-          keys.insert(key, true);
-        }
+      if Input::get_modifier_key_combo(window, key, modifier) && !keys.get(&key).unwrap() {
+        keys.insert(key, true);
         continue;
       }
       if Input::get_key_state(window, key, action_required) && !keys.get(&key).unwrap() {
@@ -64,7 +61,6 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
     // Migrates new states from last frame to old ones to avoid reading an input multiple times.
     // Needs to be updated every frame. Normally, this is done automatically in the main engine render
     // loop, but here we state it explicitly for testing and clarity purposes.
-    Input::reset();
     window.get_api_mut().poll_events();
     
     if Input::get_key_state(window, EnumKey::Escape, EnumAction::Pressed) {
@@ -95,7 +91,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
       (EnumKey::A, false), (EnumKey::B, false), (EnumKey::C, false), (EnumKey::D, false),
       (EnumKey::E, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Pressed, None)?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Pressed, EnumModifiers::empty())?;
     
     assert!(keys_tracked.into_iter().all(|(_, was_pressed)| was_pressed));
     window.hide();
@@ -109,7 +105,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
       (EnumKey::F, false), (EnumKey::G, false), (EnumKey::H, false), (EnumKey::I, false),
       (EnumKey::J, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Held, None)?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Held, EnumModifiers::empty())?;
     
     assert!(keys_tracked.into_iter().all(|(_, was_held)| was_held));
     window.hide();
@@ -123,7 +119,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
       (EnumKey::K, false), (EnumKey::L, false), (EnumKey::M, false), (EnumKey::N, false),
       (EnumKey::O, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Released, None)?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Released, EnumModifiers::empty())?;
     
     assert!(keys_tracked.into_iter().all(|(_, was_released)| was_released));
     window.hide();
@@ -135,8 +131,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
     window.show();
     let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([(EnumKey::A, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Pressed,
-      Some(EnumModifier::Shift))?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Pressed, EnumModifiers::Shift)?;
     
     assert!(keys_tracked.into_iter().all(|(_key, value)| value));
     window.hide();
@@ -147,8 +142,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
     let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([(EnumKey::B, false),
       (EnumKey::D, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Held,
-      Some(EnumModifier::Alt))?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Held, EnumModifiers::Alt)?;
     
     assert!(keys_tracked.into_iter().all(|(_key, value)| value));
     window.hide();
@@ -158,8 +152,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
     window.show();
     let mut keys_tracked: HashMap<EnumKey, bool> = HashMap::from([(EnumKey::Space, false)]);
     
-    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Released,
-      Some(EnumModifier::Control))?;
+    synchronous_key_inputs_loop(&mut window, &mut keys_tracked, EnumAction::Released, EnumModifiers::Control)?;
     
     assert!(keys_tracked.into_iter().all(|(_key, value)| value));
     window.hide();

@@ -210,7 +210,7 @@ impl VkShader {
     shader_module_create_info.code_size = shader_binary.len();
     shader_module_create_info.p_code = shader_binary.as_ptr() as *const u32;
     
-    let renderer = Engine::get_active_renderer();
+    let renderer =  Engine::get_active_renderer();
     let vk_context =
       renderer.get_api_handle()
         .downcast_mut::<VkContext>()

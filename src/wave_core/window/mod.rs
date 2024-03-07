@@ -22,18 +22,17 @@
  SOFTWARE.
 */
 
-extern crate glfw;
-
 use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
 
 #[cfg(feature = "vulkan")]
 use ash::vk;
-use glfw::{Context, Modifiers};
+use glfw::{Context};
 
-use crate::log;
-use crate::wave_core::events::EnumEvent;
+use crate::{log};
+use crate::wave_core::events::{EnumEventMask, EnumEvent, AsyncCallback};
 use crate::wave_core::graphics::renderer::{EnumApi};
-use crate::wave_core::input::{self, EnumKey};
+use crate::wave_core::input::{self, EnumAction, EnumKey, EnumModifiers};
 
 pub(crate) static mut S_WINDOW_CONTEXT: Option<*mut glfw::Glfw> = None;
 
@@ -71,9 +70,10 @@ impl Display for EnumWindowMode {
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumError {
-  NoContextError,
+  NoContext,
   InitError,
   ApiError,
+  InvalidEventCallback,
   AlreadyInitializedError,
   VulkanIncompatibleError,
   VulkanSurfaceCreationError,
@@ -94,8 +94,6 @@ impl From<input::EnumError> for EnumError {
   }
 }
 
-impl std::error::Error for EnumError {}
-
 #[cfg(feature = "debug")]
 fn glfw_error_callback(error: glfw::Error, message: String) {
   log!(EnumLogColor::Red, "ERROR", "[Window] -->\t GLFW error raised! Error => {0}\n{1:100}Info => \
@@ -106,8 +104,9 @@ pub struct Window {
   pub m_api_window_events: glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
   pub m_api_window: glfw::PWindow,
   pub m_vsync: bool,
+  pub m_refresh_count_desired: Option<u32>,
   pub m_samples: u8,
-  pub m_window_resolution: (i32, i32),
+  pub m_window_resolution: (u32, u32),
   pub m_window_pos: (i32, i32),
   pub m_is_windowed: bool,
   m_window_mode: EnumWindowMode,
@@ -116,7 +115,7 @@ pub struct Window {
 }
 
 impl<'a> Window {
-  pub fn new(api_preference: Option<EnumApi>, resolution_preference: Option<(i32, i32)>,
+  pub fn new(api_preference: Option<EnumApi>, resolution_preference: Option<(u32, u32)>,
              refresh_count_desired: Option<u32>, sample_count_desired: Option<u32>,
              window_mode: EnumWindowMode) -> Result<Self, EnumError> {
     let mut result = glfw::init(glfw::fail_on_errors);
@@ -173,7 +172,7 @@ impl<'a> Window {
     
     let resolution = resolution_preference.unwrap_or((640, 480));
     
-    match context_ref.create_window(resolution.0 as u32, resolution.1 as u32,
+    match context_ref.create_window(resolution.0, resolution.1,
       "Wave Engine (Rust)",
       glfw::WindowMode::Windowed) {
       None => {
@@ -185,12 +184,6 @@ impl<'a> Window {
         // Set input polling rate.
         window.set_sticky_keys(true);
         window.set_sticky_mouse_buttons(true);
-        
-        // Set glfw events.
-        window.set_key_polling(true);
-        window.set_mouse_button_polling(true);
-        window.set_framebuffer_size_polling(true);
-        window.set_pos_polling(true);
         
         // Set GLFW error callback.
         #[cfg(feature = "debug")]
@@ -204,7 +197,7 @@ impl<'a> Window {
         }
         window.set_aspect_ratio(bounds.0 as u32, bounds.1 as u32);
         
-        let mut glfw_window = Window {
+        return Ok(Self {
           m_state: EnumState::Open,
           m_api_window: window,
           m_api_window_events: events,
@@ -219,44 +212,41 @@ impl<'a> Window {
           m_window_mode: window_mode,
           m_vsync: true,
           m_samples: sample_count_desired.unwrap_or(1) as u8,
-          m_window_resolution: bounds,
+          m_refresh_count_desired: refresh_count_desired,
+          m_window_resolution: (bounds.0 as u32, bounds.1 as u32),
           m_window_pos: initial_position,
           m_is_windowed: window_mode == EnumWindowMode::Windowed,
-        };
-        
-        // Toggle on fullscreen if requested.
-        return if window_mode != EnumWindowMode::Windowed {
-          let result =
-            context_ref.with_primary_monitor(|_, monitor| -> Result<Self, EnumError> {
-              if monitor.is_none() {
-                log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot identify primary monitor!");
-                return Err(EnumError::InitError);
-              }
-              
-              let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
-              
-              match window_mode {
-                EnumWindowMode::Windowed => {}
-                EnumWindowMode::Borderless => {
-                  glfw_window.m_api_window.set_monitor(glfw::WindowMode::Windowed,
-                    0, 0, mode.width, mode.height, refresh_count_desired);
-                }
-                EnumWindowMode::Fullscreen => {
-                  glfw_window.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
-                    0, 0, mode.width, mode.height, Some(mode.refresh_rate));
-                }
-              }
-              return Ok(glfw_window);
-            });
-          result
-        } else {
-          Ok(glfw_window)
-        };
+        });
       }
     }
   }
   
   pub fn show(&mut self) {
+    // Toggle on fullscreen if requested.
+    if self.m_window_mode != EnumWindowMode::Windowed {
+      unsafe {
+        (*S_WINDOW_CONTEXT.unwrap()).with_primary_monitor(|_, monitor| {
+            if monitor.is_none() {
+              log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot identify primary monitor!");
+              return;
+            }
+            
+            let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
+            
+            match self.m_window_mode {
+              EnumWindowMode::Windowed => {}
+              EnumWindowMode::Borderless => {
+                self.m_api_window.set_monitor(glfw::WindowMode::Windowed,
+                  0, 0, mode.width, mode.height, self.m_refresh_count_desired);
+              }
+              EnumWindowMode::Fullscreen => {
+                self.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
+                  0, 0, mode.width, mode.height, Some(mode.refresh_rate));
+              }
+            }
+          });
+        }
+    }
     self.m_api_window.show();
   }
   
@@ -289,40 +279,44 @@ impl<'a> Window {
     return Ok(());
   }
   
+  pub fn poll_events(&mut self) {
+    self.m_api_window.glfw.poll_events();
+  }
+  
   pub fn on_event(&mut self, event: &EnumEvent) -> bool {
     return match event {
-      EnumEvent::KeyPressedEvent(key, modifiers) => {
-        return match key {
-          EnumKey::Escape => {
+      EnumEvent::KeyEvent(key, action, _repeat_count, modifiers) => {
+        return match (key, action) {
+          (EnumKey::Escape, EnumAction::Pressed) => {
             self.close();
             log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
             true
           }
-          EnumKey::Enter => {
-            if modifiers.intersects(Modifiers::Alt) {
+          (EnumKey::Enter, EnumAction::Pressed) => {
+            if modifiers.intersects(EnumModifiers::Alt) {
               self.toggle_fullscreen();
             }
             true
           }
-          EnumKey::V => {
-            if modifiers.intersects(Modifiers::Alt) {
+          (EnumKey::V, EnumAction::Pressed) => {
+            if modifiers.intersects(EnumModifiers::Alt) {
               self.toggle_vsync();
             }
             true
           }
           _ => false
-        }
+        };
       }
-      EnumEvent::WindowResizeEvent(width, height) => {
+      EnumEvent::FramebufferEvent(width, height) => {
         log!("INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
         unsafe {
-          S_PREVIOUS_WIDTH = self.m_window_resolution.0 as u32;
-          S_PREVIOUS_HEIGHT = self.m_window_resolution.1 as u32;
+          S_PREVIOUS_WIDTH = self.m_window_resolution.0;
+          S_PREVIOUS_HEIGHT = self.m_window_resolution.1;
         }
-        self.m_window_resolution = (*width as i32, *height as i32);
+        self.m_window_resolution = (*width, *height);
         true
       }
-      EnumEvent::WindowMoveEvent(pos_x, pos_y) => {
+      EnumEvent::WindowPosEvent(pos_x, pos_y) => {
         if self.m_is_windowed {
           self.m_window_pos = (*pos_x, *pos_y);
         }
@@ -330,6 +324,184 @@ impl<'a> Window {
       }
       _ => false
     };
+  }
+  
+  pub fn set_polling(&mut self, event_type: EnumEventMask, event_callback: Option<AsyncCallback>) {
+    match event_type {
+      EnumEventMask::c_none => {
+        return;
+      }
+      EnumEventMask::c_all => {
+        self.m_api_window.set_all_polling(true);
+      }
+      EnumEventMask::c_window => {
+        self.m_api_window.set_iconify_polling(true);
+        self.m_api_window.set_maximize_polling(true);
+        self.m_api_window.set_focus_polling(true);
+        self.m_api_window.set_close_polling(true);
+        self.m_api_window.set_framebuffer_size_polling(true);
+        self.m_api_window.set_pos_polling(true);
+      }
+      EnumEventMask::c_mouse => {
+        self.m_api_window.set_cursor_pos_polling(true);
+        self.m_api_window.set_mouse_button_polling(true);
+        self.m_api_window.set_scroll_polling(true);
+      }
+      EnumEventMask::c_window_iconify => {
+        self.m_api_window.set_iconify_polling(true);
+        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, bool)>() {
+          self.m_api_window.set_iconify_callback(event_callback.unwrap().m_callback
+            .downcast_ref::<fn(&mut glfw::Window, bool)>().unwrap());
+        }
+      }
+      EnumEventMask::c_window_maximize => {
+        self.m_api_window.set_maximize_polling(true);
+        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, bool)>() {
+          self.m_api_window.set_maximize_callback(event_callback.unwrap().m_callback
+            .downcast_ref::<fn(&mut glfw::Window, bool)>().unwrap());
+        }
+      }
+      EnumEventMask::c_window_focus => {
+        self.m_api_window.set_focus_polling(true);
+        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, bool)>() {
+          self.m_api_window.set_focus_callback(event_callback.unwrap().m_callback
+            .downcast_ref::<fn(&mut glfw::Window, bool)>().unwrap());
+        }
+      }
+      EnumEventMask::c_window_close => {
+        self.m_api_window.set_close_polling(true);
+        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window)>() {
+          self.m_api_window.set_close_callback(event_callback.unwrap().m_callback
+            .downcast_ref::<fn(&mut glfw::Window)>().unwrap());
+        }
+      }
+      EnumEventMask::c_window_size => {
+        self.m_api_window.set_framebuffer_size_polling(true);
+        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, i32, i32)>() {
+          self.m_api_window.set_framebuffer_size_callback(event_callback.unwrap().m_callback
+            .downcast_ref::<fn(&mut glfw::Window, i32, i32)>().unwrap());
+        }
+      }
+      EnumEventMask::c_window_pos => {
+        self.m_api_window.set_pos_polling(true);
+        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, i32, i32)>() {
+          self.m_api_window.set_pos_callback(event_callback.unwrap().m_callback
+            .downcast_ref::<fn(&mut glfw::Window, i32, i32)>().unwrap());
+        }
+      }
+      EnumEventMask::c_key => {
+        self.m_api_window.set_key_polling(true);
+        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback
+          .is::<fn(&mut glfw::Window, glfw::Key, glfw::Scancode, glfw::Action, glfw::Modifiers)>() {
+          self.m_api_window.set_key_callback(event_callback.unwrap().m_callback
+            .downcast_ref::<fn(&mut glfw::Window, glfw::Key, glfw::Scancode, glfw::Action, glfw::Modifiers)>().unwrap());
+        }
+      }
+      EnumEventMask::c_mouse_btn => {
+        self.m_api_window.set_mouse_button_polling(true);
+        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback
+          .is::<fn(&mut glfw::Window, glfw::MouseButton, glfw::Action, glfw::Modifiers)>() {
+          self.m_api_window.set_mouse_button_callback(event_callback.unwrap().m_callback
+            .downcast_ref::<fn(&mut glfw::Window, glfw::MouseButton, glfw::Action, glfw::Modifiers)>().unwrap());
+        }
+      }
+      EnumEventMask::c_mouse_scroll => {
+        self.m_api_window.set_scroll_polling(true);
+        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, f64, f64)>() {
+          self.m_api_window.set_scroll_callback(event_callback.unwrap().m_callback
+            .downcast_ref::<fn(&mut glfw::Window, f64, f64)>().unwrap());
+        }
+      }
+      EnumEventMask::c_drag_and_drop => {
+        self.m_api_window.set_drag_and_drop_polling(true);
+        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, Vec<PathBuf>)>() {
+          self.m_api_window.set_drag_and_drop_callback(event_callback.unwrap().m_callback
+            .downcast_ref::<fn(&mut glfw::Window, Vec<PathBuf>)>().unwrap());
+        }
+      }
+      _ => {}
+    }
+  }
+  
+  pub fn unset_polling(&mut self, event_type: EnumEventMask) {
+    match event_type {
+      EnumEventMask::c_all => {
+        self.m_api_window.set_all_polling(false);
+      }
+      EnumEventMask::c_window => {
+        self.m_api_window.set_iconify_polling(false);
+        self.m_api_window.unset_iconify_callback();
+        self.m_api_window.set_maximize_polling(false);
+        self.m_api_window.unset_maximize_callback();
+        self.m_api_window.set_close_polling(false);
+        self.m_api_window.unset_close_callback();
+        self.m_api_window.set_framebuffer_size_polling(false);
+        self.m_api_window.unset_framebuffer_size_callback();
+        self.m_api_window.set_pos_polling(false);
+        self.m_api_window.unset_pos_callback();
+        self.m_api_window.set_focus_polling(false);
+        self.m_api_window.unset_focus_callback();
+      }
+      EnumEventMask::c_input => {
+        self.m_api_window.set_key_polling(false);
+        self.m_api_window.unset_key_callback();
+        self.m_api_window.set_mouse_button_polling(false);
+        self.m_api_window.unset_mouse_button_callback();
+        self.m_api_window.set_scroll_polling(false);
+        self.m_api_window.unset_scroll_callback();
+        self.m_api_window.set_cursor_pos_polling(false);
+        self.m_api_window.unset_cursor_pos_callback();
+      }
+      EnumEventMask::c_mouse => {
+        self.m_api_window.set_mouse_button_polling(false);
+        self.m_api_window.unset_mouse_button_callback();
+        self.m_api_window.set_scroll_polling(false);
+        self.m_api_window.unset_scroll_callback();
+        self.m_api_window.set_cursor_pos_polling(false);
+        self.m_api_window.unset_cursor_pos_callback();
+      }
+      EnumEventMask::c_window_iconify => {
+        self.m_api_window.set_iconify_polling(false);
+        self.m_api_window.unset_iconify_callback();
+      }
+      EnumEventMask::c_window_maximize => {
+        self.m_api_window.set_maximize_polling(false);
+        self.m_api_window.unset_maximize_callback();
+      }
+      EnumEventMask::c_window_close => {
+        self.m_api_window.set_close_polling(false);
+        self.m_api_window.unset_close_callback();
+      }
+      EnumEventMask::c_window_size => {
+        self.m_api_window.set_framebuffer_size_polling(false);
+        self.m_api_window.unset_framebuffer_size_callback();
+      }
+      EnumEventMask::c_window_pos => {
+        self.m_api_window.set_pos_polling(false);
+        self.m_api_window.unset_pos_callback();
+      }
+      EnumEventMask::c_window_focus => {
+        self.m_api_window.set_focus_polling(false);
+        self.m_api_window.unset_focus_callback();
+      }
+      EnumEventMask::c_key => {
+        self.m_api_window.set_key_polling(false);
+        self.m_api_window.unset_key_callback();
+      }
+      EnumEventMask::c_mouse_btn => {
+        self.m_api_window.set_mouse_button_polling(false);
+        self.m_api_window.unset_mouse_button_callback();
+      }
+      EnumEventMask::c_mouse_scroll => {
+        self.m_api_window.set_scroll_polling(false);
+        self.m_api_window.unset_scroll_callback();
+      }
+      EnumEventMask::c_drag_and_drop => {
+        self.m_api_window.set_drag_and_drop_polling(false);
+        self.m_api_window.unset_drag_and_drop_callback();
+      }
+      _ => {}
+    }
   }
   
   pub fn on_delete(&mut self) -> Result<(), EnumError> {

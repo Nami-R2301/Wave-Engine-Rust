@@ -35,7 +35,7 @@ impl TraitLayer for AppLayer {
   }
   
   fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
-    return unsafe { (*self.m_app).on_event(event) };
+    return unsafe { (*self.m_app).on_async_event(event) };
   }
   
   fn on_update(&mut self, time_step: f64) -> Result<(), EnumError> {
