@@ -43,27 +43,27 @@ pub enum EnumUiType {
   Floating,
 }
 
-pub(crate) mod ui_imgui {
-  use crate::wave_core::window::{Window};
-  use crate::wave_core::utils::Time;
-  use crate::wave_core::graphics::renderer::EnumApi;
+pub mod ui_imgui {
+  use std::ffi::CStr;
+  use std::os::raw::c_void;
   
   /// Taken from https://docs.rs/imgui-glfw-rs/latest/src/imgui_glfw_rs/lib.rs.html#101-232
   
   /// Use the reexported glfw crate to avoid version conflicts.
   pub use glfw;
-  
-  use glfw::ffi::GLFWwindow;
   use glfw::{Context, Key, StandardCursor};
+  use glfw::ffi::GLFWwindow;
   use imgui::{Condition, ConfigFlags, Key as ImGuiKey, MouseCursor};
   use imgui_opengl_renderer::Renderer;
-  use std::ffi::CStr;
-  use std::os::raw::c_void;
+  
   #[allow(unused)]
   use crate::log;
   use crate::wave_core::events::EnumEvent;
+  use crate::wave_core::graphics::renderer::EnumApi;
   use crate::wave_core::input::{EnumAction, EnumModifiers, EnumMouseButton};
   use crate::wave_core::ui::EnumError;
+  use crate::wave_core::utils::Time;
+  use crate::wave_core::window::Window;
   
   struct GlfwClipboardBackend(*mut c_void);
   
@@ -89,7 +89,7 @@ pub(crate) mod ui_imgui {
   }
   
   
-  pub(crate) struct Imgui {
+  pub struct Imgui {
     m_api: Box<dyn TraitUi>,
   }
   
@@ -102,7 +102,7 @@ pub(crate) mod ui_imgui {
         EnumApi::Vulkan => {
           todo!()
         }
-      }
+      };
     }
     
     pub fn on_event(&mut self, event: &EnumEvent) -> bool {
@@ -127,7 +127,7 @@ pub(crate) mod ui_imgui {
     }
   }
   
-  pub struct GlImgui {
+  pub(crate) struct GlImgui {
     m_last_frame: Time,
     m_mouse_press: [bool; 5],
     #[allow(unused)]
@@ -141,49 +141,46 @@ pub(crate) mod ui_imgui {
   
   impl TraitUi for GlImgui {
     fn on_event(&mut self, event: &EnumEvent) -> bool {
-      if self.m_imgui_handle.io_mut().want_capture_keyboard {
-        return match event {
-          EnumEvent::MouseBtnEvent(mouse_btn, action, _modifiers) => {
-            let index = match mouse_btn {
-              EnumMouseButton::LeftButton => 0,
-              EnumMouseButton::RightButton => 1,
-              EnumMouseButton::MiddleButton => 2,
-              EnumMouseButton::Button4 => 3,
-              EnumMouseButton::Button5 => 4,
-              _ => 0,
-            };
-            self.m_mouse_press[index] = action == &EnumAction::Pressed;
-            
-            self.m_imgui_handle.io_mut().mouse_down[index] = action != &EnumAction::Released;
-            true
-          },
-          // WindowEvent::CursorPos(w, h) => {
-          //   self.m_imgui_handle.io_mut().mouse_pos = [w as f32, h as f32];
-          //   self.m_cursor_pos = (w, h);
-          //   true
-          // }
-          EnumEvent::MouseScrollEvent(_x, y) => {
-            self.m_imgui_handle.io_mut().mouse_wheel = *y as f32;
-            true
-          }
-          // WindowEvent::Char(character) => {
-          //   self.m_imgui_handle.io_mut().add_input_character(character);
-          //   true
-          // }
-          EnumEvent::KeyEvent(key, action, _repeat_count, modifier) => {
-            // GLFW modifiers.
-            self.m_imgui_handle.io_mut().key_ctrl = modifier.intersects(EnumModifiers::Control);
-            self.m_imgui_handle.io_mut().key_alt = modifier.intersects(EnumModifiers::Alt);
-            self.m_imgui_handle.io_mut().key_shift = modifier.intersects(EnumModifiers::Shift);
-            self.m_imgui_handle.io_mut().key_super = modifier.intersects(EnumModifiers::Super);
-            
-            self.m_imgui_handle.io_mut().keys_down[*key as usize] = action != &EnumAction::Released;
-            true
-          }
-          _ => false
+      return match event {
+        EnumEvent::MouseBtnEvent(mouse_btn, action, _modifiers) => {
+          let index = match mouse_btn {
+            EnumMouseButton::LeftButton => 0,
+            EnumMouseButton::RightButton => 1,
+            EnumMouseButton::MiddleButton => 2,
+            EnumMouseButton::Button4 => 3,
+            EnumMouseButton::Button5 => 4,
+            _ => 0,
+          };
+          self.m_mouse_press[index] = action == &EnumAction::Pressed;
+          
+          self.m_imgui_handle.io_mut().mouse_down[index] = action != &EnumAction::Released;
+          true
         }
-      }
-      return false;
+        // WindowEvent::CursorPos(w, h) => {
+        //   self.m_imgui_handle.io_mut().mouse_pos = [w as f32, h as f32];
+        //   self.m_cursor_pos = (w, h);
+        //   true
+        // }
+        EnumEvent::MouseScrollEvent(_x, y) => {
+          self.m_imgui_handle.io_mut().mouse_wheel = *y as f32;
+          true
+        }
+        // WindowEvent::Char(character) => {
+        //   self.m_imgui_handle.io_mut().add_input_character(character);
+        //   true
+        // }
+        EnumEvent::KeyEvent(key, action, _repeat_count, modifier) => {
+          // GLFW modifiers.
+          self.m_imgui_handle.io_mut().key_ctrl = modifier.intersects(EnumModifiers::Control);
+          self.m_imgui_handle.io_mut().key_alt = modifier.intersects(EnumModifiers::Alt);
+          self.m_imgui_handle.io_mut().key_shift = modifier.intersects(EnumModifiers::Shift);
+          self.m_imgui_handle.io_mut().key_super = modifier.intersects(EnumModifiers::Super);
+          
+          self.m_imgui_handle.io_mut().keys_down[*key as usize] = action != &EnumAction::Released;
+          false
+        }
+        _ => false
+      };
     }
     
     fn on_update(&mut self) {

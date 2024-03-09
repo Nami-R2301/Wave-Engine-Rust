@@ -23,10 +23,10 @@
 */
 
 use crate::{log, wave_core};
-use crate::wave_core::{EnumError, events};
+use crate::wave_core::{EnumError, events, input};
 use crate::wave_core::graphics::renderer;
 use crate::wave_core::graphics::renderer::{Renderer};
-use crate::wave_core::layers::TraitLayer;
+use crate::wave_core::layers::{EnumLayerType, TraitLayer};
 
 pub struct RendererLayer {
   pub(crate) m_context: *mut Renderer
@@ -41,6 +41,10 @@ impl RendererLayer {
 }
 
 impl TraitLayer for RendererLayer {
+  fn get_type(&self) -> EnumLayerType {
+    return EnumLayerType::Renderer;
+  }
+  
   fn on_new(&mut self) -> Result<(), EnumError> {
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Setting up renderer...");
     
@@ -62,7 +66,23 @@ impl TraitLayer for RendererLayer {
     return Ok(());
   }
   
-  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
+  fn on_sync_event(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
+      match event {
+        events::EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
+          match (key, action, repeat_count, modifiers) {
+            (input::EnumKey::R, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
+              unsafe { (*self.m_context).flush()? };
+              return Ok(true);
+            }
+            _ => {}
+          }
+        }
+        _ => {}
+      }
     return unsafe { (*self.m_context).on_event(event).map_err(|err| wave_core::EnumError::from(err)) };
   }
   

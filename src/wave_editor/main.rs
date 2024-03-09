@@ -29,12 +29,15 @@ use wave_engine::wave_core::assets::renderable_assets;
 use wave_engine::wave_core::events::{EnumEventMask};
 use wave_engine::wave_core::graphics::renderer;
 use wave_engine::wave_core::graphics::shader;
+use wave_engine::wave_core::layers::{EnumLayerType, Layer, TraitLayer};
+use wave_engine::wave_core::ui::ui_imgui::Imgui;
+use wave_engine::wave_core::layers::imgui_layer::ImguiLayer;
 
 pub struct Editor {
   m_shaders: Vec<shader::Shader>,
   m_renderable_assets: Vec<renderable_assets::REntity>,
   m_cameras: Vec<camera::Camera>,
-  m_wireframe_on: bool,
+  m_wireframe_on: bool
 }
 
 impl Editor {
@@ -43,12 +46,16 @@ impl Editor {
       m_shaders: Vec::new(),
       m_renderable_assets: Vec::new(),
       m_cameras: Vec::new(),
-      m_wireframe_on: true,
+      m_wireframe_on: true
     };
   }
 }
 
-impl wave_core::TraitApp for Editor {
+impl TraitLayer for Editor {
+  fn get_type(&self) -> EnumLayerType {
+    return EnumLayerType::App;
+  }
+  
   fn on_new(&mut self) -> Result<(), wave_core::EnumError> {
     let window = Engine::get_active_window();
     
@@ -83,54 +90,52 @@ impl wave_core::TraitApp for Editor {
     let renderer = Engine::get_active_renderer();
     renderer.send_camera(&self.m_cameras[0])?;
     
-    // #[cfg(feature = "imgui")]
-    // Engine::push_imgui_layer()?;
+    #[cfg(feature = "imgui")]
+    {
+      let imgui_layer: Layer = Layer::new("Imgui", ImguiLayer::new(Imgui::new(renderer.m_type, window)));
+      let layer_type = imgui_layer.get_type();
+      Engine::push_layer(imgui_layer);
+      Engine::enable_async_polling_for(layer_type, EnumEventMask::c_keyboard | EnumEventMask::c_mouse_btn | EnumEventMask::c_window);
+    }
     
-    Engine::enable_polling(EnumEventMask::c_key, None);
+    // Making editor poll keyboard and mouse button events during async call.
+    Engine::enable_async_polling_for(self.get_type(), EnumEventMask::c_keyboard | EnumEventMask::c_mouse_btn);
+    Engine::enable_sync_polling_for(self);
     
     // Create and show our window when we are done.
     window.show();
     return Ok(());
   }
   
-  fn on_sync_event(&mut self) -> Result<bool, wave_core::EnumError> {
+  fn on_sync_event(&mut self) -> Result<(), wave_core::EnumError> {
     // Process synchronous events.
     let time_step = Engine::get_time_step();
-    let mut event_processed: bool = false;
     
     if Engine::is_key(input::EnumKey::W, input::EnumAction::Held) {
       self.m_renderable_assets[0].translate(math::Vec3::new(&[0.0, 10.0 * time_step as f32, 0.0]));
-      event_processed = true;
     }
     if Engine::is_key(input::EnumKey::A, input::EnumAction::Held) {
       self.m_renderable_assets[0].translate(math::Vec3::new(&[-10.0 * time_step as f32, 0.0, 0.0]));
-      event_processed = true;
     }
     if Engine::is_key(input::EnumKey::S, input::EnumAction::Held) {
       self.m_renderable_assets[0].translate(math::Vec3::new(&[0.0, -10.0 * time_step as f32, 0.0]));
-      event_processed = true;
     }
     if Engine::is_key(input::EnumKey::D, input::EnumAction::Held) {
       self.m_renderable_assets[0].translate(math::Vec3::new(&[10.0 * time_step as f32, 0.0, 0.0]));
-      event_processed = true;
     }
     if Engine::is_key(input::EnumKey::Up, input::EnumAction::Held) {
       self.m_renderable_assets[0].rotate(math::Vec3::new(&[0.0, 25.0 * time_step as f32, 0.0]));
-      event_processed = true;
     }
     if Engine::is_key(input::EnumKey::Left, input::EnumAction::Held) {
       self.m_renderable_assets[0].rotate(math::Vec3::new(&[-25.0 * time_step as f32, 0.0, 0.0]));
-      event_processed = true;
     }
     if Engine::is_key(input::EnumKey::Down, input::EnumAction::Held) {
       self.m_renderable_assets[0].rotate(math::Vec3::new(&[0.0, -25.0 * time_step as f32, 0.0]));
-      event_processed = true;
     }
     if Engine::is_key(input::EnumKey::Right, input::EnumAction::Held) {
       self.m_renderable_assets[0].rotate(math::Vec3::new(&[25.0 * time_step as f32, 0.0, 0.0]));
-      event_processed = true;
     }
-    return Ok(event_processed);
+    return Ok(());
   }
   
   
@@ -140,11 +145,7 @@ impl wave_core::TraitApp for Editor {
       events::EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
         let renderer = Engine::get_active_renderer();
         match (key, action, repeat_count, modifiers) {
-          (input::EnumKey::R, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            renderer.flush()?;
-            Ok(true)
-          }
-          (input::EnumKey::F2, input::EnumAction::Pressed, _, _) => {
+          (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
             renderer.toggle(renderer::EnumFeature::Wireframe(!self.m_wireframe_on))?;
             self.m_wireframe_on = !self.m_wireframe_on;
             Ok(true)
@@ -155,7 +156,7 @@ impl wave_core::TraitApp for Editor {
                 renderer.dequeue(r_asset.get_uuid())?;
               }
             }
-            Ok(true)
+            return Ok(true);
           }
           _ => Ok(false)
         }
@@ -181,59 +182,15 @@ impl wave_core::TraitApp for Editor {
   }
 }
 
-///
-/// Example entrypoint to the application **executable** for the client. Substitute this out with
-/// your own app.
-///
-/// ### Returns : Nothing
-///
-/// ## Example :
-/// ```text
-/// pub struct ExampleApp {}
-///
-/// impl TraitApp for ExampleApp {
-///   // Create app-specific assets before entering the game loop.
-///   fn on_new(&mut self) {
-///     todo!()
-///   }
-///
-///   // Delete app-specific assets before going out of scope and dropping.
-///   fn on_delete(&mut self) {
-///     todo!()
-///   }
-///
-///   // Process app-specific events.
-///   fn on_event(&mut self) {
-///     todo!()
-///   }
-///
-///   // Update app-specific data.
-///   fn on_update(&mut self, time_step: f64) {
-///     todo!()
-///   }
-///
-///   /* App-specific directives before the window refresh (window swapping) in the main loop.
-///    * Note, that any additional rendering in this function will only take effect after window swapping,
-///    * and that the render color and depth buffers of the window are automatically cleared
-///    * prior to this function call.
-///   */
-///   fn on_render(&self) {
-///     todo!()
-///   }
-/// }
-/// ```
-///
-
 fn main() -> Result<(), wave_core::EnumError> {
   
-  // Instantiate an empty app on the heap to make sure all of its resources are ref-counted
-  // like `std::shared_ptr` in C++.
-  let my_app: Box<Editor> = Box::new(Editor::default());
+  // Instantiate an app layer containing our app and essentially making the layer own it.
+  let my_app: Layer = Layer::new("Wave Engine Editor", Editor::default());
   
   // Supply it to our engine. Engine will NOT construct app and will only init the engine
   // with the supplied GPU API of choice as its renderer.
   let mut engine: Engine = Engine::new(Some(renderer::EnumApi::OpenGL), my_app)?;
   
-  // Execute the app in game loop and return if there's a close event or if an error occurred.
+  // Init and execute the app in game loop and return if there's a close event or if an error occurred.
   return engine.run();
 }

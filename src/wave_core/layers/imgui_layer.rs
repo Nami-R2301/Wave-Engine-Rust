@@ -23,7 +23,7 @@
 */
 
 use crate::wave_core::{EnumError, events};
-use crate::wave_core::layers::TraitLayer;
+use crate::wave_core::layers::{EnumLayerType, TraitLayer};
 use crate::wave_core::ui::ui_imgui::Imgui;
 
 pub struct ImguiLayer {
@@ -31,7 +31,7 @@ pub struct ImguiLayer {
 }
 
 impl ImguiLayer {
-  pub(crate) fn new(imgui: Imgui) -> Self {
+  pub fn new(imgui: Imgui) -> Self {
     return Self {
       m_ui: imgui
     }
@@ -39,11 +39,19 @@ impl ImguiLayer {
 }
 
 impl TraitLayer for ImguiLayer {
+  fn get_type(&self) -> EnumLayerType {
+    return EnumLayerType::Imgui;
+  }
+  
   fn on_new(&mut self) -> Result<(), EnumError> {
     return Ok(());
   }
   
-  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
+  fn on_sync_event(&mut self) -> Result<(), EnumError> {
+    todo!()
+  }
+  
+  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
     return Ok(self.m_ui.on_event(event));
   }
   

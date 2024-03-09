@@ -23,27 +23,35 @@
 */
 
 use crate::wave_core::{EnumError, events};
-use crate::wave_core::layers::TraitLayer;
+use crate::wave_core::layers::{EnumLayerType, TraitLayer};
 use crate::wave_core::window::Window;
 
 pub struct WindowLayer {
-  pub(crate) m_context: *mut Window
+  pub(crate) m_context: *mut Window,
 }
 
 impl WindowLayer {
   pub fn new(window_context: &mut Window) -> Self {
     return Self {
-      m_context: window_context
+      m_context: window_context,
     }
   }
 }
 
 impl TraitLayer for WindowLayer {
+  fn get_type(&self) -> EnumLayerType {
+    return EnumLayerType::Window;
+  }
+  
   fn on_new(&mut self) -> Result<(), EnumError> {
     return Ok(());
   }
   
-  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
+  fn on_sync_event(&mut self) -> Result<(), EnumError> {
+    return Ok(());
+  }
+  
+  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
     return unsafe {
       Ok((*self.m_context).on_event(event))
     };

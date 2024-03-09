@@ -24,10 +24,11 @@
 
 use std::cmp::Ordering;
 use std::ops::Deref;
-use crate::wave_core;
-use crate::wave_core::events;
 
-pub mod app_layer;
+use crate::wave_core;
+use crate::wave_core::{EnumError, events};
+use crate::wave_core::events::{EnumEvent, EnumEventMask};
+
 pub mod window_layer;
 pub mod renderer_layer;
 pub mod imgui_layer;
@@ -38,22 +39,23 @@ pub enum EnumLayerType {
   Window = 0,
   Imgui = 1,
   Renderer = 2,
-  App = 3
+  App = 3,
 }
 
 pub struct Layer {
   pub m_uuid: u64,
   pub m_name: &'static str,
   m_priority: u32,
-  m_type: EnumLayerType,
-  m_data: Box<dyn TraitLayer>,
+  m_sync_polling: bool,
+  m_poll_mask: events::EnumEventMask,
+  pub(crate) m_data: Box<dyn TraitLayer>,
 }
 
 impl Eq for Layer {}
 
 impl PartialEq<Self> for Layer {
   fn eq(&self, other: &Self) -> bool {
-    return self.m_type == other.m_type;
+    return self.m_data.get_type() == other.m_data.get_type();
   }
 }
 
@@ -70,50 +72,91 @@ impl Ord for Layer {
 }
 
 pub trait TraitLayer {
+  fn get_type(&self) -> EnumLayerType;
   fn on_new(&mut self) -> Result<(), wave_core::EnumError>;
-  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, wave_core::EnumError>;
+  fn on_sync_event(&mut self) -> Result<(), wave_core::EnumError>;
+  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, wave_core::EnumError>;
   fn on_update(&mut self, time_step: f64) -> Result<(), wave_core::EnumError>;
   fn on_render(&mut self) -> Result<(), wave_core::EnumError>;
   fn on_delete(&mut self) -> Result<(), wave_core::EnumError>;
 }
 
+impl TraitLayer for Layer {
+  fn get_type(&self) -> EnumLayerType {
+    return self.m_data.get_type();
+  }
+  
+  fn on_new(&mut self) -> Result<(), EnumError> {
+    return self.m_data.on_new();
+  }
+  
+  fn on_sync_event(&mut self) -> Result<(), EnumError> {
+    return self.m_data.on_sync_event();
+  }
+  
+  fn on_async_event(&mut self, event: &EnumEvent) -> Result<bool, EnumError> {
+    return self.m_data.on_async_event(event);
+  }
+  
+  fn on_update(&mut self, time_step: f64) -> Result<(), EnumError> {
+    return self.m_data.on_update(time_step);
+  }
+  
+  fn on_render(&mut self) -> Result<(), EnumError> {
+    return self.m_data.on_render();
+  }
+  
+  fn on_delete(&mut self) -> Result<(), EnumError> {
+    return self.m_data.on_delete();
+  }
+}
+
 impl Layer {
-  pub fn new<T: TraitLayer + 'static>(name: &'static str, ty: EnumLayerType, data: T) -> Self {
+  pub fn new<T: TraitLayer + 'static>(name: &'static str, data: T) -> Self {
     return Self {
       m_uuid: 0,
       m_name: name,
-      m_priority: ty as u32,
-      m_type: ty,
+      m_priority: data.get_type() as u32,
+      m_sync_polling: false,
+      m_poll_mask: EnumEventMask::c_none,
       m_data: Box::new(data),
-    }
+    };
+  }
+  
+  pub fn toggle_sync_polling(&mut self, flag: bool) {
+    self.m_sync_polling = flag;
+  }
+  
+  pub fn is_sync_enabled(&self) -> bool {
+    return self.m_sync_polling;
+  }
+  
+  pub fn get_type(&self) -> EnumLayerType {
+    return self.m_data.get_type();
   }
   
   pub fn is(&self, layer_type: EnumLayerType) -> bool {
-    return self.m_type == layer_type;
+    return self.m_data.get_type() == layer_type;
+  }
+  
+  pub(crate) fn get_poll_mask(&self) -> EnumEventMask {
+    return self.m_poll_mask;
+  }
+  
+  pub(crate) fn set_async_polling_mask(&mut self, event_mask: events::EnumEventMask) {
+    self.m_poll_mask = event_mask;
+  }
+  
+  pub(crate) fn poll_includes(&self, poll_mask: EnumEventMask) -> bool {
+    return self.m_poll_mask.contains(poll_mask);
+  }
+  
+  pub(crate) fn polls(&self, event: &events::EnumEvent) -> bool {
+    let cast = events::EnumEventMask::from(event);
+    return self.m_poll_mask.contains(cast);
   }
   
   pub fn try_cast<T: TraitLayer + 'static>(&self) -> Option<&T> {
     return unsafe { Some(&*(self.m_data.deref() as *const dyn TraitLayer as *const T)) };
   }
-  
-  pub fn on_new(&mut self) -> Result<(), wave_core::EnumError> {
-    return self.m_data.on_new();
-  }
-  
-  pub fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, wave_core::EnumError> {
-    return self.m_data.on_event(event);
-  }
-  
-  pub fn on_update(&mut self, time_step: f64) -> Result<(), wave_core::EnumError> {
-    return self.m_data.on_update(time_step);
-  }
-  
-  pub fn on_render(&mut self) -> Result<(), wave_core::EnumError> {
-    return self.m_data.on_render();
-  }
-  
-  pub fn on_delete(&mut self) -> Result<(), wave_core::EnumError> {
-    return  self.m_data.on_delete();
-  }
-  
 }

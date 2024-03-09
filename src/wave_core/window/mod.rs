@@ -27,12 +27,14 @@ use std::path::PathBuf;
 
 #[cfg(feature = "vulkan")]
 use ash::vk;
-use glfw::{Context};
+use glfw::Context;
 
-use crate::{log};
-use crate::wave_core::events::{EnumEventMask, EnumEvent, AsyncCallback};
-use crate::wave_core::graphics::renderer::{EnumApi};
-use crate::wave_core::input::{self, EnumAction, EnumKey, EnumModifiers};
+use crate::log;
+use crate::wave_core::Engine;
+use crate::wave_core::events::{EnumEvent, EnumEventMask};
+use crate::wave_core::graphics::renderer::EnumApi;
+use crate::wave_core::input::{self, EnumAction, EnumKey, EnumModifiers, EnumMouseButton};
+use crate::wave_core::utils::Time;
 
 pub(crate) static mut S_WINDOW_CONTEXT: Option<*mut glfw::Glfw> = None;
 
@@ -73,6 +75,7 @@ pub enum EnumError {
   NoContext,
   InitError,
   ApiError,
+  InvalidEventMask,
   InvalidEventCallback,
   AlreadyInitializedError,
   VulkanIncompatibleError,
@@ -226,26 +229,26 @@ impl<'a> Window {
     if self.m_window_mode != EnumWindowMode::Windowed {
       unsafe {
         (*S_WINDOW_CONTEXT.unwrap()).with_primary_monitor(|_, monitor| {
-            if monitor.is_none() {
-              log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot identify primary monitor!");
-              return;
+          if monitor.is_none() {
+            log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot identify primary monitor!");
+            return;
+          }
+          
+          let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
+          
+          match self.m_window_mode {
+            EnumWindowMode::Windowed => {}
+            EnumWindowMode::Borderless => {
+              self.m_api_window.set_monitor(glfw::WindowMode::Windowed,
+                0, 0, mode.width, mode.height, self.m_refresh_count_desired);
             }
-            
-            let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
-            
-            match self.m_window_mode {
-              EnumWindowMode::Windowed => {}
-              EnumWindowMode::Borderless => {
-                self.m_api_window.set_monitor(glfw::WindowMode::Windowed,
-                  0, 0, mode.width, mode.height, self.m_refresh_count_desired);
-              }
-              EnumWindowMode::Fullscreen => {
-                self.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
-                  0, 0, mode.width, mode.height, Some(mode.refresh_rate));
-              }
+            EnumWindowMode::Fullscreen => {
+              self.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
+                0, 0, mode.width, mode.height, Some(mode.refresh_rate));
             }
-          });
-        }
+          }
+        });
+      }
     }
     self.m_api_window.show();
   }
@@ -286,22 +289,18 @@ impl<'a> Window {
   pub fn on_event(&mut self, event: &EnumEvent) -> bool {
     return match event {
       EnumEvent::KeyEvent(key, action, _repeat_count, modifiers) => {
-        return match (key, action) {
-          (EnumKey::Escape, EnumAction::Pressed) => {
+        return match (key, action, modifiers) {
+          (EnumKey::Escape, EnumAction::Pressed, _) => {
             self.close();
             log!(EnumLogColor::Yellow, "WARN", "[Window] -->\t User requested to close the window");
             true
           }
-          (EnumKey::Enter, EnumAction::Pressed) => {
-            if modifiers.intersects(EnumModifiers::Alt) {
-              self.toggle_fullscreen();
-            }
+          (EnumKey::Enter, EnumAction::Pressed, &EnumModifiers::Alt) => {
+            self.toggle_fullscreen();
             true
           }
-          (EnumKey::V, EnumAction::Pressed) => {
-            if modifiers.intersects(EnumModifiers::Alt) {
-              self.toggle_vsync();
-            }
+          (EnumKey::V, EnumAction::Pressed, &EnumModifiers::Alt) => {
+            self.toggle_vsync();
             true
           }
           _ => false
@@ -326,181 +325,229 @@ impl<'a> Window {
     };
   }
   
-  pub fn set_polling(&mut self, event_type: EnumEventMask, event_callback: Option<AsyncCallback>) {
-    match event_type {
-      EnumEventMask::c_none => {
-        return;
-      }
-      EnumEventMask::c_all => {
-        self.m_api_window.set_all_polling(true);
-      }
-      EnumEventMask::c_window => {
-        self.m_api_window.set_iconify_polling(true);
-        self.m_api_window.set_maximize_polling(true);
-        self.m_api_window.set_focus_polling(true);
-        self.m_api_window.set_close_polling(true);
-        self.m_api_window.set_framebuffer_size_polling(true);
-        self.m_api_window.set_pos_polling(true);
-      }
-      EnumEventMask::c_mouse => {
-        self.m_api_window.set_cursor_pos_polling(true);
-        self.m_api_window.set_mouse_button_polling(true);
-        self.m_api_window.set_scroll_polling(true);
-      }
-      EnumEventMask::c_window_iconify => {
-        self.m_api_window.set_iconify_polling(true);
-        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, bool)>() {
-          self.m_api_window.set_iconify_callback(event_callback.unwrap().m_callback
-            .downcast_ref::<fn(&mut glfw::Window, bool)>().unwrap());
-        }
-      }
-      EnumEventMask::c_window_maximize => {
-        self.m_api_window.set_maximize_polling(true);
-        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, bool)>() {
-          self.m_api_window.set_maximize_callback(event_callback.unwrap().m_callback
-            .downcast_ref::<fn(&mut glfw::Window, bool)>().unwrap());
-        }
-      }
-      EnumEventMask::c_window_focus => {
-        self.m_api_window.set_focus_polling(true);
-        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, bool)>() {
-          self.m_api_window.set_focus_callback(event_callback.unwrap().m_callback
-            .downcast_ref::<fn(&mut glfw::Window, bool)>().unwrap());
-        }
-      }
-      EnumEventMask::c_window_close => {
-        self.m_api_window.set_close_polling(true);
-        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window)>() {
-          self.m_api_window.set_close_callback(event_callback.unwrap().m_callback
-            .downcast_ref::<fn(&mut glfw::Window)>().unwrap());
-        }
-      }
-      EnumEventMask::c_window_size => {
-        self.m_api_window.set_framebuffer_size_polling(true);
-        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, i32, i32)>() {
-          self.m_api_window.set_framebuffer_size_callback(event_callback.unwrap().m_callback
-            .downcast_ref::<fn(&mut glfw::Window, i32, i32)>().unwrap());
-        }
-      }
-      EnumEventMask::c_window_pos => {
-        self.m_api_window.set_pos_polling(true);
-        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, i32, i32)>() {
-          self.m_api_window.set_pos_callback(event_callback.unwrap().m_callback
-            .downcast_ref::<fn(&mut glfw::Window, i32, i32)>().unwrap());
-        }
-      }
-      EnumEventMask::c_key => {
-        self.m_api_window.set_key_polling(true);
-        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback
-          .is::<fn(&mut glfw::Window, glfw::Key, glfw::Scancode, glfw::Action, glfw::Modifiers)>() {
-          self.m_api_window.set_key_callback(event_callback.unwrap().m_callback
-            .downcast_ref::<fn(&mut glfw::Window, glfw::Key, glfw::Scancode, glfw::Action, glfw::Modifiers)>().unwrap());
-        }
-      }
-      EnumEventMask::c_mouse_btn => {
-        self.m_api_window.set_mouse_button_polling(true);
-        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback
-          .is::<fn(&mut glfw::Window, glfw::MouseButton, glfw::Action, glfw::Modifiers)>() {
-          self.m_api_window.set_mouse_button_callback(event_callback.unwrap().m_callback
-            .downcast_ref::<fn(&mut glfw::Window, glfw::MouseButton, glfw::Action, glfw::Modifiers)>().unwrap());
-        }
-      }
-      EnumEventMask::c_mouse_scroll => {
-        self.m_api_window.set_scroll_polling(true);
-        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, f64, f64)>() {
-          self.m_api_window.set_scroll_callback(event_callback.unwrap().m_callback
-            .downcast_ref::<fn(&mut glfw::Window, f64, f64)>().unwrap());
-        }
-      }
-      EnumEventMask::c_drag_and_drop => {
-        self.m_api_window.set_drag_and_drop_polling(true);
-        if event_callback.is_some() && event_callback.as_ref().unwrap().m_callback.is::<fn(&mut glfw::Window, Vec<PathBuf>)>() {
-          self.m_api_window.set_drag_and_drop_callback(event_callback.unwrap().m_callback
-            .downcast_ref::<fn(&mut glfw::Window, Vec<PathBuf>)>().unwrap());
-        }
-      }
-      _ => {}
+  pub fn enable_polling(&mut self, event_mask: EnumEventMask) {
+    if event_mask.contains(EnumEventMask::c_window) {
+      self.m_api_window.set_close_polling(true);
+      self.m_api_window.set_iconify_polling(true);
+      self.m_api_window.set_maximize_polling(true);
+      self.m_api_window.set_focus_polling(true);
+      self.m_api_window.set_framebuffer_size_polling(true);
+      self.m_api_window.set_pos_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_input) {
+      self.m_api_window.set_key_polling(true);
+      self.m_api_window.set_mouse_button_polling(true);
+      self.m_api_window.set_scroll_polling(true);
+      self.m_api_window.set_drag_and_drop_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_window_close) {
+      self.m_api_window.set_close_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_window_iconify) {
+      self.m_api_window.set_iconify_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_window_maximize) {
+      self.m_api_window.set_maximize_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_window_focus) {
+      self.m_api_window.set_focus_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_window_size) {
+      self.m_api_window.set_framebuffer_size_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_window_pos) {
+      self.m_api_window.set_pos_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_keyboard) {
+      self.m_api_window.set_key_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_mouse) {
+      self.m_api_window.set_mouse_button_polling(true);
+      self.m_api_window.set_scroll_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_mouse_btn) {
+      self.m_api_window.set_mouse_button_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_mouse_scroll) {
+      self.m_api_window.set_scroll_polling(true);
+    }
+    if event_mask.contains(EnumEventMask::c_drag_and_drop) {
+      self.m_api_window.set_drag_and_drop_polling(true);
     }
   }
   
-  pub fn unset_polling(&mut self, event_type: EnumEventMask) {
-    match event_type {
-      EnumEventMask::c_all => {
-        self.m_api_window.set_all_polling(false);
-      }
-      EnumEventMask::c_window => {
-        self.m_api_window.set_iconify_polling(false);
-        self.m_api_window.unset_iconify_callback();
-        self.m_api_window.set_maximize_polling(false);
-        self.m_api_window.unset_maximize_callback();
-        self.m_api_window.set_close_polling(false);
-        self.m_api_window.unset_close_callback();
-        self.m_api_window.set_framebuffer_size_polling(false);
-        self.m_api_window.unset_framebuffer_size_callback();
-        self.m_api_window.set_pos_polling(false);
-        self.m_api_window.unset_pos_callback();
-        self.m_api_window.set_focus_polling(false);
-        self.m_api_window.unset_focus_callback();
-      }
-      EnumEventMask::c_input => {
-        self.m_api_window.set_key_polling(false);
-        self.m_api_window.unset_key_callback();
-        self.m_api_window.set_mouse_button_polling(false);
-        self.m_api_window.unset_mouse_button_callback();
-        self.m_api_window.set_scroll_polling(false);
-        self.m_api_window.unset_scroll_callback();
-        self.m_api_window.set_cursor_pos_polling(false);
-        self.m_api_window.unset_cursor_pos_callback();
-      }
-      EnumEventMask::c_mouse => {
-        self.m_api_window.set_mouse_button_polling(false);
-        self.m_api_window.unset_mouse_button_callback();
-        self.m_api_window.set_scroll_polling(false);
-        self.m_api_window.unset_scroll_callback();
-        self.m_api_window.set_cursor_pos_polling(false);
-        self.m_api_window.unset_cursor_pos_callback();
-      }
-      EnumEventMask::c_window_iconify => {
-        self.m_api_window.set_iconify_polling(false);
-        self.m_api_window.unset_iconify_callback();
-      }
-      EnumEventMask::c_window_maximize => {
-        self.m_api_window.set_maximize_polling(false);
-        self.m_api_window.unset_maximize_callback();
-      }
-      EnumEventMask::c_window_close => {
-        self.m_api_window.set_close_polling(false);
-        self.m_api_window.unset_close_callback();
-      }
-      EnumEventMask::c_window_size => {
-        self.m_api_window.set_framebuffer_size_polling(false);
-        self.m_api_window.unset_framebuffer_size_callback();
-      }
-      EnumEventMask::c_window_pos => {
-        self.m_api_window.set_pos_polling(false);
-        self.m_api_window.unset_pos_callback();
-      }
-      EnumEventMask::c_window_focus => {
-        self.m_api_window.set_focus_polling(false);
-        self.m_api_window.unset_focus_callback();
-      }
-      EnumEventMask::c_key => {
-        self.m_api_window.set_key_polling(false);
-        self.m_api_window.unset_key_callback();
-      }
-      EnumEventMask::c_mouse_btn => {
-        self.m_api_window.set_mouse_button_polling(false);
-        self.m_api_window.unset_mouse_button_callback();
-      }
-      EnumEventMask::c_mouse_scroll => {
-        self.m_api_window.set_scroll_polling(false);
-        self.m_api_window.unset_scroll_callback();
-      }
-      EnumEventMask::c_drag_and_drop => {
-        self.m_api_window.set_drag_and_drop_polling(false);
-        self.m_api_window.unset_drag_and_drop_callback();
-      }
-      _ => {}
+  pub fn disable_polling(&mut self, event_mask: EnumEventMask) {
+    if event_mask.contains(EnumEventMask::c_window) {
+      self.m_api_window.unset_close_callback();
+      self.m_api_window.set_close_polling(false);
+      self.m_api_window.unset_iconify_callback();
+      self.m_api_window.set_iconify_polling(false);
+      self.m_api_window.unset_maximize_callback();
+      self.m_api_window.set_maximize_polling(false);
+      self.m_api_window.unset_focus_callback();
+      self.m_api_window.set_focus_polling(false);
+      self.m_api_window.unset_framebuffer_size_callback();
+      self.m_api_window.set_framebuffer_size_polling(false);
+      self.m_api_window.unset_pos_callback();
+      self.m_api_window.set_pos_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_input) {
+      self.m_api_window.unset_key_callback();
+      self.m_api_window.set_key_polling(false);
+      self.m_api_window.unset_mouse_button_callback();
+      self.m_api_window.set_mouse_button_polling(false);
+      self.m_api_window.unset_scroll_callback();
+      self.m_api_window.set_scroll_polling(false);
+      self.m_api_window.unset_drag_and_drop_callback();
+      self.m_api_window.set_drag_and_drop_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_window_close) {
+      self.m_api_window.unset_close_callback();
+      self.m_api_window.set_close_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_window_iconify) {
+      self.m_api_window.unset_iconify_callback();
+      self.m_api_window.set_iconify_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_window_maximize) {
+      self.m_api_window.unset_maximize_callback();
+      self.m_api_window.set_maximize_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_window_focus) {
+      self.m_api_window.unset_focus_callback();
+      self.m_api_window.set_focus_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_window_size) {
+      self.m_api_window.unset_framebuffer_size_callback();
+      self.m_api_window.set_framebuffer_size_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_window_pos) {
+      self.m_api_window.unset_pos_callback();
+      self.m_api_window.set_pos_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_keyboard) {
+      self.m_api_window.unset_key_callback();
+      self.m_api_window.set_key_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_mouse) {
+      self.m_api_window.unset_mouse_button_callback();
+      self.m_api_window.set_mouse_button_polling(false);
+      self.m_api_window.unset_scroll_callback();
+      self.m_api_window.set_scroll_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_mouse_btn) {
+      self.m_api_window.unset_mouse_button_callback();
+      self.m_api_window.set_mouse_button_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_mouse_scroll) {
+      self.m_api_window.unset_scroll_callback();
+      self.m_api_window.set_scroll_polling(false);
+    }
+    if event_mask.contains(EnumEventMask::c_drag_and_drop) {
+      self.m_api_window.unset_drag_and_drop_callback();
+      self.m_api_window.set_drag_and_drop_polling(false);
+    }
+  }
+  
+  pub(crate) fn enable_callback(&mut self, event_mask: EnumEventMask) {
+    if event_mask.contains(EnumEventMask::c_window) {
+      self.m_api_window.set_close_callback(Self::window_close_callback);
+      self.m_api_window.set_iconify_callback(Self::window_iconify_callback);
+      self.m_api_window.set_maximize_callback(Self::window_maximize_callback);
+      self.m_api_window.set_focus_callback(Self::window_focus_callback);
+      self.m_api_window.set_framebuffer_size_callback(Self::window_size_callback);
+      self.m_api_window.set_pos_callback(Self::window_pos_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_input) {
+      self.m_api_window.set_key_callback(Self::key_callback);
+      self.m_api_window.set_mouse_button_callback(Self::mouse_btn_callback);
+      self.m_api_window.set_scroll_callback(Self::scroll_callback);
+      self.m_api_window.set_drag_and_drop_callback(Self::drag_and_drop_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_window_close) {
+      self.m_api_window.set_close_callback(Self::window_close_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_window_iconify) {
+      self.m_api_window.set_iconify_callback(Self::window_iconify_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_window_maximize) {
+      self.m_api_window.set_maximize_callback(Self::window_maximize_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_window_focus) {
+      self.m_api_window.set_focus_callback(Self::window_focus_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_window_size) {
+      self.m_api_window.set_framebuffer_size_callback(Self::window_size_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_window_pos) {
+      self.m_api_window.set_pos_callback(Self::window_pos_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_keyboard) {
+      self.m_api_window.set_key_callback(Self::key_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_mouse) {
+      self.m_api_window.set_mouse_button_callback(Self::mouse_btn_callback);
+      self.m_api_window.set_scroll_callback(Self::scroll_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_mouse_btn) {
+      self.m_api_window.set_mouse_button_callback(Self::mouse_btn_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_mouse_scroll) {
+      self.m_api_window.set_scroll_callback(Self::scroll_callback);
+    }
+    if event_mask.contains(EnumEventMask::c_drag_and_drop) {
+      self.m_api_window.set_drag_and_drop_callback(Self::drag_and_drop_callback);
+    }
+  }
+  
+  pub fn disable_callback(&mut self, event_mask: EnumEventMask) {
+    if event_mask.contains(EnumEventMask::c_window) {
+      self.m_api_window.unset_close_callback();
+      self.m_api_window.unset_iconify_callback();
+      self.m_api_window.unset_maximize_callback();
+      self.m_api_window.unset_focus_callback();
+      self.m_api_window.unset_framebuffer_size_callback();
+      self.m_api_window.unset_pos_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_input) {
+      self.m_api_window.unset_key_callback();
+      self.m_api_window.unset_mouse_button_callback();
+      self.m_api_window.unset_scroll_callback();
+      self.m_api_window.unset_drag_and_drop_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_window_close) {
+      self.m_api_window.unset_close_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_window_iconify) {
+      self.m_api_window.unset_iconify_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_window_maximize) {
+      self.m_api_window.unset_maximize_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_window_focus) {
+      self.m_api_window.unset_focus_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_window_size) {
+      self.m_api_window.unset_framebuffer_size_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_window_pos) {
+      self.m_api_window.unset_pos_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_keyboard) {
+      self.m_api_window.unset_key_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_mouse) {
+      self.m_api_window.unset_mouse_button_callback();
+      self.m_api_window.unset_scroll_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_mouse_btn) {
+      self.m_api_window.unset_mouse_button_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_mouse_scroll) {
+      self.m_api_window.unset_scroll_callback();
+    }
+    if event_mask.contains(EnumEventMask::c_drag_and_drop) {
+      self.m_api_window.unset_drag_and_drop_callback();
     }
   }
   
@@ -601,7 +648,48 @@ impl<'a> Window {
         return (mode.width, mode.height);
       });
     }
-    return (self.m_window_resolution.0 as u32, self.m_window_resolution.1 as u32);
+    return (self.m_window_resolution.0, self.m_window_resolution.1);
+  }
+  
+  pub fn window_close_callback(_window: &mut glfw::Window) {
+    Engine::on_async_event(&EnumEvent::WindowCloseEvent(Time::now()));
+  }
+  
+  pub fn window_iconify_callback(_window: &mut glfw::Window, flag: bool) {
+    Engine::on_async_event(&EnumEvent::WindowIconifyEvent(flag));
+  }
+  
+  pub fn window_focus_callback(_window: &mut glfw::Window, flag: bool) {
+    Engine::on_async_event(&EnumEvent::WindowFocusEvent(flag));
+  }
+  
+  pub fn window_maximize_callback(_window: &mut glfw::Window, flag: bool) {
+    Engine::on_async_event(&EnumEvent::WindowMaximizeEvent(flag));
+  }
+  
+  pub fn window_pos_callback(_window: &mut glfw::Window, pos_x: i32, pos_y: i32) {
+    Engine::on_async_event(&EnumEvent::WindowPosEvent(pos_x, pos_y));
+  }
+  
+  pub fn window_size_callback(_window: &mut glfw::Window, size_x: i32, size_y: i32) {
+    Engine::on_async_event(&EnumEvent::FramebufferEvent(size_x as u32, size_y as u32));
+  }
+  
+  pub fn key_callback(_window: &mut glfw::Window, key: glfw::Key, _scancode: glfw::Scancode, action: glfw::Action,
+                      modifiers: glfw::Modifiers) {
+    Engine::on_async_event(&EnumEvent::KeyEvent(EnumKey::from(key), EnumAction::from(action), None, EnumModifiers::from(modifiers)));
+  }
+  
+  pub fn mouse_btn_callback(_window: &mut glfw::Window, mouse_btn: glfw::MouseButton, action: glfw::Action, modifiers: glfw::Modifiers) {
+    Engine::on_async_event(&EnumEvent::MouseBtnEvent(EnumMouseButton::from(mouse_btn), EnumAction::from(action), EnumModifiers::from(modifiers)));
+  }
+  
+  pub fn scroll_callback(_window: &mut glfw::Window, delta_x: f64, delta_y: f64) {
+    Engine::on_async_event(&EnumEvent::MouseScrollEvent(delta_x, delta_y));
+  }
+  
+  pub fn drag_and_drop_callback(_window: &mut glfw::Window, path: Vec<PathBuf>) {
+    Engine::on_async_event(&EnumEvent::DragAndDrop(path));
   }
 }
 

@@ -28,3 +28,4 @@ pub mod math;
 pub mod utils;
 pub mod graphics;
 pub mod input;
+pub mod events;

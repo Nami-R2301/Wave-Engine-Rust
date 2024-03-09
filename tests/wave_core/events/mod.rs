@@ -22,39 +22,21 @@
  SOFTWARE.
 */
 
-use crate::wave_core::layers::TraitLayer;
-use crate::wave_core::{EnumError, events, TraitApp};
+use wave_engine::wave_core::events::EnumEventMask;
+use wave_engine::wave_core::window::Window;
 
-pub struct AppLayer {
-  m_app: *mut dyn TraitApp
-}
-
-impl TraitLayer for AppLayer {
-  fn on_new(&mut self) -> Result<(), EnumError> {
-    return unsafe { (*self.m_app).on_new() };
-  }
+#[test]
+fn test_event_masking() {
+  let window = EnumEventMask::c_window;
+  let inputs = EnumEventMask::c_input;
+  let keys = EnumEventMask::c_keyboard;
   
-  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
-    return unsafe { (*self.m_app).on_async_event(event) };
-  }
+  assert!(inputs.contains(keys));
+  assert!(keys.intersects(inputs));
   
-  fn on_update(&mut self, time_step: f64) -> Result<(), EnumError> {
-    return unsafe { (*self.m_app).on_update(time_step) };
-  }
+  assert_eq!(keys & EnumEventMask::c_none, keys.intersection(EnumEventMask::c_none));
+  assert_eq!(keys | inputs, keys.union(inputs));
+  assert_eq!(inputs & !keys, inputs.difference(keys));
   
-  fn on_render(&mut self) -> Result<(), EnumError> {
-    return unsafe { (*self.m_app).on_render() };
-  }
-  
-  fn on_delete(&mut self) -> Result<(), EnumError> {
-    return unsafe { (*self.m_app).on_delete() };
-  }
-}
-
-impl AppLayer {
-  pub fn new(app: *mut dyn TraitApp) -> Self {
-    return Self {
-      m_app: app,
-    };
-  }
+  assert_ne!(keys.union(inputs), window);
 }
