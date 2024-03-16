@@ -23,7 +23,6 @@
 */
 
 use wave_engine::wave_core::events::EnumEventMask;
-use wave_engine::wave_core::window::Window;
 
 #[test]
 fn test_event_masking() {

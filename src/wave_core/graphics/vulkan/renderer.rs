@@ -38,7 +38,7 @@ use crate::wave_core::assets::renderable_assets::{EnumVertexMemberOffset, REntit
 use crate::wave_core::camera::Camera;
 use crate::wave_core::{Engine, events};
 use crate::wave_core::graphics::{renderer, vulkan};
-use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumFeature, EnumState, TraitContext};
+use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumRendererOption, EnumState, TraitContext};
 use crate::wave_core::graphics::shader::Shader;
 use crate::wave_core::graphics::vulkan::buffer::{VkVbo, VkVertexAttribute};
 use crate::wave_core::graphics::vulkan::shader::VkShader;
@@ -174,11 +174,11 @@ pub struct VkContext {
   m_state: EnumState,
   #[allow(unused)]
   m_entry: ash::Entry,
-  m_instance: ash::Instance,
+  m_instance: Option<ash::Instance>,
   m_physical_device: vk::PhysicalDevice,
   m_queue_family_indices: VkQueueFamilyIndices,
-  m_logical_device: ash::Device,
-  m_surface: khr::Surface,
+  m_logical_device: Option<ash::Device>,
+  m_surface: Option<khr::Surface>,
   m_surface_khr: vk::SurfaceKHR,
   m_swap_chain_properties: VkSwapChainProperties,
   m_swap_chain: Option<khr::Swapchain>,
@@ -193,7 +193,8 @@ pub struct VkContext {
 impl VkContext {
   pub fn create_swap_chain(&mut self, vsync_preferred: bool) -> Result<(), renderer::EnumError> {
     // Setup swap chain.
-    let mut swap_chain_properties = VkContext::query_swap_properties(&self.m_surface, self.m_physical_device, self.m_surface_khr)?;
+    let mut swap_chain_properties = VkContext::query_swap_properties(self.m_surface.as_ref().unwrap(),
+      self.m_physical_device, self.m_surface_khr)?;
     let extent = VkContext::pick_swap_extent(&swap_chain_properties.m_capabilities, None)?;
     let format = VkContext::pick_swap_format(&swap_chain_properties.m_formats)?;
     
@@ -243,7 +244,8 @@ impl VkContext {
     swap_chain_create_info.clipped = vk::TRUE;
     
     // Create swap chain.
-    let swap_chain = khr::Swapchain::new(&self.m_instance, &self.m_logical_device);
+    let swap_chain = khr::Swapchain::new(self.m_instance.as_ref().unwrap(),
+      self.m_logical_device.as_ref().unwrap());
     let swap_chain_khr = unsafe {
       swap_chain.create_swapchain(&swap_chain_create_info, None)
     };
@@ -284,7 +286,7 @@ impl VkContext {
       image_view_create_info.subresource_range.base_array_layer = 0;
       image_view_create_info.subresource_range.layer_count = 1;
       
-      match unsafe { self.m_logical_device.create_image_view(&image_view_create_info, None) } {
+      match unsafe { self.m_logical_device.as_ref().unwrap().create_image_view(&image_view_create_info, None) } {
         Ok(image_view) => {
           self.m_swap_chain_image_views.push(image_view);
         }
@@ -319,7 +321,7 @@ impl VkContext {
     
     // Setup vertex input.
     self.m_vbo_array.push(VkVbo::new(REntity::size_of(), 0, REntity::size_of() as u32,
-      vk::VertexInputRate::VERTEX, &mut self.m_logical_device, None)
+      vk::VertexInputRate::VERTEX, self.m_logical_device.as_mut().unwrap(), None)
       .map_err(|error| {
         return EnumError::BufferOperationError(error);
       })?);
@@ -329,12 +331,12 @@ impl VkContext {
   }
   
   pub fn get_handle(&mut self) -> &mut ash::Device {
-    return &mut self.m_logical_device;
+    return self.m_logical_device.as_mut().unwrap();
   }
   
   pub fn get_limits(&self) -> vk::PhysicalDeviceLimits {
     return unsafe {
-      self.m_instance.get_physical_device_properties(self.m_physical_device).limits
+      self.m_instance.as_ref().unwrap().get_physical_device_properties(self.m_physical_device).limits
     };
   }
   
@@ -792,7 +794,7 @@ impl VkContext {
       });
     }
     
-    let (width, height) = Engine::get_active_window().m_api_window.get_framebuffer_size();
+    let (width, height) = Engine::get_active_window().m_api_window.as_mut().unwrap().get_framebuffer_size();
     let actual_width: u32 = clamp(width as u32, surface_capabilities.min_image_extent.width,
       surface_capabilities.max_image_extent.width);
     let actual_height: u32 = clamp(height as u32, surface_capabilities.min_image_extent.height,
@@ -902,6 +904,27 @@ impl VkContext {
 }
 
 impl TraitContext for VkContext {
+  fn default() -> Self where Self: Sized {
+    return Self {
+      m_state: EnumState::NotCreated,
+      m_entry: Default::default(),
+      m_instance: None,
+      m_physical_device: Default::default(),
+      m_queue_family_indices: VkQueueFamilyIndices::default(),
+      m_logical_device: None,
+      m_surface: None,
+      m_surface_khr: Default::default(),
+      m_swap_chain_properties: VkSwapChainProperties::default(),
+      m_swap_chain: None,
+      m_swap_chain_khr: Default::default(),
+      m_swap_chain_images: vec![],
+      m_swap_chain_image_views: vec![],
+      m_dynamic_states: vec![],
+      m_vbo_array: vec![],
+      m_debug_report_callback: None,
+    }
+  }
+  
   fn on_new(window: &mut Window) -> Result<Self, renderer::EnumError> {
     let (ash_entry, ash_instance) =
       VkContext::create_instance(window, None, None)?;
@@ -925,13 +948,13 @@ impl TraitContext for VkContext {
     Ok(VkContext {
       m_state: EnumState::Created,
       m_entry: ash_entry,
-      m_instance: ash_instance,
-      m_surface: vk_surface,
+      m_instance: Some(ash_instance),
+      m_surface: Some(vk_surface),
       m_surface_khr: khr_surface,
       m_debug_report_callback: debug_callback,
       m_physical_device: vk_physical_device,
       m_queue_family_indices: queue_family_indices,
-      m_logical_device: ash_logical_device,
+      m_logical_device: Some(ash_logical_device),
       m_swap_chain_properties: VkSwapChainProperties::default(),
       m_swap_chain: None,
       m_swap_chain_khr: Default::default(),
@@ -948,7 +971,7 @@ impl TraitContext for VkContext {
   
   fn get_api_version(&self) -> f32 {
     let device_properties = unsafe {
-      self.m_instance.get_physical_device_properties(self.m_physical_device)
+      self.m_instance.as_ref().unwrap().get_physical_device_properties(self.m_physical_device)
     };
     
     let major = vk::api_version_major(device_properties.api_version);
@@ -963,7 +986,7 @@ impl TraitContext for VkContext {
   fn get_max_shader_version_available(&self) -> u16 {
     let device_properties =
       unsafe {
-        self.m_instance.get_physical_device_properties(self.m_physical_device)
+        self.m_instance.as_ref().unwrap().get_physical_device_properties(self.m_physical_device)
       };
     let to_float: f32 = format!("{0}.{1}", vk::api_version_major(device_properties.api_version), vk::api_version_minor(device_properties.api_version)).parse().unwrap();
     return (to_float * 10.0) as u16;
@@ -981,13 +1004,12 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), renderer::EnumError> {
+  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumError> {
     // Toggle features.
     for feature in features {
       self.toggle(*feature)?;
     }
     
-    let window =  Engine::get_active_window();
     // Create swap chain.
     self.create_swap_chain(window.m_vsync)?;
     
@@ -1014,7 +1036,7 @@ impl TraitContext for VkContext {
   fn get_max_msaa_count(&self) -> Result<u8, renderer::EnumError> {
     let device_properties =
       unsafe {
-        self.m_instance.get_physical_device_properties(self.m_physical_device)
+        self.m_instance.as_ref().unwrap().get_physical_device_properties(self.m_physical_device)
       };
     let max_color_sample_count = device_properties.limits.framebuffer_color_sample_counts;
     let max_depth_sample_count = device_properties.limits.framebuffer_depth_sample_counts;
@@ -1043,7 +1065,7 @@ impl TraitContext for VkContext {
   
   fn to_string(&self) -> String {
     let device_properties = unsafe {
-      self.m_instance.get_physical_device_properties(self.m_physical_device)
+      self.m_instance.as_ref().unwrap().get_physical_device_properties(self.m_physical_device)
     };
     let device_name_str = unsafe { std::ffi::CStr::from_ptr(device_properties.device_name.as_ptr()) }
       .to_str()
@@ -1073,9 +1095,9 @@ impl TraitContext for VkContext {
     return info_physical_device + info_logical_device.as_str();
   }
   
-  fn toggle(&mut self, feature: EnumFeature) -> Result<(), renderer::EnumError> {
+  fn toggle(&mut self, feature: EnumRendererOption) -> Result<(), renderer::EnumError> {
     match feature {
-      EnumFeature::ApiCallChecking(debug_type) => {
+      EnumRendererOption::ApiCallChecking(debug_type) => {
         if debug_type != EnumCallCheckingType::None {
           // Toggle on debugging.
           #[cfg(feature = "trace_api")]
@@ -1097,10 +1119,10 @@ impl TraitContext for VkContext {
           .then(|| return "enabled")
           .unwrap_or("disabled"));
       }
-      EnumFeature::DepthTest(_) => {}
-      EnumFeature::CullFacing(_) => {}
-      EnumFeature::Wireframe(_) => {}
-      EnumFeature::MSAA(sample_count) => {
+      EnumRendererOption::DepthTest(_) => {}
+      EnumRendererOption::CullFacing(_) => {}
+      EnumRendererOption::Wireframe(_) => {}
+      EnumRendererOption::MSAA(sample_count) => {
         #[allow(unused)]
           let mut max_sample_count: u8 = 1;
         if sample_count.is_some() {
@@ -1119,8 +1141,8 @@ impl TraitContext for VkContext {
           .then(|| return format!("enabled (X{0})", max_sample_count))
           .unwrap_or("disabled".to_string()));
       }
-      EnumFeature::SRGB(_) => {}
-      EnumFeature::Blending(_, _, _) => {}
+      EnumRendererOption::SRGB(_) => {}
+      EnumRendererOption::Blending(_, _, _) => {}
     }
     return Ok(());
   }
@@ -1164,13 +1186,13 @@ impl TraitContext for VkContext {
     
     unsafe {
       self.m_swap_chain_image_views.iter().for_each(|image_view| {
-        self.m_logical_device.destroy_image_view(*image_view, None);
+        self.m_logical_device.as_ref().unwrap().destroy_image_view(*image_view, None);
       });
       
       if self.m_swap_chain.is_some() {
         self.m_swap_chain.as_ref().unwrap().destroy_swapchain(self.m_swap_chain_khr, None);
       }
-      if self.m_logical_device.device_wait_idle().is_err() {
+      if self.m_logical_device.as_ref().unwrap().device_wait_idle().is_err() {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot wait for device \
          (Vulkan logical device) to finish!");
         return Err(renderer::EnumError::from(EnumError::LogicalDeviceError));
@@ -1183,15 +1205,15 @@ impl TraitContext for VkContext {
       };
       log!(EnumLogColor::Green, "INFO", "[VkContext] -->\t Freed buffers successfully");
       
-      self.m_logical_device.destroy_device(None);
-      self.m_surface.destroy_surface(self.m_surface_khr, None);
+      self.m_logical_device.as_ref().unwrap().destroy_device(None);
+      self.m_surface.as_ref().unwrap().destroy_surface(self.m_surface_khr, None);
       #[cfg(feature = "debug")]
       {
         if let Some((debug, messenger)) = self.m_debug_report_callback.take() {
           debug.destroy_debug_utils_messenger(messenger, None);
         }
       }
-      self.m_instance.destroy_instance(None);
+      self.m_instance.as_ref().unwrap().destroy_instance(None);
     }
     return Ok(());
   }

@@ -58,6 +58,7 @@ pub mod ui_imgui {
   
   #[allow(unused)]
   use crate::log;
+  use crate::wave_core::Engine;
   use crate::wave_core::events::EnumEvent;
   use crate::wave_core::graphics::renderer::EnumApi;
   use crate::wave_core::input::{EnumAction, EnumModifiers, EnumMouseButton};
@@ -153,7 +154,7 @@ pub mod ui_imgui {
           };
           self.m_mouse_press[index] = action == &EnumAction::Pressed;
           
-          self.m_imgui_handle.io_mut().mouse_down[index] = action != &EnumAction::Released;
+          self.m_imgui_handle.io_mut().mouse_down[index] = self.m_mouse_press[index];
           true
         }
         // WindowEvent::CursorPos(w, h) => {
@@ -176,7 +177,7 @@ pub mod ui_imgui {
           self.m_imgui_handle.io_mut().key_shift = modifier.intersects(EnumModifiers::Shift);
           self.m_imgui_handle.io_mut().key_super = modifier.intersects(EnumModifiers::Super);
           
-          self.m_imgui_handle.io_mut().keys_down[*key as usize] = action != &EnumAction::Released;
+          self.m_imgui_handle.io_mut().keys_down[*key as usize] = action == &EnumAction::Pressed;
           false
         }
         _ => false
@@ -191,14 +192,24 @@ pub mod ui_imgui {
       self.m_last_frame = now;
       io.delta_time = delta.to_secs() as f32;
       
-      let window_size = unsafe { (*self.m_window_handle).m_window_resolution };
-      io.display_size = [window_size.0 as f32, window_size.1 as f32];
+      let window_size = Engine::get_active_window().m_window_resolution;
+      io.display_size = [window_size.unwrap().0 as f32, window_size.unwrap().1 as f32];
       
       self.m_ui_handle = self.m_imgui_handle.new_frame();
+      
+      unsafe {
+        (*self.m_ui_handle).dockspace_over_main_viewport();
+      }
+      
       unsafe {
         (*self.m_ui_handle).window("Example Ui")
+          .bg_alpha(1.0)
           .menu_bar(true)
-          .size([window_size.0 as f32, window_size.1 as f32], Condition::FirstUseEver)
+          .resizable(true)
+          .mouse_inputs(true)
+          .size([window_size.unwrap().0 as f32, window_size.unwrap().1 as f32], Condition::FirstUseEver)
+          .position([(*self.m_window_handle).m_window_pos.unwrap_or((0, 0)).0 as f32,
+            (*self.m_window_handle).m_window_pos.unwrap_or((0, 0)).1 as f32], Condition::FirstUseEver)
           .build(|| {
             (*self.m_ui_handle).text_colored([1.0, 0.0, 0.0, 1.0], "Example text");
           });
@@ -211,7 +222,7 @@ pub mod ui_imgui {
         if !io.config_flags.contains(ConfigFlags::NO_MOUSE_CURSOR_CHANGE) {
           match (*self.m_ui_handle).mouse_cursor() {
             Some(mouse_cursor) if !io.mouse_draw_cursor => {
-              (*self.m_window_handle).m_api_window.set_cursor_mode(glfw::CursorMode::Normal);
+              (*self.m_window_handle).m_api_window.as_mut().unwrap().set_cursor_mode(glfw::CursorMode::Normal);
               
               let cursor = match mouse_cursor {
                 MouseCursor::TextInput => StandardCursor::IBeam,
@@ -220,7 +231,7 @@ pub mod ui_imgui {
                 MouseCursor::Hand => StandardCursor::Hand,
                 _ => StandardCursor::Arrow,
               };
-              (*self.m_window_handle).m_api_window.set_cursor(Some(glfw::Cursor::standard(cursor)));
+              (*self.m_window_handle).m_api_window.as_mut().unwrap().set_cursor(Some(glfw::Cursor::standard(cursor)));
               
               if self.m_cursor.1 != Some(cursor) {
                 self.m_cursor.1 = Some(cursor);
@@ -230,7 +241,7 @@ pub mod ui_imgui {
             _ => {
               self.m_cursor.0 = MouseCursor::Arrow;
               self.m_cursor.1 = None;
-              (*self.m_window_handle).m_api_window.set_cursor_mode(glfw::CursorMode::Hidden);
+              (*self.m_window_handle).m_api_window.as_mut().unwrap().set_cursor_mode(glfw::CursorMode::Hidden);
             }
           }
         }
@@ -249,7 +260,7 @@ pub mod ui_imgui {
     pub fn new(window: *mut Window) -> Self {
       let mut context = imgui::Context::create();
       unsafe {
-        let window_ptr = (*window).m_api_window.window_ptr() as *mut c_void;
+        let window_ptr = (*window).m_api_window.as_mut().unwrap().window_ptr() as *mut c_void;
         context.set_clipboard_backend(GlfwClipboardBackend(window_ptr));
       }
       
@@ -258,7 +269,7 @@ pub mod ui_imgui {
       context.set_renderer_name(String::from("OpenGL"));
       
       let renderer = Renderer::new(&mut context, |s| unsafe {
-        (*window).m_api_window.get_proc_address(s) as _
+        (*window).m_api_window.as_mut().unwrap().get_proc_address(s) as _
       });
       
       Self {

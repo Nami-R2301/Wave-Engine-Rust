@@ -36,7 +36,7 @@ use crate::wave_core::events::EnumEvent;
 use crate::wave_core::graphics::{open_gl, renderer};
 use crate::wave_core::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar,
   GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
-use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumFeature, EnumState, TraitContext};
+use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumRendererOption, EnumState, TraitContext};
 use crate::wave_core::graphics::shader::{EnumShaderLanguageType, Shader};
 use crate::wave_core::math::{Mat4};
 use crate::wave_core::window::Window;
@@ -55,12 +55,12 @@ macro_rules! check_gl_call {
     () => {};
     ($name:literal, $gl_function:expr) => {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot log, no active Engine!") };
-        if engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::None)) ||
-          engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Async))
+        if engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::None)) ||
+          engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Async))
          {
           unsafe { $gl_function };
-        } else if engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Sync)) ||
-        engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::SyncAndAsync)) {
+        } else if engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Sync)) ||
+        engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::SyncAndAsync)) {
           unsafe { $gl_function };
           let error = unsafe { gl::GetError() };
           if error != gl::NO_ERROR {
@@ -82,12 +82,12 @@ macro_rules! check_gl_call {
     ($name:literal, let $var:ident: $var_type:ty = $gl_function:expr) => {
       let $var:$var_type;
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot log, no active Engine!") };
-        if engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::None)) ||
-          engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Async))
+        if engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::None)) ||
+          engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Async))
          {
           $var = unsafe { $gl_function };
-        } else if engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Sync)) ||
-        engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::SyncAndAsync)) {
+        } else if engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Sync)) ||
+        engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::SyncAndAsync)) {
           $var = unsafe { $gl_function };
           let error = unsafe { gl::GetError() };
           if error != gl::NO_ERROR {
@@ -109,12 +109,12 @@ macro_rules! check_gl_call {
     ($name:literal, $var:ident = $gl_function:expr) => {
       $var = Default::default();
      let engine = unsafe { &mut *S_ENGINE.expect("Cannot log, no active Engine!") };
-        if engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::None)) ||
-          engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Async))
+        if engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::None)) ||
+          engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Async))
          {
           $var = unsafe { $gl_function };
-        } else if engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Sync)) ||
-        engine.m_renderer.m_features.contains(&crate::wave_core::graphics::renderer::EnumFeature::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::SyncAndAsync)) {
+        } else if engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::Sync)) ||
+        engine.m_renderer.m_options.contains(&crate::wave_core::graphics::renderer::EnumRendererOption::ApiCallChecking(crate::wave_core::graphics::renderer::EnumCallCheckingType::SyncAndAsync)) {
           $var = unsafe { $gl_function };
           let error = unsafe { gl::GetError() };
           if error != gl::NO_ERROR {
@@ -198,6 +198,15 @@ pub struct GlContext {
 }
 
 impl TraitContext for GlContext {
+  fn default() -> Self {
+    return Self {
+      m_state: EnumState::NotCreated,
+      m_ext: HashMap::new(),
+      m_batch: GlBatchPrimitives::new(),
+      m_debug_callback: Some(gl_error_callback)
+    };
+  }
+  
   fn on_new(window: &mut Window) -> Result<Self, renderer::EnumError> {
     // Init context.
     window.init_opengl_surface();
@@ -286,14 +295,13 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), renderer::EnumError> {
+  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumError> {
     // Enable or disable features AFTER context creation since we need a context to load our openGL
     // functions.
     for feature in features {
       self.toggle(*feature)?;
     }
     
-    let window = Engine::get_active_window();
     let window_framebuffer_size = window.get_framebuffer_size();
     check_gl_call!("Renderer", gl::Viewport(0, 0, window_framebuffer_size.0 as i32, window_framebuffer_size.1 as i32));
     check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
@@ -308,7 +316,7 @@ impl TraitContext for GlContext {
     //
     // return framebuffer_color_sample_count.min(framebuffer_depth_sample_count);
     let window = Engine::get_active_window();
-    return Ok(window.m_samples);
+    return Ok(window.m_samples.unwrap_or(1) as u8);
   }
   
   fn to_string(&self) -> String {
@@ -339,9 +347,9 @@ impl TraitContext for GlContext {
     }
   }
   
-  fn toggle(&mut self, feature: EnumFeature) -> Result<(), renderer::EnumError> {
-    match feature {
-      EnumFeature::ApiCallChecking(debug_type) => {
+  fn toggle(&mut self, option: EnumRendererOption) -> Result<(), renderer::EnumError> {
+    match option {
+      EnumRendererOption::ApiCallChecking(debug_type) => {
         match debug_type {
           EnumCallCheckingType::None => unsafe {
             gl::Disable(gl::DEBUG_OUTPUT);
@@ -370,7 +378,7 @@ impl TraitContext for GlContext {
         log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Debug mode {0}",
           (debug_type != EnumCallCheckingType::None).then(|| return "enabled").unwrap_or("disabled"));
       }
-      EnumFeature::DepthTest(enabled) => {
+      EnumRendererOption::DepthTest(enabled) => {
         if enabled {
           check_gl_call!("Renderer", gl::Enable(gl::DEPTH_TEST));
         } else {
@@ -379,7 +387,7 @@ impl TraitContext for GlContext {
         log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Depth test {0}",
           enabled.then(|| return "enabled").unwrap_or("disabled"));
       }
-      EnumFeature::MSAA(sample_count) => {
+      EnumRendererOption::MSAA(sample_count) => {
         #[allow(unused)]
           let mut max_sample_count: u8 = 1;
         if sample_count.is_some() {
@@ -399,7 +407,7 @@ impl TraitContext for GlContext {
           sample_count.is_some().then(|| return format!("enabled (X{0})", max_sample_count))
           .unwrap_or("disabled".to_string()));
       }
-      EnumFeature::Blending(enabled, s_factor, d_factor) => {
+      EnumRendererOption::Blending(enabled, s_factor, d_factor) => {
         if enabled {
           check_gl_call!("Renderer", gl::Enable(gl::BLEND));
           check_gl_call!("Renderer", gl::BlendFunc(s_factor as GLenum, d_factor as GLenum));
@@ -410,7 +418,7 @@ impl TraitContext for GlContext {
           .then(|| return "enabled")
           .unwrap_or("disabled"));
       }
-      EnumFeature::Wireframe(enabled) => {
+      EnumRendererOption::Wireframe(enabled) => {
         if enabled {
           check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE));
         } else {
@@ -420,7 +428,7 @@ impl TraitContext for GlContext {
           .then(|| return "enabled")
           .unwrap_or("disabled"));
       }
-      EnumFeature::SRGB(enabled) => {
+      EnumRendererOption::SRGB(enabled) => {
         if enabled {
           check_gl_call!("Renderer", gl::Enable(gl::FRAMEBUFFER_SRGB));
         } else {
@@ -430,7 +438,7 @@ impl TraitContext for GlContext {
           .then(|| return "enabled")
           .unwrap_or("disabled"));
       }
-      EnumFeature::CullFacing(face) => {
+      EnumRendererOption::CullFacing(face) => {
         if face.is_some() {
           check_gl_call!("Renderer", gl::Enable(gl::CULL_FACE));
           check_gl_call!("Renderer", gl::CullFace(face.unwrap() as GLenum));
@@ -633,7 +641,7 @@ impl GlContext {
   
   fn set_attributes(&mut self, entity: &REntity, vao: &mut GlVao) -> Result<(), EnumError> {
     return match entity.m_type {
-      EnumEntityType::Object => {
+      EnumEntityType::Mesh(is_flat_shaded) => {
         // Establish vao attributes.
         let mut attributes: Vec<GlVertexAttribute> = Vec::with_capacity(5);
         
@@ -646,7 +654,7 @@ impl GlContext {
           EnumVertexMemberOffset::AtPos as usize, 0)?);
         
         // Normals.
-        if entity.is_flat_shaded() {
+        if is_flat_shaded {
           attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3, false,
             EnumVertexMemberOffset::AtNormal as usize, 1)?);
         } else {

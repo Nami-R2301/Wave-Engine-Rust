@@ -582,7 +582,7 @@ impl Input {
       S_KEY_STATES[api_key as usize].0
     };
     
-    let new_state = window.m_api_window.get_key(api_key);
+    let new_state = window.m_api_window.as_ref().unwrap().get_key(api_key);
     let old_repeat_count: Option<u32> = unsafe { S_KEY_STATES[api_key as usize].1 };
     unsafe { S_KEY_STATES[api_key as usize] = (EnumAction::from(new_state), old_repeat_count) };
     
@@ -706,7 +706,7 @@ impl Input {
     let old_state = unsafe {
       S_MOUSE_BUTTON_STATES[api_mouse_button as usize]
     };
-    let new_state = window.m_api_window.get_mouse_button(api_mouse_button);
+    let new_state = window.m_api_window.as_ref().unwrap().get_mouse_button(api_mouse_button);
     
     unsafe { S_MOUSE_BUTTON_STATES[api_mouse_button as usize] = EnumAction::from(new_state) };
     
@@ -734,16 +734,16 @@ impl Input {
   
   #[allow(unused)]
   pub(crate) fn get_mouse_cursor_attribute(window: &Window) -> Result<glfw::CursorMode, EnumError> {
-    return Ok(window.m_api_window.get_cursor_mode());
+    return Ok(window.m_api_window.as_ref().unwrap().get_cursor_mode());
   }
   
   #[allow(unused)]
   pub(crate) fn set_mouse_cursor_attribute(window: &mut Window, cursor_mode: glfw::CursorMode) {
-    return window.m_api_window.set_cursor_mode(cursor_mode);
+    return window.m_api_window.as_mut().unwrap().set_cursor_mode(cursor_mode);
   }
   
   #[allow(unused)]
   pub(crate) fn set_mouse_cursor_position(window: &mut Window, cursor_position: Vec2<f32>) {
-    return window.m_api_window.set_cursor_pos(cursor_position.x as f64, cursor_position.y as f64);
+    return window.m_api_window.as_mut().unwrap().set_cursor_pos(cursor_position.x as f64, cursor_position.y as f64);
   }
 }

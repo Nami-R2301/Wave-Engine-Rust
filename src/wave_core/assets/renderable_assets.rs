@@ -57,7 +57,8 @@ pub enum EnumVertexMemberOffset {
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
 pub enum EnumEntityType {
-  Object,
+  Sprite,
+  Mesh(bool),
   Text
 }
 
@@ -120,9 +121,10 @@ pub struct REntity {
 
 impl REntity {
   pub fn default() -> Result<Self, renderer::EnumError> {
+    let data = ResLoader::new("cube.obj")?;
     let mut new_entity: REntity = REntity {
-      m_data: ResLoader::new("cube.obj")?,
-      m_type: EnumEntityType::Object,
+      m_data: data,
+      m_type: EnumEntityType::Sprite,
       m_renderer_id: u64::MAX,
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
@@ -134,16 +136,33 @@ impl REntity {
     new_entity.translate(Vec3::new(&[0.0, 0.0, 10.0]));
     return Ok(new_entity);
   }
-  pub fn new(data: Vec<Vertex>, data_type: EnumEntityType, is_flat_shaded: bool) -> Self {
-    let mut new_entity: REntity = REntity {
-      m_data: data,
-      m_type: data_type,
-      m_renderer_id: u64::MAX,
-      m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
-      m_sent: false,
-      m_changed: false,
-      m_flat_shaded: is_flat_shaded
-    };
+  pub fn new(data: Vec<Vertex>, data_type: EnumEntityType) -> Self {
+    let mut new_entity: REntity;
+    match data_type {
+      EnumEntityType::Sprite => {
+        new_entity = REntity {
+          m_data: data,
+          m_type: data_type,
+          m_renderer_id: u64::MAX,
+          m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
+          m_sent: false,
+          m_changed: false,
+          m_flat_shaded: false
+        };
+      }
+      EnumEntityType::Mesh(is_flat_shaded) => {
+        new_entity = REntity {
+          m_data: data,
+          m_type: data_type,
+          m_renderer_id: u64::MAX,
+          m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
+          m_sent: false,
+          m_changed: false,
+          m_flat_shaded: is_flat_shaded
+        };
+      }
+      EnumEntityType::Text => todo!()
+    }
     
     new_entity.register();
     return new_entity;
@@ -220,7 +239,7 @@ impl REntity {
     return Ok(());
   }
   
-  pub fn send(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+  pub fn submit(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
     let renderer = Engine::get_active_renderer();
     
     return match renderer.enqueue(self, shader_associated) {

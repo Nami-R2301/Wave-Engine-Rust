@@ -22,9 +22,10 @@
  SOFTWARE.
 */
 
+use crate::log;
 use crate::wave_core::{EnumError, events};
 use crate::wave_core::layers::{EnumLayerType, TraitLayer};
-use crate::wave_core::window::Window;
+use crate::wave_core::window::{Window};
 
 pub struct WindowLayer {
   pub(crate) m_context: *mut Window,
@@ -44,6 +45,11 @@ impl TraitLayer for WindowLayer {
   }
   
   fn on_new(&mut self) -> Result<(), EnumError> {
+    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Creating window...");
+    unsafe {
+      (*self.m_context).submit()?
+    };
+    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Created window successfully");
     return Ok(());
   }
   

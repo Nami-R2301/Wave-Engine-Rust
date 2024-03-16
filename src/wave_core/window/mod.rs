@@ -36,7 +36,7 @@ use crate::wave_core::graphics::renderer::EnumApi;
 use crate::wave_core::input::{self, EnumAction, EnumKey, EnumModifiers, EnumMouseButton};
 use crate::wave_core::utils::Time;
 
-pub(crate) static mut S_WINDOW_CONTEXT: Option<*mut glfw::Glfw> = None;
+pub(crate) static mut S_WINDOW_CONTEXT: Option<glfw::Glfw> = None;
 
 pub(crate) static mut S_PREVIOUS_WIDTH: u32 = 640;
 pub(crate) static mut S_PREVIOUS_HEIGHT: u32 = 480;
@@ -45,6 +45,24 @@ pub(crate) static mut S_PREVIOUS_HEIGHT: u32 = 480;
 pub enum EnumState {
   Open,
   Closed,
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum EnumWindowOption {
+  WindowMode(EnumWindowMode),
+  Resolution(u32, u32),
+  Visible(bool),
+  Resizable(bool),
+  RendererApi(EnumApi),
+  Position(u32, u32),
+  Focused(bool),
+  Iconified(bool),
+  Maximized(bool),
+  Decorated(bool),
+  VSync(bool),
+  MSAA(Option<u32>),
+  DebugApi(bool),
+  RefreshRate(Option<u32>),
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -74,6 +92,7 @@ impl Display for EnumWindowMode {
 pub enum EnumError {
   NoContext,
   InitError,
+  InvalidWindowOption,
   ApiError,
   InvalidEventMask,
   InvalidEventCallback,
@@ -104,23 +123,21 @@ fn glfw_error_callback(error: glfw::Error, message: String) {
 }
 
 pub struct Window {
-  pub m_api_window_events: glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
-  pub m_api_window: glfw::PWindow,
+  pub m_api_window_events: Option<glfw::GlfwReceiver<(f64, glfw::WindowEvent)>>,
+  pub m_api_window: Option<glfw::PWindow>,
   pub m_vsync: bool,
   pub m_refresh_count_desired: Option<u32>,
-  pub m_samples: u8,
-  pub m_window_resolution: (u32, u32),
-  pub m_window_pos: (i32, i32),
+  pub m_samples: Option<u32>,
+  pub m_window_resolution: Option<(u32, u32)>,
+  pub m_window_pos: Option<(i32, i32)>,
   pub m_is_windowed: bool,
-  m_window_mode: EnumWindowMode,
-  m_render_api: EnumApi,
+  m_window_mode: Option<EnumWindowMode>,
+  m_render_api: Option<EnumApi>,
   m_state: EnumState,
 }
 
 impl<'a> Window {
-  pub fn new(api_preference: Option<EnumApi>, resolution_preference: Option<(u32, u32)>,
-             refresh_count_desired: Option<u32>, sample_count_desired: Option<u32>,
-             window_mode: EnumWindowMode) -> Result<Self, EnumError> {
+  pub fn new() -> Result<Self, EnumError> {
     let mut result = glfw::init(glfw::fail_on_errors);
     
     match result {
@@ -138,97 +155,145 @@ impl<'a> Window {
     
     let context_ref = result.as_mut().unwrap();
     
-    if window_mode == EnumWindowMode::Borderless {
-      context_ref.window_hint(glfw::WindowHint::Resizable(false));
-      context_ref.window_hint(glfw::WindowHint::Decorated(false));
-    } else if window_mode == EnumWindowMode::Windowed {
-      context_ref.window_hint(glfw::WindowHint::Resizable(true));
-    } else {
-      context_ref.window_hint(glfw::WindowHint::Resizable(false));
-    }
-    
     // Hide window to prevent showing it before needing it.
     context_ref.window_hint(glfw::WindowHint::Visible(false));
     
-    // If user has not chosen an api, choose accordingly.
-    if api_preference.is_some() {
-      match api_preference.unwrap() {
-        EnumApi::OpenGL => {
-          // OpenGL hints.
-          // context_ref.window_hint(glfw::WindowHint::ContextVersion(4, 6));
-          // context_ref.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
-          context_ref.window_hint(glfw::WindowHint::RefreshRate(refresh_count_desired));
-          context_ref.window_hint(glfw::WindowHint::Samples(sample_count_desired));
-          
-          #[cfg(feature = "debug")]
-          context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
-        }
-        EnumApi::Vulkan => {
-          context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
-        }
-      }
+    // Set default window behavior.
+    context_ref.window_hint(glfw::WindowHint::Decorated(true));
+    context_ref.window_hint(glfw::WindowHint::Resizable(true));
+    
+    #[cfg(not(feature = "vulkan"))]
+    {
+      context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::OpenGl));
+      context_ref.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
+      #[cfg(feature = "debug")]
+      context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
     }
     
-    unsafe {
-      S_WINDOW_CONTEXT = Some(context_ref);
-    }
+    #[cfg(feature = "vulkan")]
+    context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
     
-    let resolution = resolution_preference.unwrap_or((640, 480));
+    context_ref.window_hint(glfw::WindowHint::RefreshRate(None));
     
-    match context_ref.create_window(resolution.0, resolution.1,
-      "Wave Engine (Rust)",
-      glfw::WindowMode::Windowed) {
-      None => {
-        log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Unable to create GLFW window");
-        Err(EnumError::InitError)
+    unsafe { S_WINDOW_CONTEXT = Some(result.unwrap()); }
+    
+    return Ok(Self {
+      m_api_window_events: None,
+      m_api_window: None,
+      m_vsync: false,
+      m_refresh_count_desired: None,
+      m_samples: None,
+      m_window_resolution: None,
+      m_window_pos: None,
+      m_is_windowed: false,
+      m_window_mode: None,
+      m_render_api: None,
+      m_state: EnumState::Open,
+    });
+  }
+  
+  pub fn window_hint(&mut self, option: EnumWindowOption) {
+    match option {
+      EnumWindowOption::WindowMode(window_mode) => {
+        self.m_window_mode = Some(window_mode);
+        self.m_is_windowed = window_mode == EnumWindowMode::Windowed;
       }
-      Some((mut window, events)) => {
-        
-        // Set input polling rate.
-        window.set_sticky_keys(true);
-        window.set_sticky_mouse_buttons(true);
-        
-        // Set GLFW error callback.
-        #[cfg(feature = "debug")]
-        window.glfw.set_error_callback(glfw_error_callback);
-        
-        let bounds = window.get_size();
-        let initial_position = window.get_pos();
-        unsafe {
-          S_PREVIOUS_WIDTH = bounds.0 as u32;
-          S_PREVIOUS_HEIGHT = bounds.1 as u32;
+      EnumWindowOption::Resolution(x_res, y_res) => unsafe {
+        S_PREVIOUS_WIDTH = x_res;
+        S_PREVIOUS_HEIGHT = y_res;
+        self.m_window_resolution = Some((x_res, y_res));
+      }
+      EnumWindowOption::Visible(flag) => unsafe {
+        (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Visible(flag));
+      }
+      EnumWindowOption::Resizable(flag) => unsafe {
+        if self.m_window_mode == Some(EnumWindowMode::Borderless) {
+          (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Resizable(false));
+          (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Decorated(false));
+        } else if self.m_window_mode == Some(EnumWindowMode::Fullscreen) {
+          (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Resizable(false));
+        } else {
+          (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Resizable(flag));
         }
-        window.set_aspect_ratio(bounds.0 as u32, bounds.1 as u32);
-        
-        return Ok(Self {
-          m_state: EnumState::Open,
-          m_api_window: window,
-          m_api_window_events: events,
-          m_render_api: api_preference.is_some().then(|| {
-            return api_preference.unwrap();
-          }).unwrap_or_else(|| {
-            #[cfg(not(feature = "vulkan"))]
-            return EnumApi::OpenGL;
-            #[cfg(feature = "vulkan")]
-            return EnumApi::Vulkan;
-          }),
-          m_window_mode: window_mode,
-          m_vsync: true,
-          m_samples: sample_count_desired.unwrap_or(1) as u8,
-          m_refresh_count_desired: refresh_count_desired,
-          m_window_resolution: (bounds.0 as u32, bounds.1 as u32),
-          m_window_pos: initial_position,
-          m_is_windowed: window_mode == EnumWindowMode::Windowed,
-        });
+      }
+      EnumWindowOption::RendererApi(api) => unsafe {
+        match api {
+          EnumApi::OpenGL => {
+            // OpenGL hints.
+            (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::OpenGl));
+          }
+          EnumApi::Vulkan => {
+            (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
+          }
+        }
+        self.m_render_api = Some(api);
+      }
+      EnumWindowOption::Position(x_pos, y_pos) => {
+        self.m_window_pos = Some((x_pos as i32, y_pos as i32));
+      }
+      EnumWindowOption::Focused(_) => {}
+      EnumWindowOption::Iconified(_) => {}
+      EnumWindowOption::Maximized(_) => {}
+      EnumWindowOption::Decorated(_) => {}
+      EnumWindowOption::VSync(flag) => {
+        self.m_vsync = flag;
+      }
+      EnumWindowOption::MSAA(sample_rate_desired) => unsafe {
+        (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Samples(sample_rate_desired));
+        self.m_samples = sample_rate_desired;
+      }
+      EnumWindowOption::DebugApi(flag) => unsafe {
+        (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::OpenGlDebugContext(flag));
+      }
+      EnumWindowOption::RefreshRate(refresh_count_desired) => unsafe {
+        (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::RefreshRate(refresh_count_desired));
+        self.m_refresh_count_desired = refresh_count_desired;
       }
     }
   }
   
-  pub fn show(&mut self) {
+  pub fn window_hints(&mut self, options: Vec<EnumWindowOption>) {
+    options.into_iter().for_each(|option| self.window_hint(option));
+  }
+  
+  pub fn submit(&mut self) -> Result<(), EnumError> {
+    if self.m_render_api.is_none() {
+      self.m_render_api = Some(EnumApi::OpenGL);
+    }
+    
+    unsafe {
+      match (*S_WINDOW_CONTEXT.as_mut().unwrap()).create_window(self.m_window_resolution.unwrap_or((640, 480)).0,
+        self.m_window_resolution.unwrap_or((640, 480)).1,
+        "Wave Engine (Rust)",
+        glfw::WindowMode::Windowed) {
+        None => {
+          log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Unable to create GLFW window");
+          Err(EnumError::InitError)
+        }
+        Some((mut window, events)) => {
+          
+          // Set input polling rate.
+          window.set_sticky_keys(true);
+          window.set_sticky_mouse_buttons(true);
+          
+          // Set GLFW error callback.
+          #[cfg(feature = "debug")]
+          window.glfw.set_error_callback(glfw_error_callback);
+          
+          let bounds = window.get_size();
+          window.set_aspect_ratio(bounds.0 as u32, bounds.1 as u32);
+          
+          self.m_state = EnumState::Open;
+          self.m_api_window = Some(window);
+          self.m_api_window_events = Some(events);
+          Ok(())
+        }
+      }.map_err(|_| EnumError::InitError)?;
+    }
     // Toggle on fullscreen if requested.
-    if self.m_window_mode != EnumWindowMode::Windowed {
+    if self.m_window_mode != Some(EnumWindowMode::Windowed) {
       unsafe {
-        (*S_WINDOW_CONTEXT.unwrap()).with_primary_monitor(|_, monitor| {
+        (*S_WINDOW_CONTEXT.as_mut().unwrap()).with_primary_monitor(|_, monitor| {
           if monitor.is_none() {
             log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Cannot identify primary monitor!");
             return;
@@ -237,39 +302,44 @@ impl<'a> Window {
           let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
           
           match self.m_window_mode {
-            EnumWindowMode::Windowed => {}
-            EnumWindowMode::Borderless => {
-              self.m_api_window.set_monitor(glfw::WindowMode::Windowed,
+            Some(EnumWindowMode::Windowed) => {}
+            Some(EnumWindowMode::Borderless) => {
+              self.m_api_window.as_mut().unwrap().set_monitor(glfw::WindowMode::Windowed,
                 0, 0, mode.width, mode.height, self.m_refresh_count_desired);
             }
-            EnumWindowMode::Fullscreen => {
-              self.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
+            Some(EnumWindowMode::Fullscreen) => {
+              self.m_api_window.as_mut().unwrap().set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
                 0, 0, mode.width, mode.height, Some(mode.refresh_rate));
             }
+            None => {}
           }
         });
       }
     }
-    self.m_api_window.show();
+    return Ok(());
+  }
+  
+  pub fn show(&mut self) {
+    self.m_api_window.as_mut().unwrap().show();
   }
   
   pub fn hide(&mut self) {
-    self.m_api_window.hide();
+    self.m_api_window.as_mut().unwrap().hide();
   }
   
   pub fn init_opengl_surface(&mut self) {
     // Make the window's context current
-    self.m_api_window.make_current();
+    self.m_api_window.as_mut().unwrap().make_current();
     
     // Set v-sync.
-    self.m_api_window.glfw.set_swap_interval(glfw::SwapInterval::Sync(self.m_vsync
+    self.m_api_window.as_mut().unwrap().glfw.set_swap_interval(glfw::SwapInterval::Sync(self.m_vsync
       .then(|| { return 1; })
       .unwrap_or(0)));
   }
   
   #[cfg(feature = "vulkan")]
   pub fn init_vulkan_surface(&self, vk_instance: &ash::Instance, vk_surface_khr: &mut vk::SurfaceKHR) {
-    let result = self.m_api_window.create_window_surface(vk_instance.handle(),
+    let result = self.m_api_window.as_ref().unwrap().create_window_surface(vk_instance.handle(),
       std::ptr::null_mut(), vk_surface_khr).result();
     
     if result.is_err() {
@@ -283,7 +353,7 @@ impl<'a> Window {
   }
   
   pub fn poll_events(&mut self) {
-    self.m_api_window.glfw.poll_events();
+    self.m_api_window.as_mut().unwrap().glfw.poll_events();
   }
   
   pub fn on_event(&mut self, event: &EnumEvent) -> bool {
@@ -309,15 +379,15 @@ impl<'a> Window {
       EnumEvent::FramebufferEvent(width, height) => {
         log!("INFO", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
         unsafe {
-          S_PREVIOUS_WIDTH = self.m_window_resolution.0;
-          S_PREVIOUS_HEIGHT = self.m_window_resolution.1;
+          S_PREVIOUS_WIDTH = self.m_window_resolution.unwrap().0;
+          S_PREVIOUS_HEIGHT = self.m_window_resolution.unwrap().1;
         }
-        self.m_window_resolution = (*width, *height);
+        self.m_window_resolution = Some((*width, *height));
         true
       }
       EnumEvent::WindowPosEvent(pos_x, pos_y) => {
         if self.m_is_windowed {
-          self.m_window_pos = (*pos_x, *pos_y);
+          self.m_window_pos = Some((*pos_x, *pos_y));
         }
         true
       }
@@ -327,227 +397,227 @@ impl<'a> Window {
   
   pub fn enable_polling(&mut self, event_mask: EnumEventMask) {
     if event_mask.contains(EnumEventMask::c_window) {
-      self.m_api_window.set_close_polling(true);
-      self.m_api_window.set_iconify_polling(true);
-      self.m_api_window.set_maximize_polling(true);
-      self.m_api_window.set_focus_polling(true);
-      self.m_api_window.set_framebuffer_size_polling(true);
-      self.m_api_window.set_pos_polling(true);
+      self.m_api_window.as_mut().unwrap().set_close_polling(true);
+      self.m_api_window.as_mut().unwrap().set_iconify_polling(true);
+      self.m_api_window.as_mut().unwrap().set_maximize_polling(true);
+      self.m_api_window.as_mut().unwrap().set_focus_polling(true);
+      self.m_api_window.as_mut().unwrap().set_framebuffer_size_polling(true);
+      self.m_api_window.as_mut().unwrap().set_pos_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_input) {
-      self.m_api_window.set_key_polling(true);
-      self.m_api_window.set_mouse_button_polling(true);
-      self.m_api_window.set_scroll_polling(true);
-      self.m_api_window.set_drag_and_drop_polling(true);
+      self.m_api_window.as_mut().unwrap().set_key_polling(true);
+      self.m_api_window.as_mut().unwrap().set_mouse_button_polling(true);
+      self.m_api_window.as_mut().unwrap().set_scroll_polling(true);
+      self.m_api_window.as_mut().unwrap().set_drag_and_drop_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_window_close) {
-      self.m_api_window.set_close_polling(true);
+      self.m_api_window.as_mut().unwrap().set_close_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_window_iconify) {
-      self.m_api_window.set_iconify_polling(true);
+      self.m_api_window.as_mut().unwrap().set_iconify_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_window_maximize) {
-      self.m_api_window.set_maximize_polling(true);
+      self.m_api_window.as_mut().unwrap().set_maximize_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_window_focus) {
-      self.m_api_window.set_focus_polling(true);
+      self.m_api_window.as_mut().unwrap().set_focus_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_window_size) {
-      self.m_api_window.set_framebuffer_size_polling(true);
+      self.m_api_window.as_mut().unwrap().set_framebuffer_size_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_window_pos) {
-      self.m_api_window.set_pos_polling(true);
+      self.m_api_window.as_mut().unwrap().set_pos_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_keyboard) {
-      self.m_api_window.set_key_polling(true);
+      self.m_api_window.as_mut().unwrap().set_key_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_mouse) {
-      self.m_api_window.set_mouse_button_polling(true);
-      self.m_api_window.set_scroll_polling(true);
+      self.m_api_window.as_mut().unwrap().set_mouse_button_polling(true);
+      self.m_api_window.as_mut().unwrap().set_scroll_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_mouse_btn) {
-      self.m_api_window.set_mouse_button_polling(true);
+      self.m_api_window.as_mut().unwrap().set_mouse_button_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_mouse_scroll) {
-      self.m_api_window.set_scroll_polling(true);
+      self.m_api_window.as_mut().unwrap().set_scroll_polling(true);
     }
     if event_mask.contains(EnumEventMask::c_drag_and_drop) {
-      self.m_api_window.set_drag_and_drop_polling(true);
+      self.m_api_window.as_mut().unwrap().set_drag_and_drop_polling(true);
     }
   }
   
   pub fn disable_polling(&mut self, event_mask: EnumEventMask) {
     if event_mask.contains(EnumEventMask::c_window) {
-      self.m_api_window.unset_close_callback();
-      self.m_api_window.set_close_polling(false);
-      self.m_api_window.unset_iconify_callback();
-      self.m_api_window.set_iconify_polling(false);
-      self.m_api_window.unset_maximize_callback();
-      self.m_api_window.set_maximize_polling(false);
-      self.m_api_window.unset_focus_callback();
-      self.m_api_window.set_focus_polling(false);
-      self.m_api_window.unset_framebuffer_size_callback();
-      self.m_api_window.set_framebuffer_size_polling(false);
-      self.m_api_window.unset_pos_callback();
-      self.m_api_window.set_pos_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_close_callback();
+      self.m_api_window.as_mut().unwrap().set_close_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_iconify_callback();
+      self.m_api_window.as_mut().unwrap().set_iconify_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_maximize_callback();
+      self.m_api_window.as_mut().unwrap().set_maximize_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_focus_callback();
+      self.m_api_window.as_mut().unwrap().set_focus_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_framebuffer_size_callback();
+      self.m_api_window.as_mut().unwrap().set_framebuffer_size_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_pos_callback();
+      self.m_api_window.as_mut().unwrap().set_pos_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_input) {
-      self.m_api_window.unset_key_callback();
-      self.m_api_window.set_key_polling(false);
-      self.m_api_window.unset_mouse_button_callback();
-      self.m_api_window.set_mouse_button_polling(false);
-      self.m_api_window.unset_scroll_callback();
-      self.m_api_window.set_scroll_polling(false);
-      self.m_api_window.unset_drag_and_drop_callback();
-      self.m_api_window.set_drag_and_drop_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_key_callback();
+      self.m_api_window.as_mut().unwrap().set_key_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_mouse_button_callback();
+      self.m_api_window.as_mut().unwrap().set_mouse_button_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_scroll_callback();
+      self.m_api_window.as_mut().unwrap().set_scroll_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_drag_and_drop_callback();
+      self.m_api_window.as_mut().unwrap().set_drag_and_drop_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_window_close) {
-      self.m_api_window.unset_close_callback();
-      self.m_api_window.set_close_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_close_callback();
+      self.m_api_window.as_mut().unwrap().set_close_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_window_iconify) {
-      self.m_api_window.unset_iconify_callback();
-      self.m_api_window.set_iconify_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_iconify_callback();
+      self.m_api_window.as_mut().unwrap().set_iconify_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_window_maximize) {
-      self.m_api_window.unset_maximize_callback();
-      self.m_api_window.set_maximize_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_maximize_callback();
+      self.m_api_window.as_mut().unwrap().set_maximize_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_window_focus) {
-      self.m_api_window.unset_focus_callback();
-      self.m_api_window.set_focus_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_focus_callback();
+      self.m_api_window.as_mut().unwrap().set_focus_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_window_size) {
-      self.m_api_window.unset_framebuffer_size_callback();
-      self.m_api_window.set_framebuffer_size_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_framebuffer_size_callback();
+      self.m_api_window.as_mut().unwrap().set_framebuffer_size_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_window_pos) {
-      self.m_api_window.unset_pos_callback();
-      self.m_api_window.set_pos_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_pos_callback();
+      self.m_api_window.as_mut().unwrap().set_pos_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_keyboard) {
-      self.m_api_window.unset_key_callback();
-      self.m_api_window.set_key_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_key_callback();
+      self.m_api_window.as_mut().unwrap().set_key_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_mouse) {
-      self.m_api_window.unset_mouse_button_callback();
-      self.m_api_window.set_mouse_button_polling(false);
-      self.m_api_window.unset_scroll_callback();
-      self.m_api_window.set_scroll_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_mouse_button_callback();
+      self.m_api_window.as_mut().unwrap().set_mouse_button_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_scroll_callback();
+      self.m_api_window.as_mut().unwrap().set_scroll_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_mouse_btn) {
-      self.m_api_window.unset_mouse_button_callback();
-      self.m_api_window.set_mouse_button_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_mouse_button_callback();
+      self.m_api_window.as_mut().unwrap().set_mouse_button_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_mouse_scroll) {
-      self.m_api_window.unset_scroll_callback();
-      self.m_api_window.set_scroll_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_scroll_callback();
+      self.m_api_window.as_mut().unwrap().set_scroll_polling(false);
     }
     if event_mask.contains(EnumEventMask::c_drag_and_drop) {
-      self.m_api_window.unset_drag_and_drop_callback();
-      self.m_api_window.set_drag_and_drop_polling(false);
+      self.m_api_window.as_mut().unwrap().unset_drag_and_drop_callback();
+      self.m_api_window.as_mut().unwrap().set_drag_and_drop_polling(false);
     }
   }
   
   pub(crate) fn enable_callback(&mut self, event_mask: EnumEventMask) {
     if event_mask.contains(EnumEventMask::c_window) {
-      self.m_api_window.set_close_callback(Self::window_close_callback);
-      self.m_api_window.set_iconify_callback(Self::window_iconify_callback);
-      self.m_api_window.set_maximize_callback(Self::window_maximize_callback);
-      self.m_api_window.set_focus_callback(Self::window_focus_callback);
-      self.m_api_window.set_framebuffer_size_callback(Self::window_size_callback);
-      self.m_api_window.set_pos_callback(Self::window_pos_callback);
+      self.m_api_window.as_mut().unwrap().set_close_callback(Self::window_close_callback);
+      self.m_api_window.as_mut().unwrap().set_iconify_callback(Self::window_iconify_callback);
+      self.m_api_window.as_mut().unwrap().set_maximize_callback(Self::window_maximize_callback);
+      self.m_api_window.as_mut().unwrap().set_focus_callback(Self::window_focus_callback);
+      self.m_api_window.as_mut().unwrap().set_framebuffer_size_callback(Self::window_size_callback);
+      self.m_api_window.as_mut().unwrap().set_pos_callback(Self::window_pos_callback);
     }
     if event_mask.contains(EnumEventMask::c_input) {
-      self.m_api_window.set_key_callback(Self::key_callback);
-      self.m_api_window.set_mouse_button_callback(Self::mouse_btn_callback);
-      self.m_api_window.set_scroll_callback(Self::scroll_callback);
-      self.m_api_window.set_drag_and_drop_callback(Self::drag_and_drop_callback);
+      self.m_api_window.as_mut().unwrap().set_key_callback(Self::key_callback);
+      self.m_api_window.as_mut().unwrap().set_mouse_button_callback(Self::mouse_btn_callback);
+      self.m_api_window.as_mut().unwrap().set_scroll_callback(Self::scroll_callback);
+      self.m_api_window.as_mut().unwrap().set_drag_and_drop_callback(Self::drag_and_drop_callback);
     }
     if event_mask.contains(EnumEventMask::c_window_close) {
-      self.m_api_window.set_close_callback(Self::window_close_callback);
+      self.m_api_window.as_mut().unwrap().set_close_callback(Self::window_close_callback);
     }
     if event_mask.contains(EnumEventMask::c_window_iconify) {
-      self.m_api_window.set_iconify_callback(Self::window_iconify_callback);
+      self.m_api_window.as_mut().unwrap().set_iconify_callback(Self::window_iconify_callback);
     }
     if event_mask.contains(EnumEventMask::c_window_maximize) {
-      self.m_api_window.set_maximize_callback(Self::window_maximize_callback);
+      self.m_api_window.as_mut().unwrap().set_maximize_callback(Self::window_maximize_callback);
     }
     if event_mask.contains(EnumEventMask::c_window_focus) {
-      self.m_api_window.set_focus_callback(Self::window_focus_callback);
+      self.m_api_window.as_mut().unwrap().set_focus_callback(Self::window_focus_callback);
     }
     if event_mask.contains(EnumEventMask::c_window_size) {
-      self.m_api_window.set_framebuffer_size_callback(Self::window_size_callback);
+      self.m_api_window.as_mut().unwrap().set_framebuffer_size_callback(Self::window_size_callback);
     }
     if event_mask.contains(EnumEventMask::c_window_pos) {
-      self.m_api_window.set_pos_callback(Self::window_pos_callback);
+      self.m_api_window.as_mut().unwrap().set_pos_callback(Self::window_pos_callback);
     }
     if event_mask.contains(EnumEventMask::c_keyboard) {
-      self.m_api_window.set_key_callback(Self::key_callback);
+      self.m_api_window.as_mut().unwrap().set_key_callback(Self::key_callback);
     }
     if event_mask.contains(EnumEventMask::c_mouse) {
-      self.m_api_window.set_mouse_button_callback(Self::mouse_btn_callback);
-      self.m_api_window.set_scroll_callback(Self::scroll_callback);
+      self.m_api_window.as_mut().unwrap().set_mouse_button_callback(Self::mouse_btn_callback);
+      self.m_api_window.as_mut().unwrap().set_scroll_callback(Self::scroll_callback);
     }
     if event_mask.contains(EnumEventMask::c_mouse_btn) {
-      self.m_api_window.set_mouse_button_callback(Self::mouse_btn_callback);
+      self.m_api_window.as_mut().unwrap().set_mouse_button_callback(Self::mouse_btn_callback);
     }
     if event_mask.contains(EnumEventMask::c_mouse_scroll) {
-      self.m_api_window.set_scroll_callback(Self::scroll_callback);
+      self.m_api_window.as_mut().unwrap().set_scroll_callback(Self::scroll_callback);
     }
     if event_mask.contains(EnumEventMask::c_drag_and_drop) {
-      self.m_api_window.set_drag_and_drop_callback(Self::drag_and_drop_callback);
+      self.m_api_window.as_mut().unwrap().set_drag_and_drop_callback(Self::drag_and_drop_callback);
     }
   }
   
   pub fn disable_callback(&mut self, event_mask: EnumEventMask) {
     if event_mask.contains(EnumEventMask::c_window) {
-      self.m_api_window.unset_close_callback();
-      self.m_api_window.unset_iconify_callback();
-      self.m_api_window.unset_maximize_callback();
-      self.m_api_window.unset_focus_callback();
-      self.m_api_window.unset_framebuffer_size_callback();
-      self.m_api_window.unset_pos_callback();
+      self.m_api_window.as_mut().unwrap().unset_close_callback();
+      self.m_api_window.as_mut().unwrap().unset_iconify_callback();
+      self.m_api_window.as_mut().unwrap().unset_maximize_callback();
+      self.m_api_window.as_mut().unwrap().unset_focus_callback();
+      self.m_api_window.as_mut().unwrap().unset_framebuffer_size_callback();
+      self.m_api_window.as_mut().unwrap().unset_pos_callback();
     }
     if event_mask.contains(EnumEventMask::c_input) {
-      self.m_api_window.unset_key_callback();
-      self.m_api_window.unset_mouse_button_callback();
-      self.m_api_window.unset_scroll_callback();
-      self.m_api_window.unset_drag_and_drop_callback();
+      self.m_api_window.as_mut().unwrap().unset_key_callback();
+      self.m_api_window.as_mut().unwrap().unset_mouse_button_callback();
+      self.m_api_window.as_mut().unwrap().unset_scroll_callback();
+      self.m_api_window.as_mut().unwrap().unset_drag_and_drop_callback();
     }
     if event_mask.contains(EnumEventMask::c_window_close) {
-      self.m_api_window.unset_close_callback();
+      self.m_api_window.as_mut().unwrap().unset_close_callback();
     }
     if event_mask.contains(EnumEventMask::c_window_iconify) {
-      self.m_api_window.unset_iconify_callback();
+      self.m_api_window.as_mut().unwrap().unset_iconify_callback();
     }
     if event_mask.contains(EnumEventMask::c_window_maximize) {
-      self.m_api_window.unset_maximize_callback();
+      self.m_api_window.as_mut().unwrap().unset_maximize_callback();
     }
     if event_mask.contains(EnumEventMask::c_window_focus) {
-      self.m_api_window.unset_focus_callback();
+      self.m_api_window.as_mut().unwrap().unset_focus_callback();
     }
     if event_mask.contains(EnumEventMask::c_window_size) {
-      self.m_api_window.unset_framebuffer_size_callback();
+      self.m_api_window.as_mut().unwrap().unset_framebuffer_size_callback();
     }
     if event_mask.contains(EnumEventMask::c_window_pos) {
-      self.m_api_window.unset_pos_callback();
+      self.m_api_window.as_mut().unwrap().unset_pos_callback();
     }
     if event_mask.contains(EnumEventMask::c_keyboard) {
-      self.m_api_window.unset_key_callback();
+      self.m_api_window.as_mut().unwrap().unset_key_callback();
     }
     if event_mask.contains(EnumEventMask::c_mouse) {
-      self.m_api_window.unset_mouse_button_callback();
-      self.m_api_window.unset_scroll_callback();
+      self.m_api_window.as_mut().unwrap().unset_mouse_button_callback();
+      self.m_api_window.as_mut().unwrap().unset_scroll_callback();
     }
     if event_mask.contains(EnumEventMask::c_mouse_btn) {
-      self.m_api_window.unset_mouse_button_callback();
+      self.m_api_window.as_mut().unwrap().unset_mouse_button_callback();
     }
     if event_mask.contains(EnumEventMask::c_mouse_scroll) {
-      self.m_api_window.unset_scroll_callback();
+      self.m_api_window.as_mut().unwrap().unset_scroll_callback();
     }
     if event_mask.contains(EnumEventMask::c_drag_and_drop) {
-      self.m_api_window.unset_drag_and_drop_callback();
+      self.m_api_window.as_mut().unwrap().unset_drag_and_drop_callback();
     }
   }
   
@@ -561,17 +631,17 @@ impl<'a> Window {
   }
   
   pub fn refresh(&mut self) {
-    if self.m_render_api == EnumApi::OpenGL {
-      self.m_api_window.swap_buffers();
+    if self.m_render_api == Some(EnumApi::OpenGL) {
+      self.m_api_window.as_mut().unwrap().swap_buffers();
     }
   }
   
   pub fn is_closing(&self) -> bool {
-    return self.m_api_window.should_close();
+    return self.m_api_window.as_ref().unwrap().should_close();
   }
   
   pub fn close(&mut self) {
-    self.m_api_window.set_should_close(true);
+    self.m_api_window.as_mut().unwrap().set_should_close(true);
     self.m_state = EnumState::Closed;
   }
   
@@ -580,20 +650,20 @@ impl<'a> Window {
   }
   
   pub fn get_api_ref(&self) -> &glfw::Glfw {
-    return &self.m_api_window.glfw;
+    return unsafe { & *S_WINDOW_CONTEXT.as_ref().unwrap() };
   }
   
   pub fn get_api_mut(&mut self) -> &mut glfw::Glfw {
-    return &mut self.m_api_window.glfw;
+    return unsafe { &mut *S_WINDOW_CONTEXT.as_mut().unwrap() };
   }
   
   pub fn set_title(&mut self, title: &str) {
-    return self.m_api_window.set_title(title);
+    return self.m_api_window.as_mut().unwrap().set_title(title);
   }
   
   pub fn toggle_vsync(&mut self) {
     self.m_vsync = !self.m_vsync;
-    self.m_api_window.glfw.set_swap_interval(glfw::SwapInterval::Sync(self.m_vsync as u32));
+    self.m_api_window.as_mut().unwrap().glfw.set_swap_interval(glfw::SwapInterval::Sync(self.m_vsync as u32));
     log!(EnumLogColor::Blue, "INFO", "[Window] -->\t VSync {0}", self.m_vsync);
   }
   
@@ -605,32 +675,32 @@ impl<'a> Window {
         panic!("[Window] -->\t Cannot toggle fullscreen : No active window context!");
       };
       
-      (*S_WINDOW_CONTEXT.unwrap()).with_primary_monitor(|_, monitor| {
+      (*S_WINDOW_CONTEXT.as_mut().unwrap()).with_primary_monitor(|_, monitor| {
         let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
         
         if !self.m_is_windowed {
-          self.m_api_window.set_resizable(true);
+          self.m_api_window.as_mut().unwrap().set_resizable(true);
           
-          if self.m_window_mode == EnumWindowMode::Borderless {
-            self.m_api_window.set_decorated(true);
-            self.m_api_window.set_size(S_PREVIOUS_WIDTH as i32, S_PREVIOUS_HEIGHT as i32);
+          if self.m_window_mode == Some(EnumWindowMode::Borderless) {
+            self.m_api_window.as_mut().unwrap().set_decorated(true);
+            self.m_api_window.as_mut().unwrap().set_size(S_PREVIOUS_WIDTH as i32, S_PREVIOUS_HEIGHT as i32);
           } else {
-            self.m_api_window.set_monitor(glfw::WindowMode::Windowed,
-              self.m_window_pos.0, self.m_window_pos.1,
+            self.m_api_window.as_mut().unwrap().set_monitor(glfw::WindowMode::Windowed,
+              self.m_window_pos.unwrap().0, self.m_window_pos.unwrap().1,
               S_PREVIOUS_WIDTH, S_PREVIOUS_HEIGHT, None);
           }
           log!("INFO", "[Window] -->\t Window mode : Windowed");
         } else {
           match self.m_window_mode {
-            EnumWindowMode::Borderless => {
-              self.m_api_window.set_decorated(false);
-              self.m_api_window.set_size(mode.width as i32, mode.height as i32);
+            Some(EnumWindowMode::Borderless) => {
+              self.m_api_window.as_mut().unwrap().set_decorated(false);
+              self.m_api_window.as_mut().unwrap().set_size(mode.width as i32, mode.height as i32);
               log!("INFO", "[Window] -->\t Window mode : Borderless");
             }
             _ => {
-              self.m_api_window.set_resizable(false);
-              self.m_api_window.set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
-                self.m_window_pos.0, self.m_window_pos.1, mode.width, mode.height,
+              self.m_api_window.as_mut().unwrap().set_resizable(false);
+              self.m_api_window.as_mut().unwrap().set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
+                self.m_window_pos.unwrap().0, self.m_window_pos.unwrap().1, mode.width, mode.height,
                 Some(mode.refresh_rate));
               log!("INFO", "[Window] -->\t Window mode : Fullscreen");
             }
@@ -642,13 +712,13 @@ impl<'a> Window {
   }
   
   pub fn get_framebuffer_size(&mut self) -> (u32, u32) {
-    if self.m_window_mode != EnumWindowMode::Windowed {
-      return self.m_api_window.glfw.with_primary_monitor(|_, primary_monitor| {
+    if self.m_window_mode != Some(EnumWindowMode::Windowed) {
+      return self.m_api_window.as_mut().unwrap().glfw.with_primary_monitor(|_, primary_monitor| {
         let mode: glfw::VidMode = primary_monitor.as_ref().unwrap().get_video_mode().unwrap();
         return (mode.width, mode.height);
       });
     }
-    return (self.m_window_resolution.0, self.m_window_resolution.1);
+    return (self.m_window_resolution.unwrap().0, self.m_window_resolution.unwrap().1);
   }
   
   pub fn window_close_callback(_window: &mut glfw::Window) {

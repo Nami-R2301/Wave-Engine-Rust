@@ -64,7 +64,7 @@ pub enum EnumApi {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum EnumFeature {
+pub enum EnumRendererOption {
   ApiCallChecking(EnumCallCheckingType),
   DepthTest(bool),
   CullFacing(Option<i64>),
@@ -155,6 +155,7 @@ impl Stats {
 }
 
 pub(crate) trait TraitContext {
+  fn default() -> Self where Self: Sized;
   fn on_new(window: &mut Window) -> Result<Self, EnumError> where Self: Sized;
   fn get_api_handle(&mut self) -> &mut dyn Any;
   fn get_api_version(&self) -> f32;
@@ -162,10 +163,10 @@ pub(crate) trait TraitContext {
   fn check_extension(&self, desired_extension: &str) -> bool;
   fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError>;
   fn on_render(&mut self) -> Result<(), EnumError>;
-  fn submit(&mut self, features: &HashSet<EnumFeature>) -> Result<(), EnumError>;
+  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), EnumError>;
   fn get_max_msaa_count(&self) -> Result<u8, EnumError>;
   fn to_string(&self) -> String;
-  fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError>;
+  fn toggle(&mut self, option: EnumRendererOption) -> Result<(), EnumError>;
   fn setup_camera(&mut self, camera: &Camera) -> Result<(), EnumError>;
   fn flush(&mut self) -> Result<(), EnumError>;
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
@@ -177,38 +178,19 @@ pub(crate) trait TraitContext {
 pub struct Renderer {
   pub m_type: EnumApi,
   pub m_state: EnumState,
-  pub m_features: HashSet<EnumFeature>,
+  pub m_options: HashSet<EnumRendererOption>,
   m_api: Box<dyn TraitContext>,
 }
 
 impl<'a> Renderer {
-  pub fn new(api_preference: Option<EnumApi>, window: &mut Window) -> Result<Renderer, EnumError> {
-    // If user has not chosen an api, choose accordingly.
-    if api_preference.is_none() {
-      #[cfg(feature = "vulkan")]
-      return Ok(Renderer {
-        m_type: EnumApi::Vulkan,
-        m_state: EnumState::Created,
-        m_features: HashSet::new(),
-        m_api: Box::new(VkContext::on_new(window)?),
-      });
-      
-      #[cfg(not(feature = "vulkan"))]
-      return Ok(Renderer {
-        m_type: EnumApi::OpenGL,
-        m_state: EnumState::Created,
-        m_features: HashSet::new(),
-        m_api: Box::new(GlContext::on_new(window)?),
-      });
-    }
-    
-    return match api_preference.unwrap() {
+  pub fn new(api_preference: EnumApi) -> Result<Self, EnumError> {
+    return match api_preference {
       EnumApi::OpenGL => {
         Ok(Renderer {
           m_type: EnumApi::OpenGL,
           m_state: EnumState::Created,
-          m_features: HashSet::new(),
-          m_api: Box::new(GlContext::on_new(window)?),
+          m_options: HashSet::new(),
+          m_api: Box::new(GlContext::default()),
         })
       }
       EnumApi::Vulkan => {
@@ -216,8 +198,8 @@ impl<'a> Renderer {
         return Ok(Renderer {
           m_type: EnumApi::Vulkan,
           m_state: EnumState::Created,
-          m_features: HashSet::new(),
-          m_api: Box::new(VkContext::on_new(window)?),
+          m_options: HashSet::new(),
+          m_api: Box::new(VkContext::default()),
         });
         
         #[cfg(not(feature = "vulkan"))]
@@ -231,20 +213,28 @@ impl<'a> Renderer {
     };
   }
   
-  pub fn renderer_hint(&mut self, feature_desired: EnumFeature) {
-    self.m_features.insert(feature_desired);
+  pub fn renderer_hint(&mut self, feature_desired: EnumRendererOption) {
+    self.m_options.insert(feature_desired);
   }
   
-  pub fn renderer_hints(&mut self, features_desired: HashSet<EnumFeature>) {
-    self.m_features = features_desired;
+  pub fn renderer_hints(&mut self, features_desired: HashSet<EnumRendererOption>) {
+    self.m_options = features_desired;
   }
   
-  pub fn send_camera(&mut self, camera: &Camera) -> Result<(), EnumError> {
+  pub fn submit_camera(&mut self, camera: &Camera) -> Result<(), EnumError> {
     return self.m_api.setup_camera(camera);
   }
   
-  pub fn submit(&mut self) -> Result<(), EnumError> {
-    return self.m_api.submit(&self.m_features);
+  pub fn submit(&mut self, window: &mut Window) -> Result<(), EnumError> {
+    match self.m_type {
+      EnumApi::OpenGL => {
+        self.m_api = Box::new(GlContext::on_new(window)?);
+      }
+      EnumApi::Vulkan => {
+        self.m_api = Box::new(VkContext::on_new(window)?);
+      }
+    }
+    return self.m_api.submit(window, &self.m_options);
   }
   
   pub fn check_extension(&self, desired_extension: &str) -> bool {
@@ -264,7 +254,7 @@ impl<'a> Renderer {
     return self.m_api.on_render();
   }
   
-  pub fn toggle(&mut self, feature: EnumFeature) -> Result<(), EnumError> {
+  pub fn toggle(&mut self, feature: EnumRendererOption) -> Result<(), EnumError> {
     return self.m_api.toggle(feature);
   }
   

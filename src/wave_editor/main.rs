@@ -28,10 +28,12 @@ use wave_engine::wave_core::assets::asset_loader;
 use wave_engine::wave_core::assets::renderable_assets;
 use wave_engine::wave_core::events::{EnumEventMask};
 use wave_engine::wave_core::graphics::renderer;
+use wave_engine::wave_core::graphics::renderer::Renderer;
 use wave_engine::wave_core::graphics::shader;
 use wave_engine::wave_core::layers::{EnumLayerType, Layer, TraitLayer};
 use wave_engine::wave_core::ui::ui_imgui::Imgui;
 use wave_engine::wave_core::layers::imgui_layer::ImguiLayer;
+use wave_engine::wave_core::window::{self, Window};
 
 pub struct Editor {
   m_shaders: Vec<shader::Shader>,
@@ -58,6 +60,7 @@ impl TraitLayer for Editor {
   
   fn on_new(&mut self) -> Result<(), wave_core::EnumError> {
     let window = Engine::get_active_window();
+    let renderer = Engine::get_active_renderer();
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
@@ -75,34 +78,35 @@ impl TraitLayer for Editor {
     self.m_shaders[0].submit()?;
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Shaders sent to GPU successfully");
-    let aspect_ratio: f32 = window.m_window_resolution.0 as f32 / window.m_window_resolution.1 as f32;
+    let aspect_ratio: f32 = window.m_window_resolution.unwrap().0 as f32 / window.m_window_resolution.unwrap().1 as f32;
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
     
     // self.m_renderable_assets.push(REntity::default());
     self.m_renderable_assets.push(renderable_assets::REntity::new(asset_loader::ResLoader::new("awp.obj")?,
-      renderable_assets::EnumEntityType::Object, false));
+      renderable_assets::EnumEntityType::Mesh(false)));
     self.m_renderable_assets[0].translate(math::Vec3::new(&[10.0, -10.0, 50.0]));
     self.m_renderable_assets[0].rotate(math::Vec3::new(&[90.0, -90.0, 0.0]));
-    self.m_renderable_assets[0].send(&mut self.m_shaders[0])?;
+    self.m_renderable_assets[0].submit(&mut self.m_shaders[0])?;
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
     self.m_cameras.push(camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
-    let renderer = Engine::get_active_renderer();
-    renderer.send_camera(&self.m_cameras[0])?;
+    renderer.submit_camera(&self.m_cameras[0])?;
     
     #[cfg(feature = "imgui")]
     {
       let imgui_layer: Layer = Layer::new("Imgui", ImguiLayer::new(Imgui::new(renderer.m_type, window)));
       let layer_type = imgui_layer.get_type();
-      Engine::push_layer(imgui_layer);
-      Engine::enable_async_polling_for(layer_type, EnumEventMask::c_keyboard | EnumEventMask::c_mouse_btn | EnumEventMask::c_window);
+      Engine::push_layer(imgui_layer)?;
+      Engine::enable_async_polling_for(layer_type, EnumEventMask::c_input | EnumEventMask::c_window);
     }
     
     // Making editor poll keyboard and mouse button events during async call.
     Engine::enable_async_polling_for(self.get_type(), EnumEventMask::c_keyboard | EnumEventMask::c_mouse_btn);
+    
+    // Make editor synchronously poll on each frame (after async), for movement and spontaneous event handling.
     Engine::enable_sync_polling_for(self);
     
-    // Create and show our window when we are done.
+    // Show our window when we are ready to present.
     window.show();
     return Ok(());
   }
@@ -146,7 +150,7 @@ impl TraitLayer for Editor {
         let renderer = Engine::get_active_renderer();
         match (key, action, repeat_count, modifiers) {
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
-            renderer.toggle(renderer::EnumFeature::Wireframe(!self.m_wireframe_on))?;
+            renderer.toggle(renderer::EnumRendererOption::Wireframe(!self.m_wireframe_on))?;
             self.m_wireframe_on = !self.m_wireframe_on;
             Ok(true)
           }
@@ -187,9 +191,26 @@ fn main() -> Result<(), wave_core::EnumError> {
   // Instantiate an app layer containing our app and essentially making the layer own it.
   let my_app: Layer = Layer::new("Wave Engine Editor", Editor::default());
   
+  let mut window = Window::new()?;
+  window.window_hint(window::EnumWindowOption::WindowMode(window::EnumWindowMode::Windowed));
+  window.window_hint(window::EnumWindowOption::Resolution(1920, 1080));
+  window.window_hint(window::EnumWindowOption::Visible(false));
+  window.window_hint(window::EnumWindowOption::VSync(true));
+  window.window_hint(window::EnumWindowOption::Resizable(true));
+  window.window_hint(window::EnumWindowOption::Decorated(true));
+  window.window_hint(window::EnumWindowOption::RendererApi(renderer::EnumApi::OpenGL));
+  
+  #[cfg(feature = "debug")]
+  window.window_hint(window::EnumWindowOption::DebugApi(true));
+  
+  let mut renderer = Renderer::new(renderer::EnumApi::OpenGL)?;
+  renderer.renderer_hint(renderer::EnumRendererOption::ApiCallChecking(renderer::EnumCallCheckingType::SyncAndAsync));
+  renderer.renderer_hint(renderer::EnumRendererOption::Wireframe(true));
+  
   // Supply it to our engine. Engine will NOT construct app and will only init the engine
-  // with the supplied GPU API of choice as its renderer.
-  let mut engine: Engine = Engine::new(Some(renderer::EnumApi::OpenGL), my_app)?;
+  // with the supplied GPU API of choice as its renderer. Note that passing None will default to Vulkan if
+  // supported, otherwise falling back to OpenGL.
+  let mut engine: Engine = Engine::new(window, renderer, my_app)?;
   
   // Init and execute the app in game loop and return if there's a close event or if an error occurred.
   return engine.run();

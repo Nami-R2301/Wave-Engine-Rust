@@ -135,8 +135,12 @@ impl Layer {
     return self.m_data.get_type();
   }
   
-  pub fn is(&self, layer_type: EnumLayerType) -> bool {
+  pub fn is_type(&self, layer_type: EnumLayerType) -> bool {
     return self.m_data.get_type() == layer_type;
+  }
+  
+  pub fn is_named(&self, name: &str) -> bool {
+    return self.m_name == name;
   }
   
   pub(crate) fn get_poll_mask(&self) -> EnumEventMask {

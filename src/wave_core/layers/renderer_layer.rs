@@ -23,8 +23,7 @@
 */
 
 use crate::{log, wave_core};
-use crate::wave_core::{EnumError, events, input};
-use crate::wave_core::graphics::renderer;
+use crate::wave_core::{Engine, EnumError, events, input};
 use crate::wave_core::graphics::renderer::{Renderer};
 use crate::wave_core::layers::{EnumLayerType, TraitLayer};
 
@@ -50,15 +49,8 @@ impl TraitLayer for RendererLayer {
     
     // Enable features BEFORE finalizing context.
     unsafe {
-      (*self.m_context).renderer_hint(renderer::EnumFeature::CullFacing(Some(gl::BACK as i64)));
-      (*self.m_context).renderer_hint(renderer::EnumFeature::DepthTest(true));
-      #[cfg(feature = "debug")]
-      (*self.m_context).renderer_hint(renderer::EnumFeature::ApiCallChecking(renderer::EnumCallCheckingType::SyncAndAsync));
-      (*self.m_context).renderer_hint(renderer::EnumFeature::Wireframe(true));
-      (*self.m_context).renderer_hint(renderer::EnumFeature::MSAA(None));
-      
       // Finalize graphics context with all hinted features to prepare for frame presentation.
-      (*self.m_context).submit()?;
+      (*self.m_context).submit(Engine::get_active_window())?;
       
       log!(EnumLogColor::White, "INFO", "[Renderer] -->\t {0}", *self.m_context);
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Setup renderer successfully");
