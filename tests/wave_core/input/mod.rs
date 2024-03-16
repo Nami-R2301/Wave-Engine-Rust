@@ -26,7 +26,7 @@ use std::collections::HashMap;
 
 use wave_engine::wave_core::EnumError;
 use wave_engine::wave_core::input::{EnumAction, EnumKey, EnumModifiers, EnumMouseButton, Input};
-use wave_engine::wave_core::window::{EnumWindowMode, Window};
+use wave_engine::wave_core::window::{EnumWindowMode, EnumWindowOption, Window};
 
 fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, bool>, action_required: EnumAction,
                                modifier: EnumModifiers) -> Result<(), EnumError> {
@@ -80,8 +80,10 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
 #[ignore]
 #[test]
 fn test_synchronous_key_inputs() -> Result<(), EnumError> {
-  let mut window = Window::new(None, Some((1024, 768)),
-    None, None, EnumWindowMode::Windowed)?;
+  let mut window = Window::new()?;
+  window.window_hint(EnumWindowOption::WindowMode(EnumWindowMode::Windowed));
+  window.window_hint(EnumWindowOption::Resolution(1024, 768));
+  window.submit()?;
   
   // Check if PRESS input events work properly.
   {
@@ -164,8 +166,10 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
 #[ignore]
 #[test]
 fn test_synchronous_mouse_button_inputs() -> Result<(), EnumError> {
-  let mut window = Window::new(None, Some((1024, 768)),
-    None, None, EnumWindowMode::Windowed)?;
+  let mut window = Window::new()?;
+  window.window_hint(EnumWindowOption::WindowMode(EnumWindowMode::Windowed));
+  window.window_hint(EnumWindowOption::Resolution(1024, 768));
+  window.submit()?;
   
   // Check if PRESS input events work properly.
   {

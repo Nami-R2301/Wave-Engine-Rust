@@ -23,16 +23,20 @@
 */
 
 use wave_engine::wave_core::{EmptyApp, Engine, EnumError};
+use wave_engine::wave_core::graphics::renderer::{EnumApi, Renderer};
 use wave_engine::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStage, Shader, ShaderStage};
 use wave_engine::wave_core::layers::Layer;
 
 use wave_engine::wave_core::math::Mat4;
+use wave_engine::wave_core::window::Window;
 
 #[ignore]
 #[test]
 fn test_shader_send() -> Result<(), EnumError> {
   let layer = Layer::new("Shader send", EmptyApp::default());
-  let mut engine = Engine::new(None, layer)?;
+  let window = Window::new()?;
+  let renderer = Renderer::new(EnumApi::OpenGL)?;
+  let mut engine = Engine::new(window, renderer, layer)?;
   engine.on_new()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
@@ -53,7 +57,9 @@ fn test_shader_send() -> Result<(), EnumError> {
 #[test]
 fn test_load_uniforms() -> Result<(), EnumError> {
   let layer = Layer::new("Shader load", EmptyApp::default());
-  let mut engine = Engine::new(None, layer)?;
+  let window = Window::new()?;
+  let renderer = Renderer::new(EnumApi::OpenGL)?;
+  let mut engine = Engine::new(window, renderer, layer)?;
   engine.on_new()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
