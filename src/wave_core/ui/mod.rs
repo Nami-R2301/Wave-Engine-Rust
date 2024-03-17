@@ -86,7 +86,7 @@ pub mod ui_imgui {
     fn on_event(&mut self, event: &EnumEvent) -> bool;
     fn on_update(&mut self);
     fn on_render(&mut self);
-    fn on_delete(&mut self) -> Result<(), EnumError>;
+    fn free(&mut self) -> Result<(), EnumError>;
   }
   
   
@@ -121,7 +121,7 @@ pub mod ui_imgui {
   
   impl Drop for Imgui {
     fn drop(&mut self) {
-      match self.m_api.on_delete() {
+      match self.m_api.free() {
         Ok(_) => {}
         Err(_) => {}
       }
@@ -251,7 +251,7 @@ pub mod ui_imgui {
       }
     }
     
-    fn on_delete(&mut self) -> Result<(), EnumError> {
+    fn free(&mut self) -> Result<(), EnumError> {
       return Ok(());
     }
   }

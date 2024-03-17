@@ -21,3 +21,17 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 */
+
+
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum EnumTextureType {
+  Texture2D(Option<u32>, u32, u32),
+  Texture2DArray(Option<u32>, u32, u32),
+  Texture3D(Option<u32>, u32, u32, u32),
+  CubeMap(Option<u32>, u32, u32, u32)
+}
+
+pub struct Texture {
+  m_type: EnumTextureType,
+  m_data: Vec<u8>
+}

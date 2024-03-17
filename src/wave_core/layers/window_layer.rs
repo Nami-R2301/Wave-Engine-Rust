@@ -44,7 +44,7 @@ impl TraitLayer for WindowLayer {
     return EnumLayerType::Window;
   }
   
-  fn on_new(&mut self) -> Result<(), EnumError> {
+  fn on_submit(&mut self) -> Result<(), EnumError> {
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Creating window...");
     unsafe {
       (*self.m_context).submit()?
@@ -74,9 +74,21 @@ impl TraitLayer for WindowLayer {
     return Ok(());
   }
   
-  fn on_delete(&mut self) -> Result<(), EnumError> {
+  fn on_free(&mut self) -> Result<(), EnumError> {
     return unsafe {
-      (*self.m_context).on_delete().map_err(|err| EnumError::from(err))
+      (*self.m_context).free().map_err(|err| EnumError::from(err))
     };
+  }
+  
+  fn to_string(&self) -> String {
+    unsafe {
+      return format!("\n{0:115}State: {1:?}\n{0:115}Api: {2:?}\n{0:115}Resolution: ({3},{4})\n{0:115}\
+      Vsync?: {5}\n{0:115}MSAA?: {6}",
+        "",
+        (*self.m_context).m_state,
+        (*self.m_context).m_api_window.as_ref().unwrap().glfw,
+        (*self.m_context).m_window_resolution.unwrap().0, (*self.m_context).m_window_resolution.unwrap().1,
+        (*self.m_context).m_vsync, (*self.m_context).m_samples.is_none().then(|| "Disabled").unwrap_or("Enabled"));
+    }
   }
 }

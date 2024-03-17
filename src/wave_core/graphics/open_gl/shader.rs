@@ -246,7 +246,7 @@ impl TraitShader for GlShader {
     let mut format: String = String::from("");
     
     for shader_stage in self.m_shader_stages.iter() {
-      format += format!("\n{0:115}[GlShader] |{1}| ({2}, {3})",
+      format += format!("\n{0:117}[GlShader] |{1}| ({2}, {3})",
         "", shader_stage.m_stage, shader_stage.m_source, shader_stage.cache_status()).as_str();
     }
     return format;
@@ -307,7 +307,7 @@ impl TraitShader for GlShader {
     return self;
   }
   
-  fn on_delete(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumError> {
+  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumError> {
     unsafe {
       if (*active_renderer).m_type != EnumApi::OpenGL {
         log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Cannot delete shader : Renderer is not OpenGL!");

@@ -44,7 +44,7 @@ impl TraitLayer for RendererLayer {
     return EnumLayerType::Renderer;
   }
   
-  fn on_new(&mut self) -> Result<(), EnumError> {
+  fn on_submit(&mut self) -> Result<(), EnumError> {
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Setting up renderer...");
     
     // Enable features BEFORE finalizing context.
@@ -52,7 +52,6 @@ impl TraitLayer for RendererLayer {
       // Finalize graphics context with all hinted features to prepare for frame presentation.
       (*self.m_context).submit(Engine::get_active_window())?;
       
-      log!(EnumLogColor::White, "INFO", "[Renderer] -->\t {0}", *self.m_context);
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Setup renderer successfully");
     }
     return Ok(());
@@ -88,9 +87,22 @@ impl TraitLayer for RendererLayer {
     }
   }
   
-  fn on_delete(&mut self) -> Result<(), EnumError> {
+  fn on_free(&mut self) -> Result<(), EnumError> {
     return unsafe {
-      (*self.m_context).on_delete().map_err(|err| EnumError::from(err))
+      (*self.m_context).free().map_err(|err| EnumError::from(err))
+    }
+  }
+  
+  fn to_string(&self) -> String {
+    unsafe {
+      let mut final_str: String;
+      final_str = format!("\n{0:115}State: {1:?},\n{0:115}Api: {2:?},\n{0:115}Options: [{3}]",
+        "", (*self.m_context).m_state, (*self.m_context).m_type, (*self.m_context).m_options.len());
+      
+      for (position, option) in  (*self.m_context).m_options.iter().enumerate() {
+        final_str += &format!("\n{0:117}[{1}]: {2:?}", "", position + 1, option);
+      }
+      return final_str;
     }
   }
 }

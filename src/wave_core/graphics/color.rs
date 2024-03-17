@@ -24,44 +24,49 @@
 
 
 use std::fmt::{Debug, Formatter};
+use std::ops::BitAnd;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Color {
-  pub r: f32,
-  pub g: f32,
-  pub b: f32,
-  pub a: f32
+  pub m_rgba: u32
 }
 
 impl Debug for Color {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "[Color] --> r: {0}, g: {1}, b: {2}, a: {3}", self.r, self.g, self.b, self.a)
+    write!(f, "[Color] --> ({0}): r: {1}, g: {2}, b: {3}, a: {4}", self.m_rgba, self.m_rgba.bitand(0x000000FF),
+      self.m_rgba.bitand(0x0000FF00) >> 8, self.m_rgba.bitand(0x00FF0000) >> 16, self.m_rgba.bitand(0xFF000000) >> 24)
   }
 }
 
 impl Color {
   pub fn default() -> Self {
     return Color {
-      r: 0.0,
-      g: 1.0,
-      b: 0.0,
-      a: 1.0,
-    }
-  }
-  
-  pub fn new(rgba: [f32; 4]) -> Self {
-    return Color {
-      r: rgba[0],
-      g: rgba[1],
-      b: rgba[2],
-      a: rgba[3],
+      m_rgba: 0xFFFF00FF  // Magenta.
     }
   }
   
   pub fn reset(&mut self) {
-    self.r = 0.0;
-    self.g = 1.0;
-    self.b = 0.0;
-    self.a = 1.0;
+    self.m_rgba = Self::default().m_rgba;
+  }
+}
+
+impl From<[u8; 4]> for Color {
+  fn from(rgba: [u8; 4]) -> Self {
+    // (RGBA) -> (ABGR)
+    let red: u32 = rgba[0] as u32;
+    let green: u32 = (rgba[1] as u32) << 8;
+    let blue: u32 = (rgba[2] as u32) << 16;
+    let alpha: u32 = (rgba[3] as u32) << 24;
+    return Color {
+      m_rgba: red + green + blue + alpha
+    }
+  }
+}
+
+impl From<u32> for Color {
+  fn from(rgba: u32) -> Self {
+    return Color {
+      m_rgba: rgba
+    }
   }
 }

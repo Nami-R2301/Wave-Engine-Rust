@@ -37,7 +37,7 @@ fn test_shader_send() -> Result<(), EnumError> {
   let window = Window::new()?;
   let renderer = Renderer::new(EnumApi::OpenGL)?;
   let mut engine = Engine::new(window, renderer, layer)?;
-  engine.on_new()?;
+  engine.submit()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
     EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
@@ -60,7 +60,7 @@ fn test_load_uniforms() -> Result<(), EnumError> {
   let window = Window::new()?;
   let renderer = Renderer::new(EnumApi::OpenGL)?;
   let mut engine = Engine::new(window, renderer, layer)?;
-  engine.on_new()?;
+  engine.submit()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
     EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));

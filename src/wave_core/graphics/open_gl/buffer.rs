@@ -264,7 +264,7 @@ impl GlVao {
     return Ok(());
   }
   
-  pub(crate) fn on_delete(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumError> {
     self.unbind()?;
     
     if self.m_state == EnumState::Deleted || self.m_state == EnumState::NotCreated {
@@ -429,7 +429,7 @@ impl GlVbo {
     return self.m_size == 0 || self.m_count == 0;
   }
   
-  pub(crate) fn on_delete(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumError> {
     self.unbind()?;
     
     if self.m_state == EnumState::Deleted || self.m_state == EnumState::NotCreated {
@@ -586,7 +586,7 @@ impl GlUbo {
     return Ok(());
   }
   
-  pub(crate) fn on_delete(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumError> {
     self.unbind()?;
     
     if self.m_state == EnumState::Deleted || self.m_state == EnumState::NotCreated {

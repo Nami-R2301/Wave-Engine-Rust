@@ -23,10 +23,11 @@
 */
 
 use std::cmp::Ordering;
+use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
 use crate::wave_core;
-use crate::wave_core::{EnumError, events};
+use crate::wave_core::{events};
 use crate::wave_core::events::{EnumEvent, EnumEventMask};
 
 pub mod window_layer;
@@ -47,7 +48,7 @@ pub struct Layer {
   pub m_name: &'static str,
   m_priority: u32,
   m_sync_polling: bool,
-  m_poll_mask: events::EnumEventMask,
+  m_poll_mask: EnumEventMask,
   pub(crate) m_data: Box<dyn TraitLayer>,
 }
 
@@ -73,42 +74,13 @@ impl Ord for Layer {
 
 pub trait TraitLayer {
   fn get_type(&self) -> EnumLayerType;
-  fn on_new(&mut self) -> Result<(), wave_core::EnumError>;
+  fn on_submit(&mut self) -> Result<(), wave_core::EnumError>;
   fn on_sync_event(&mut self) -> Result<(), wave_core::EnumError>;
-  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, wave_core::EnumError>;
+  fn on_async_event(&mut self, event: &EnumEvent) -> Result<bool, wave_core::EnumError>;
   fn on_update(&mut self, time_step: f64) -> Result<(), wave_core::EnumError>;
   fn on_render(&mut self) -> Result<(), wave_core::EnumError>;
-  fn on_delete(&mut self) -> Result<(), wave_core::EnumError>;
-}
-
-impl TraitLayer for Layer {
-  fn get_type(&self) -> EnumLayerType {
-    return self.m_data.get_type();
-  }
-  
-  fn on_new(&mut self) -> Result<(), EnumError> {
-    return self.m_data.on_new();
-  }
-  
-  fn on_sync_event(&mut self) -> Result<(), EnumError> {
-    return self.m_data.on_sync_event();
-  }
-  
-  fn on_async_event(&mut self, event: &EnumEvent) -> Result<bool, EnumError> {
-    return self.m_data.on_async_event(event);
-  }
-  
-  fn on_update(&mut self, time_step: f64) -> Result<(), EnumError> {
-    return self.m_data.on_update(time_step);
-  }
-  
-  fn on_render(&mut self) -> Result<(), EnumError> {
-    return self.m_data.on_render();
-  }
-  
-  fn on_delete(&mut self) -> Result<(), EnumError> {
-    return self.m_data.on_delete();
-  }
+  fn on_free(&mut self) -> Result<(), wave_core::EnumError>;
+  fn to_string(&self) -> String;
 }
 
 impl Layer {
@@ -123,8 +95,11 @@ impl Layer {
     };
   }
   
-  pub fn toggle_sync_polling(&mut self, flag: bool) {
-    self.m_sync_polling = flag;
+  pub fn enable_sync_polling(&mut self) {
+    self.m_sync_polling = true;
+  }
+  pub fn disable_sync_polling(&mut self) {
+    self.m_sync_polling = false;
   }
   
   pub fn is_sync_enabled(&self) -> bool {
@@ -133,6 +108,11 @@ impl Layer {
   
   pub fn get_type(&self) -> EnumLayerType {
     return self.m_data.get_type();
+  }
+  
+  pub(crate) fn submit(&mut self) -> Result<(), wave_core::EnumError> {
+    self.m_uuid = rand::random::<u64>();
+    return self.m_data.on_submit();
   }
   
   pub fn is_type(&self, layer_type: EnumLayerType) -> bool {
@@ -147,7 +127,7 @@ impl Layer {
     return self.m_poll_mask;
   }
   
-  pub(crate) fn set_async_polling_mask(&mut self, event_mask: events::EnumEventMask) {
+  pub fn enable_async_polling_for(&mut self, event_mask: EnumEventMask) {
     self.m_poll_mask = event_mask;
   }
   
@@ -155,12 +135,44 @@ impl Layer {
     return self.m_poll_mask.contains(poll_mask);
   }
   
-  pub(crate) fn polls(&self, event: &events::EnumEvent) -> bool {
+  pub(crate) fn polls(&self, event: &EnumEvent) -> bool {
     let cast = events::EnumEventMask::from(event);
     return self.m_poll_mask.contains(cast);
   }
   
   pub fn try_cast<T: TraitLayer + 'static>(&self) -> Option<&T> {
     return unsafe { Some(&*(self.m_data.deref() as *const dyn TraitLayer as *const T)) };
+  }
+  
+  pub(crate) fn on_sync_event(&mut self) -> Result<(), wave_core::EnumError> {
+    return self.m_data.on_sync_event();
+  }
+  
+  pub(crate) fn on_async_event(&mut self, event: &EnumEvent) -> Result<bool, wave_core::EnumError> {
+    return self.m_data.on_async_event(event);
+  }
+  
+  pub(crate) fn on_update(&mut self, time_step: f64) -> Result<(), wave_core::EnumError> {
+    return self.m_data.on_update(time_step);
+  }
+  
+  pub(crate) fn on_render(&mut self) -> Result<(), wave_core::EnumError> {
+    return self.m_data.on_render();
+  }
+  
+  pub(crate) fn free(&mut self) -> Result<(), wave_core::EnumError> {
+    return self.m_data.on_free();
+  }
+  
+  pub fn to_string(&self) -> String {
+    return self.m_data.to_string();
+  }
+}
+
+impl Display for Layer {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "'{1}'\n{0:113}UUID: {2}\n{0:113}Poll mask: {3}\n{0:113}Sync polled?: {4}\
+    \n{0:113}Priority: {5}\n{0:113}Data: {6}", "",
+      self.m_name, self.m_uuid, self.m_poll_mask, self.m_sync_polling, self.m_priority, self.m_data.to_string())
   }
 }

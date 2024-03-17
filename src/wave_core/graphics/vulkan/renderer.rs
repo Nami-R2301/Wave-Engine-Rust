@@ -1171,7 +1171,7 @@ impl TraitContext for VkContext {
     todo!()
   }
   
-  fn on_delete(&mut self) -> Result<(), renderer::EnumError> {
+  fn free(&mut self) -> Result<(), renderer::EnumError> {
     if self.m_state == EnumState::NotCreated {
       log!(EnumLogColor::Yellow, "WARN", "[VkContext] -->\t Cannot free resources : Vulkan renderer \
       has not been created!");
@@ -1201,7 +1201,7 @@ impl TraitContext for VkContext {
       // Free vbos.
       log!(EnumLogColor::Purple, "INFO", "[VkContext] -->\t Freeing buffers...");
       for vbo in self.m_vbo_array.iter_mut() {
-        vbo.on_delete().map_err(|vbo_err| EnumError::BufferOperationError(vbo_err))?;
+        vbo.free().map_err(|vbo_err| EnumError::BufferOperationError(vbo_err))?;
       };
       log!(EnumLogColor::Green, "INFO", "[VkContext] -->\t Freed buffers successfully");
       

@@ -194,7 +194,7 @@ impl VkVbo {
     todo!()
   }
   
-  pub(crate) fn on_delete(&mut self) -> Result<(), EnumError> {
+  pub(crate) fn free(&mut self) -> Result<(), EnumError> {
     if self.m_state == EnumState::Deleted || self.m_state == EnumState::NotCreated {
       log!(EnumLogColor::Yellow, "WARN", "[VkBuffer] -->\t Cannot delete VkVbo : Already deleted \
       or not created in the first place!");

@@ -43,7 +43,7 @@ impl TraitLayer for ImguiLayer {
     return EnumLayerType::Imgui;
   }
   
-  fn on_new(&mut self) -> Result<(), EnumError> {
+  fn on_submit(&mut self) -> Result<(), EnumError> {
     return Ok(());
   }
   
@@ -63,7 +63,11 @@ impl TraitLayer for ImguiLayer {
     return Ok(self.m_ui.on_render());
   }
   
-  fn on_delete(&mut self) -> Result<(), EnumError> {
+  fn on_free(&mut self) -> Result<(), EnumError> {
     return Ok(());
+  }
+  
+  fn to_string(&self) -> String {
+    return "None".to_string();
   }
 }

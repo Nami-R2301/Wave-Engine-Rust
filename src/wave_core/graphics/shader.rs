@@ -161,7 +161,7 @@ pub trait TraitShader {
   fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumError>;
   fn get_id(&self) -> u32;
   fn get_api_handle(&self) -> &dyn std::any::Any;
-  fn on_delete(&mut self, active_renderer: *mut Renderer) -> Result<(), EnumError>;
+  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), EnumError>;
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -433,11 +433,11 @@ impl Shader {
   }
   
   pub fn to_string(&self) -> String {
-    return format!("[Shader] -->\t Program ID =>\t {1}\n{0:113}[Api] |Shader stage| (Source, Cached?) : {2}",
+    return format!("ID: {1}\n{0:117}[Api] |Shader stage| (Source, Cached?) : {2}",
       "", self.get_id(), self.m_api_data.to_string());
   }
   
-  pub fn on_delete(&mut self) -> Result<(), EnumError> {
+  pub fn free(&mut self) -> Result<(), EnumError> {
     if self.m_state == EnumState::NotCreated || self.m_state == EnumState::Deleted {
       log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t Cannot delete renderer : Renderer not \
       created or already deleted!");
@@ -445,7 +445,7 @@ impl Shader {
     }
     
     let renderer: &mut Renderer = Engine::get_active_renderer();
-    self.m_api_data.on_delete(renderer)?;
+    self.m_api_data.free(renderer)?;
     self.m_state = EnumState::Deleted;
     return Ok(());
   }
@@ -454,7 +454,7 @@ impl Shader {
 impl Drop for Shader {
   fn drop(&mut self) {
     log!(EnumLogColor::Purple, "INFO", "[Shader] -->\t Dropping shader...");
-    match self.on_delete() {
+    match self.free() {
       Ok(_) => {
         log!(EnumLogColor::Green, "INFO", "[Shader] -->\t Dropped shader successfully...");
       }

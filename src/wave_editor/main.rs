@@ -58,7 +58,7 @@ impl TraitLayer for Editor {
     return EnumLayerType::App;
   }
   
-  fn on_new(&mut self) -> Result<(), wave_core::EnumError> {
+  fn on_submit(&mut self) -> Result<(), wave_core::EnumError> {
     let window = Engine::get_active_window();
     let renderer = Engine::get_active_renderer();
     
@@ -68,7 +68,6 @@ impl TraitLayer for Editor {
     let fragment_shader = shader::ShaderStage::default(shader::EnumShaderStage::Fragment);
     
     let shader = shader::Shader::new(vec![vertex_shader, fragment_shader])?;
-    log!("INFO", "{0}", shader);
     self.m_shaders.push(shader);
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
@@ -78,7 +77,7 @@ impl TraitLayer for Editor {
     self.m_shaders[0].submit()?;
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Shaders sent to GPU successfully");
-    let aspect_ratio: f32 = window.m_window_resolution.unwrap().0 as f32 / window.m_window_resolution.unwrap().1 as f32;
+    let aspect_ratio: f32 = window.get_aspect_ratio();
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
     
     // self.m_renderable_assets.push(REntity::default());
@@ -94,17 +93,10 @@ impl TraitLayer for Editor {
     
     #[cfg(feature = "imgui")]
     {
-      let imgui_layer: Layer = Layer::new("Imgui", ImguiLayer::new(Imgui::new(renderer.m_type, window)));
-      let layer_type = imgui_layer.get_type();
+      let mut imgui_layer: Layer = Layer::new("Imgui", ImguiLayer::new(Imgui::new(renderer.m_type, window)));
+      imgui_layer.enable_async_polling_for(EnumEventMask::c_input | EnumEventMask::c_window);
       Engine::push_layer(imgui_layer)?;
-      Engine::enable_async_polling_for(layer_type, EnumEventMask::c_input | EnumEventMask::c_window);
     }
-    
-    // Making editor poll keyboard and mouse button events during async call.
-    Engine::enable_async_polling_for(self.get_type(), EnumEventMask::c_keyboard | EnumEventMask::c_mouse_btn);
-    
-    // Make editor synchronously poll on each frame (after async), for movement and spontaneous event handling.
-    Engine::enable_sync_polling_for(self);
     
     // Show our window when we are ready to present.
     window.show();
@@ -181,30 +173,46 @@ impl TraitLayer for Editor {
     return Ok(());
   }
   
-  fn on_delete(&mut self) -> Result<(), wave_core::EnumError> {
+  fn on_free(&mut self) -> Result<(), wave_core::EnumError> {
     return Ok(());
+  }
+  
+  fn to_string(&self) -> String {
+    let mut final_str: String;
+    final_str = format!("\n{0:115}Shaders: [{1}]\n{0:115}", "", self.m_shaders.len());
+    
+    for (position, shader) in self.m_shaders.iter().enumerate() {
+      final_str += &format!("[{1}]:\n{0:117}{2}", "", position + 1, shader);
+    }
+    
+    final_str += &format!("\n{0:115}Renderable assets: [{1}]\n{0:115}", "", self.m_renderable_assets.len());
+    
+    for (position, r_asset) in self.m_renderable_assets.iter().enumerate() {
+      final_str += &format!("[{1}]:\n{0:117}{2}", "", position + 1, r_asset);
+    }
+    
+    return final_str;
   }
 }
 
 fn main() -> Result<(), wave_core::EnumError> {
   
   // Instantiate an app layer containing our app and essentially making the layer own it.
-  let my_app: Layer = Layer::new("Wave Engine Editor", Editor::default());
+  let mut my_app: Layer = Layer::new("Wave Engine Editor", Editor::default());
+  // Making editor poll input events during async call.
+  my_app.enable_async_polling_for(EnumEventMask::c_input | EnumEventMask::c_window_close);
+  // Make editor synchronously poll on each frame (after async), for movement and spontaneous event handling.
+  my_app.enable_sync_polling();
   
   let mut window = Window::new()?;
-  window.window_hint(window::EnumWindowOption::WindowMode(window::EnumWindowMode::Windowed));
-  window.window_hint(window::EnumWindowOption::Resolution(1920, 1080));
-  window.window_hint(window::EnumWindowOption::Visible(false));
-  window.window_hint(window::EnumWindowOption::VSync(true));
-  window.window_hint(window::EnumWindowOption::Resizable(true));
-  window.window_hint(window::EnumWindowOption::Decorated(true));
   window.window_hint(window::EnumWindowOption::RendererApi(renderer::EnumApi::OpenGL));
-  
-  #[cfg(feature = "debug")]
+  window.window_hint(window::EnumWindowOption::WindowMode(window::EnumWindowMode::Windowed));
+  window.window_hint(window::EnumWindowOption::Resizable(true));
   window.window_hint(window::EnumWindowOption::DebugApi(true));
+  window.window_hint(window::EnumWindowOption::Maximized(true));
   
   let mut renderer = Renderer::new(renderer::EnumApi::OpenGL)?;
-  renderer.renderer_hint(renderer::EnumRendererOption::ApiCallChecking(renderer::EnumCallCheckingType::SyncAndAsync));
+  renderer.renderer_hint(renderer::EnumRendererOption::ApiCallChecking(renderer::EnumCallCheckingType::Async));
   renderer.renderer_hint(renderer::EnumRendererOption::Wireframe(true));
   
   // Supply it to our engine. Engine will NOT construct app and will only init the engine

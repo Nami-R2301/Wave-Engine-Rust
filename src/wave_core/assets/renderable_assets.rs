@@ -111,7 +111,7 @@ pub struct REntity {
   pub(crate) m_data: Vec<Vertex>,
   pub(crate) m_type: EnumEntityType,
   // UUID given by the renderer to differentiate entities in batch rendering.
-  m_renderer_id: u64,
+  pub(crate) m_renderer_id: u64,
   // Transformations applied to the entity, to be eventually applied to the model matrix.
   m_transform: [Vec3<f32>; 3],
   m_sent: bool,
@@ -295,7 +295,7 @@ impl REntity {
 
 impl Display for REntity {
   fn fmt(&self, format: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(format, "[REntity] --> \nSent => {0}", self.m_sent)
+    write!(format, "UUID: {0}\n{3:117}Type: {1:?}\n{3:117}Sent?: {2}", self.m_renderer_id, self.m_type, self.m_sent, "")
   }
 }
 

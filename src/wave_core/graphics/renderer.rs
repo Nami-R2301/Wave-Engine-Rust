@@ -172,7 +172,7 @@ pub(crate) trait TraitContext {
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
   fn dequeue(&mut self, id: u64) -> Result<(), EnumError>;
   fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), EnumError>;
-  fn on_delete(&mut self) -> Result<(), EnumError>;
+  fn free(&mut self) -> Result<(), EnumError>;
 }
 
 pub struct Renderer {
@@ -262,7 +262,7 @@ impl<'a> Renderer {
     return self.m_api.get_api_handle();
   }
   
-  pub fn on_delete(&mut self) -> Result<(), EnumError> {
+  pub fn free(&mut self) -> Result<(), EnumError> {
     log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Freeing resources...");
     if self.m_state == EnumState::NotCreated || self.m_state == EnumState::Deleted {
       log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t Cannot delete renderer : Renderer not \
@@ -271,7 +271,7 @@ impl<'a> Renderer {
     }
     
     // Free up resources.
-    self.m_api.on_delete()?;
+    self.m_api.free()?;
     self.m_state = EnumState::Deleted;
     log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Freed resources successfully");
     return Ok(());
@@ -310,7 +310,7 @@ impl Drop for Renderer {
   fn drop(&mut self) {
     if self.m_state != EnumState::Deleted && self.m_state != EnumState::NotCreated {
       log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Dropping renderer...");
-      match self.on_delete() {
+      match self.free() {
         Ok(_) => {
           log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Dropped renderer successfully...");
         }

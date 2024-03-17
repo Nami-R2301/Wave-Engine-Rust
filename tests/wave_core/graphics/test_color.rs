@@ -1,7 +1,7 @@
 /*
  MIT License
 
- Copyright (c) 2023 Nami Reghbati
+ Copyright (c) 2024 Nami Reghbati
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -22,6 +22,16 @@
  SOFTWARE.
 */
 
-pub mod test_shader;
-pub mod test_vulkan;
-pub mod test_color;
+use wave_engine::wave_core::graphics::color::Color;
+
+#[test]
+fn test_color_shifting() {
+  let color = Color::default();
+  let new_color = Color::from(0xFFFF00FF);
+  
+  assert_eq!(color, new_color);
+  
+  let purple = Color::from([0, 255, 0, 255]);
+  assert_eq!(purple, Color::from(0xFF00FF00));
+  
+}

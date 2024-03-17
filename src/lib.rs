@@ -118,7 +118,7 @@ pub mod wave_core {
   
   impl<'a> Engine {
     /// Setup new engine struct containing an app with the [TraitApp] behavior in order to call
-    /// `on_new()`, `on_delete()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
+    /// `on_new()`, `free()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
     /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
     ///
     /// ### Arguments:
@@ -146,7 +146,7 @@ pub mod wave_core {
     /// // Run `on_new()` for `my_app` prior to running.
     /// engine.on_new()?;
     /// engine.run();
-    /// engine.on_delete();
+    /// engine.free();
     /// return Ok(());
     /// ```
     pub fn new(window: Window, renderer: Renderer, app_layer: Layer) -> Result<Self, EnumError> {
@@ -168,7 +168,7 @@ pub mod wave_core {
       })
     }
     
-    pub fn on_new(&mut self) -> Result<(), EnumError> {
+    pub fn submit(&mut self) -> Result<(), EnumError> {
       if self.m_state != EnumState::NotStarted {
         log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Cannot instantiate engine : Engine already started!");
         return Err(EnumError::AppError);
@@ -176,27 +176,22 @@ pub mod wave_core {
       
       self.m_state = EnumState::Starting;
       
-      let window_layer: Layer = Layer::new("Main Window", WindowLayer::new(&mut self.m_window));
-      let renderer_layer: Layer = Layer::new("Renderer", RendererLayer::new(&mut self.m_renderer));
+      let mut window_layer: Layer = Layer::new("Main Window", WindowLayer::new(&mut self.m_window));
+      let mut renderer_layer: Layer = Layer::new("Renderer", RendererLayer::new(&mut self.m_renderer));
       
-      self.m_layers_vec.push(window_layer);
-      self.m_layers_vec.push(renderer_layer);
-      self.m_layers_vec.sort_unstable();
+      window_layer.enable_async_polling_for(EnumEventMask::c_window_close | EnumEventMask::c_window_size
+        | EnumEventMask::c_keyboard);
+      renderer_layer.enable_async_polling_for(EnumEventMask::c_window_close | EnumEventMask::c_window_size
+        | EnumEventMask::c_keyboard);
       
       Engine::set_singleton(self);
       
-      self.m_layers_vec[0].on_new()?;
-      // Enabling async polling and callbacks for window and renderer layer.
-      Engine::enable_callback_for(EnumEventMask::c_window_size | EnumEventMask::c_window_close | EnumEventMask::c_keyboard);
+      Self::push_layer(window_layer)?;
+      Self::push_layer(renderer_layer)?;
+      self.m_window.enable_callback(EnumEventMask::c_window_size | EnumEventMask::c_window_close | EnumEventMask::c_keyboard);
       
-      // For window layer.
-      Engine::enable_async_polling_for(EnumLayerType::Window, EnumEventMask::c_window_close | EnumEventMask::c_window_size
-        | EnumEventMask::c_keyboard);
-      // For renderer layer.
-      Engine::enable_async_polling_for(EnumLayerType::Renderer, EnumEventMask::c_window_size | EnumEventMask::c_keyboard);
-      
-      for index in 1..self.m_layers_vec.len() {
-        self.m_layers_vec[index].on_new()?;
+      for index in 2..self.m_layers_vec.len() {
+        self.m_layers_vec[index].submit()?;
       }
       
       self.m_state = EnumState::Started;
@@ -204,7 +199,7 @@ pub mod wave_core {
     }
     
     pub fn run(&mut self) -> Result<(), EnumError> {
-      self.on_new()?;
+      self.submit()?;
       
       if self.m_state != EnumState::Started {
         log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Cannot run : Engine has not started up correctly!");
@@ -302,7 +297,7 @@ pub mod wave_core {
       }
     }
     
-    pub fn on_delete(&mut self) -> Result<(), EnumError> {
+    pub fn free(&mut self) -> Result<(), EnumError> {
       self.m_state = EnumState::Deleting;
       
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down app layers...");
@@ -313,13 +308,14 @@ pub mod wave_core {
           !layer.is_type(EnumLayerType::Window));
       
       for layer in matched_layers {
-        layer.on_delete()?;
+        log!("INFO", "[Engine] -->\t Deleting layer: {0}", layer);
+        layer.free()?;
       }
       
       log!(EnumLogColor::Green, "INFO", "[App] -->\t Shut down app layers successfully");
       
-      self.m_renderer.on_delete()?;
-      self.m_window.on_delete()?;
+      self.m_renderer.free()?;
+      self.m_window.free()?;
       
       self.m_state = EnumState::Deleted;
       return Ok(());
@@ -329,7 +325,7 @@ pub mod wave_core {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Dropping engine...");
       
-      match engine.on_delete() {
+      match engine.free() {
         Ok(_) => {
           engine.m_state = EnumState::ShutDown;
           log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Dropped engine successfully");
@@ -345,19 +341,32 @@ pub mod wave_core {
     
     pub fn push_layer(mut new_layer: Layer) -> Result<(), EnumError> {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
-      new_layer.on_new()?;
+      
+      new_layer.submit()?;
+      // If this was the first layer requesting polling with this poll mask, enable polling for this type of event.
+      if engine.m_layers_vec.iter().all(|layer| !layer.poll_includes(new_layer.get_poll_mask())) {
+        engine.m_window.enable_polling(new_layer.get_poll_mask());
+      }
+      
+      log!("INFO", "[Engine] -->\t Pushed layer: {0}", new_layer);
       engine.m_layers_vec.push(new_layer);
       engine.m_layers_vec.sort_unstable();
       return Ok(());
     }
     
-    pub fn pop_layer(layer_name: &str) -> Result<bool, EnumError> {
+    pub fn pop_layer(popped_layer: &mut Layer) -> Result<bool, EnumError> {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
       
-      let position_found = engine.m_layers_vec.iter_mut().position(|layer| layer.is_named(layer_name));
+      let position_found = engine.m_layers_vec.iter_mut().position(|layer| layer == popped_layer);
       if position_found.is_some() {
+        log!("INFO", "[Engine] -->\t Popping layer: {0}", popped_layer.m_name);
         engine.m_layers_vec.remove(position_found.unwrap());
         engine.m_layers_vec.sort_unstable();
+        
+        // If no other layer polls for the specific poll mask, remove polling for those types of events.
+        if engine.m_layers_vec.iter().all(|layer| !layer.poll_includes(layer.get_poll_mask())) {
+          engine.m_window.disable_polling(popped_layer.get_poll_mask());
+        }
         return Ok(true);
       }
       return Ok(false);
@@ -392,73 +401,6 @@ pub mod wave_core {
       return Input::get_mouse_button_state(&engine.m_window, button, state);
     }
     
-    pub fn enable_sync_polling_for<T: TraitLayer>(any_layer: &mut T) {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
-      let layers_found = engine.m_layers_vec.iter_mut()
-        .filter(|layer| layer.is_type(any_layer.get_type()))
-        .collect::<Vec<&mut Layer>>();
-      
-      for matching_layer in layers_found.into_iter() {
-        matching_layer.toggle_sync_polling(true);
-      }
-    }
-    
-    pub fn disable_sync_polling_for<T: TraitLayer>(any_layer: &mut T) {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
-      let layers_found = engine.m_layers_vec.iter_mut()
-        .filter(|layer| layer.is_type(any_layer.get_type()))
-        .collect::<Vec<&mut Layer>>();
-      
-      for matching_layer in layers_found.into_iter() {
-        matching_layer.toggle_sync_polling(false);
-      }
-    }
-    
-    pub fn enable_async_polling_for(layer_mask: EnumLayerType, poll_mask: EnumEventMask) {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
-      
-      // If this was the first layer requesting polling with this poll mask, enable polling for this type of event.
-      if engine.m_layers_vec.iter().all(|layer| !layer.poll_includes(poll_mask)) {
-        engine.m_window.enable_polling(poll_mask);
-      }
-      
-      let layers_found = engine.m_layers_vec.iter_mut()
-        .filter(|layer| layer.is_type(layer_mask))
-        .collect::<Vec<&mut Layer>>();
-      
-      for layer in layers_found.into_iter() {
-        // Append mask to original.
-        layer.set_async_polling_mask(layer.get_poll_mask() | poll_mask);
-      }
-    }
-    
-    pub fn disable_async_polling_for(layer_mask: EnumLayerType, poll_mask: EnumEventMask) {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
-      let layers_found = engine.m_layers_vec.iter_mut()
-        .filter(|layer| layer.is_type(layer_mask))
-        .collect::<Vec<&mut Layer>>();
-      
-      for layer in layers_found.into_iter() {
-        // Strip mask from original.
-        layer.set_async_polling_mask(layer.get_poll_mask() | !poll_mask);
-      }
-      
-      // If no other layer polls for the specific poll mask, remove polling for those types of events.
-      if engine.m_layers_vec.iter().all(|layer| !layer.poll_includes(poll_mask)) {
-        engine.m_window.disable_polling(poll_mask);
-      }
-    }
-    
-    pub fn enable_callback_for(event_mask: EnumEventMask) {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
-      return engine.m_window.enable_callback(event_mask);
-    }
-    
-    pub fn disable_async_callback(event_mask: EnumEventMask) {
-      let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
-      engine.m_window.disable_callback(event_mask);
-    }
-    
     fn set_singleton(engine: &mut Engine) -> () {
       unsafe { S_ENGINE = Some(engine) };
     }
@@ -468,7 +410,7 @@ pub mod wave_core {
     fn drop(&mut self) {
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Dropping engine...");
       
-      match self.on_delete() {
+      match self.free() {
         Ok(_) => {
           self.m_state = EnumState::ShutDown;
           log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Dropped engine successfully");
@@ -503,7 +445,7 @@ pub mod wave_core {
       return EnumLayerType::App;
     }
     
-    fn on_new(&mut self) -> Result<(), EnumError> {
+    fn on_submit(&mut self) -> Result<(), EnumError> {
       return Ok(());
     }
     
@@ -523,8 +465,12 @@ pub mod wave_core {
       return Ok(());
     }
     
-    fn on_delete(&mut self) -> Result<(), EnumError> {
+    fn on_free(&mut self) -> Result<(), EnumError> {
       return Ok(());
+    }
+    
+    fn to_string(&self) -> String {
+      return String::from("[Empty App]");
     }
   }
 }

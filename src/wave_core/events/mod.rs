@@ -82,29 +82,29 @@ impl Display for EnumError {
 
 bitflags! {
   #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-  pub struct EnumEventMask: u8 {
-    const c_none = 0b00000000;
-    const c_all = !0;
+  pub struct EnumEventMask: u16 {
+    const c_none            = 0b0000000000000000;
+    const c_all             = !0;
     
     // Window events.
-    const c_window = 0b01111111;
-    const c_window_iconify = 0b01000001;
-    const c_window_maximize = 0b01000010;
-    const c_window_focus = 0b01000100;
-    const c_window_close = 0b01001000;
-    const c_window_size = 0b01010000;
-    const c_window_pos = 0b01100000;
+    const c_window          = 0b1011111100000000;
+    const c_window_iconify  = 0b1000000100000000;
+    const c_window_maximize = 0b1000001000000000;
+    const c_window_focus    = 0b1000010000000000;
+    const c_window_close    = 0b1000100000000000;
+    const c_window_size     = 0b1001000000000000;
+    const c_window_pos      = 0b1010000000000000;
     
     // Input events.
-    const c_input = 0b00111111;
-    const c_drag_and_drop = 0b00100001;
-    const c_keyboard = 0b00100010;
+    const c_input           = 0b0000000111111111;
+    const c_drag_and_drop   = 0b0000000100000001;
+    const c_keyboard        = 0b0000000100000010;
     
     // Mouse events.
-    const c_mouse = 0b00111100;
-    const c_cursor_pos = 0b00100100;
-    const c_mouse_btn = 0b00101000;
-    const c_mouse_scroll = 0b00110000;
+    const c_mouse           = 0b0000000100011100;
+    const c_cursor_pos      = 0b0000000100000100;
+    const c_mouse_btn       = 0b0000000100001000;
+    const c_mouse_scroll    = 0b0000000100010000;
   }
 }
 
@@ -123,5 +123,127 @@ impl From<&EnumEvent> for EnumEventMask {
       EnumEvent::DragAndDrop(_) => EnumEventMask::c_drag_and_drop,
       EnumEvent::UnknownEvent => EnumEventMask::empty()
     };
+  }
+}
+
+impl Display for EnumEventMask {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    let mut mask_count = 0;
+    
+    write!(f, "[{1:016b}]\n{0:115}Events: ", "", self.0.0)?;
+    
+    if self == &EnumEventMask::c_none {
+      return write!(f, "Nothing ({0:016b})", EnumEventMask::c_none);
+    }
+    if self == &EnumEventMask::c_all {
+      return write!(f, "Everything ({0:016b})", EnumEventMask::c_all);
+    }
+    
+    if self.contains(EnumEventMask::c_window) {
+      mask_count += 1;
+      write!(f, "All window ({0:016b}) ", EnumEventMask::c_window)?;
+    }
+    
+    if !self.contains(EnumEventMask::c_window) && self.contains(EnumEventMask::c_window_size) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| Window framebuffer ({0:016b}) ", EnumEventMask::c_window_size)?;
+      } else {
+        write!(f, "Window framebuffer ({0:016b}) ", EnumEventMask::c_window_size)?;
+      }
+    }
+    if !self.contains(EnumEventMask::c_window) && self.contains(EnumEventMask::c_window_close) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| Window close ({0:016b}) ", EnumEventMask::c_window_close)?;
+      } else {
+        write!(f, "Window close ({0:016b}) ", EnumEventMask::c_window_close)?;
+      }
+    }
+    if !self.contains(EnumEventMask::c_window) && self.contains(EnumEventMask::c_window_iconify) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| Window iconify ({0:016b}) ", EnumEventMask::c_window_iconify)?;
+      } else {
+        write!(f, "Window iconify ({0:016b}) ", EnumEventMask::c_window_iconify)?;
+      }
+    }
+    if !self.contains(EnumEventMask::c_window) && self.contains(EnumEventMask::c_window_maximize) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| Window maximize ({0:016b}) ", EnumEventMask::c_window_maximize)?;
+      } else {
+        write!(f, "Window maximize ({0:016b}) ", EnumEventMask::c_window_maximize)?;
+      }
+    }
+    if !self.contains(EnumEventMask::c_window) && self.contains(EnumEventMask::c_window_focus) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| Window focus ({0:016b}) ", EnumEventMask::c_window_focus)?;
+      } else {
+        write!(f, "Window focus ({0:016b}) ", EnumEventMask::c_window_focus)?;
+      }
+    }
+    if !self.contains(EnumEventMask::c_window) && self.contains(EnumEventMask::c_window_pos) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| Window position ({0:016b}) ", EnumEventMask::c_window_pos)?;
+      } else {
+        write!(f, "Window position ({0:016b}) ", EnumEventMask::c_window_pos)?;
+      }
+    }
+    
+    if self.contains(EnumEventMask::c_input) {
+      mask_count += 1;
+      if mask_count > 1 {
+        return write!(f, "| All input ({0:016b})", EnumEventMask::c_input);
+      } else {
+        return write!(f, "All input ({0:016b})", EnumEventMask::c_input);
+      }
+    }
+    
+    if self.contains(EnumEventMask::c_mouse) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| All Mouse ({0:016b}) ", EnumEventMask::c_mouse)?;
+      } else {
+        write!(f, "All Mouse ({0:016b}) ", EnumEventMask::c_mouse)?;
+      }
+    }
+    
+    if !self.contains(EnumEventMask::c_mouse) && self.contains(EnumEventMask::c_mouse_btn) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| Mouse button ({0:016b}) ", EnumEventMask::c_mouse_btn)?;
+      } else {
+        write!(f, "Mouse button ({0:016b}) ", EnumEventMask::c_mouse_btn)?;
+      }
+    }
+    if !self.contains(EnumEventMask::c_mouse) && self.contains(EnumEventMask::c_mouse_scroll) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| Mouse scroll ({0:016b}) ", EnumEventMask::c_mouse_scroll)?;
+      } else {
+        write!(f, "Mouse scroll ({0:016b}) ", EnumEventMask::c_mouse_scroll)?;
+      }
+    }
+    
+    if self.contains(EnumEventMask::c_keyboard) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| Keyboard ({0:016b}) ", EnumEventMask::c_keyboard)?;
+      } else {
+        write!(f, "Keyboard ({0:016b}) ", EnumEventMask::c_keyboard)?;
+      }
+    }
+    if self.contains(EnumEventMask::c_drag_and_drop) {
+      mask_count += 1;
+      if mask_count > 1 {
+        write!(f, "| Drag and drop ({0:016b})", EnumEventMask::c_drag_and_drop)?;
+      } else {
+        write!(f, "Drag and drop ({0:016b})", EnumEventMask::c_drag_and_drop)?;
+      }
+    }
+    return Ok(());
   }
 }

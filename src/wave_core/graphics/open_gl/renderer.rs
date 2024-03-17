@@ -582,7 +582,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn on_delete(&mut self) -> Result<(), renderer::EnumError> {
+  fn free(&mut self) -> Result<(), renderer::EnumError> {
     if self.m_state == EnumState::NotCreated {
       log!(EnumLogColor::Yellow, "WARN", "[GlContext] -->\t Cannot free resources : OpenGL renderer \
       has not been created!");
@@ -598,17 +598,17 @@ impl TraitContext for GlContext {
     log!(EnumLogColor::Purple, "INFO", "[GlContext] -->\t Freeing buffers...");
     // Free ubos.
     for ubo in self.m_batch.m_ubo_buffers.iter_mut() {
-      ubo.on_delete()?;
+      ubo.free()?;
     };
     
     // Free vaos.
     for vao in self.m_batch.m_vao_buffers.iter_mut() {
-      vao.on_delete()?;
+      vao.free()?;
     };
     
     // Free vbos.
     for vbo in self.m_batch.m_vbo_buffers.iter_mut() {
-      vbo.on_delete()?;
+      vbo.free()?;
     };
     log!(EnumLogColor::Green, "INFO", "[GlContext] -->\t Freed buffers successfully");
     
@@ -663,7 +663,7 @@ impl GlContext {
         }
         
         // Colors.
-        attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec4, false,
+        attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1), false,
           EnumVertexMemberOffset::AtColor as usize, 0)?);
         
         // Texture coordinates.

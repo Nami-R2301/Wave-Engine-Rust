@@ -168,7 +168,7 @@ impl TraitShader for VkShader {
     let mut format: String = String::from("");
     
     for shader_stage in self.m_shader_stages.iter() {
-      format += format!("\n{0:115}[Vulkan] |{1}| ({2}, {3})",
+      format += format!("\n{0:117}[Vulkan] |{1}| ({2}, {3})",
         "", shader_stage.m_stage, shader_stage.m_source, shader_stage.cache_status()).as_str();
     }
     return format;
@@ -186,7 +186,7 @@ impl TraitShader for VkShader {
     return self;
   }
   
-  fn on_delete(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumError> {
+  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumError> {
     unsafe {
       let vk_context =
         (*active_renderer).get_api_handle()
