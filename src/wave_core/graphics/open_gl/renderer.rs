@@ -30,12 +30,11 @@ use std::collections::{HashMap, HashSet};
 use gl46::GlFns;
 
 use crate::{log};
-use crate::wave_core::assets::renderable_assets::{EnumEntityType, EnumVertexMemberOffset, REntity};
+use crate::wave_core::assets::renderable_assets::{EnumPrimitiveType, EnumVertexMemberOffset, REntity};
 use crate::wave_core::camera::Camera;
 use crate::wave_core::events::EnumEvent;
 use crate::wave_core::graphics::{open_gl, renderer};
-use crate::wave_core::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar,
-  GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
+use crate::wave_core::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar, GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
 use crate::wave_core::graphics::renderer::{EnumCallCheckingType, EnumRendererOption, EnumState, TraitContext};
 use crate::wave_core::graphics::shader::{EnumShaderLanguageType, Shader};
 use crate::wave_core::math::{Mat4};
@@ -164,11 +163,11 @@ impl From<open_gl::shader::EnumError> for EnumError {
 struct GlPrimitiveInfo {
   m_uuid: u64,
   m_linked_shader: *mut Shader,
-  m_vao_index: u32,
-  m_vbo_index: u32,
+  m_vao_index: usize,
+  m_vbo_index: usize,
   m_vbo_offset: usize,
-  m_size: usize, // Size per vertex taken in the vbo.
-  m_count: usize // Vertex count in the vbo.
+  m_vbo_size: usize, // Size per vertex for the primitive in vbo.
+  m_vbo_count: usize, // Vertex count for the primitive in vbo.
 }
 
 struct GlBatchPrimitives {
@@ -203,7 +202,7 @@ impl TraitContext for GlContext {
       m_state: EnumState::NotCreated,
       m_ext: HashMap::new(),
       m_batch: GlBatchPrimitives::new(),
-      m_debug_callback: Some(gl_error_callback)
+      m_debug_callback: Some(gl_error_callback),
     };
   }
   
@@ -276,7 +275,7 @@ impl TraitContext for GlContext {
   
   fn on_event(&mut self, event: &EnumEvent) -> Result<bool, renderer::EnumError> {
     return match event {
-     EnumEvent::FramebufferEvent(width, height) => {
+      EnumEvent::FramebufferEvent(width, height) => {
         check_gl_call!("GlContext", gl::Viewport(0, 0, *width as GLsizei, *height as GLsizei));
         Ok(true)
       }
@@ -286,11 +285,11 @@ impl TraitContext for GlContext {
   
   fn on_render(&mut self) -> Result<(), renderer::EnumError> {
     check_gl_call!("Renderer", gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
-    for index in 0usize..self.m_batch.m_primitives.len() {
-      check_gl_call!("Renderer", gl::UseProgram((*self.m_batch.m_primitives[index].m_linked_shader).get_id()));
-      self.m_batch.m_vao_buffers[index].bind()?;
-      check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, 0,
-        self.m_batch.m_vbo_buffers[self.m_batch.m_primitives[index].m_vbo_index as usize].m_count as GLsizei));
+    for primitive in self.m_batch.m_primitives.iter() {
+      check_gl_call!("Renderer", gl::UseProgram((*primitive.m_linked_shader).get_id()));
+      self.m_batch.m_vao_buffers[primitive.m_vao_index].bind()?;
+      // self.m_batch.m_ibo_buffers[primitive.m_ibo_index].bind()?;
+      check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, primitive.m_vbo_offset as i32, primitive.m_vbo_count as GLsizei));
     }
     return Ok(());
   }
@@ -304,7 +303,7 @@ impl TraitContext for GlContext {
     
     let window_framebuffer_size = window.get_framebuffer_size();
     check_gl_call!("Renderer", gl::Viewport(0, 0, window_framebuffer_size.0 as i32, window_framebuffer_size.1 as i32));
-    check_gl_call!("Renderer", gl::ClearColor(0.15, 0.15, 0.15, 1.0));
+    check_gl_call!("Renderer", gl::ClearColor(0.05, 0.05, 0.05, 1.0));
     
     check_gl_call!("Renderer", gl::FrontFace(gl::CW));
     return Ok(());
@@ -484,45 +483,68 @@ impl TraitContext for GlContext {
   
   fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
     if sendable_entity.is_empty() {
-      log!(EnumLogColor::Yellow, "WARN", "[GlContext] --> Entity {0} sent has no \
+      log!(EnumLogColor::Yellow, "WARN", "[GlContext] --> Entity [{0}] has no \
       vertices! Not sending it...", sendable_entity)
     }
     
-    let mut vao_index: u32 = 0;
-    let mut vbo_index: u32 = 0;
+    let mut vao_index: usize = 0;
+    let mut vbo_index: usize = 0;
     let mut vbo_offset: usize = 0;
     
     if !self.m_batch.m_vao_buffers.is_empty() {
-      vao_index = (self.m_batch.m_vao_buffers.len() - 1) as u32;
+      vao_index = self.m_batch.m_vao_buffers.len() - 1;
     }
     
     // Figure out if the entity type has already been enqueued. If so, only append to the vbo instead of creating another vao.
-    if self.m_batch.m_primitives.iter().any(|primitive| primitive.m_linked_shader == shader_associated) {
-      vbo_index = (self.m_batch.m_vbo_buffers.len() - 1) as u32;
-      vbo_offset = self.m_batch.m_vbo_buffers.last().unwrap().m_size;
-    }
-    
-    let new_primitive: GlPrimitiveInfo = GlPrimitiveInfo {
-      m_uuid: sendable_entity.get_uuid(),
-      m_linked_shader: shader_associated,
-      m_vao_index: vao_index,
-      m_vbo_index: vbo_index,
-      m_vbo_offset: vbo_offset,
-      m_size: REntity::size_of(),
-      m_count: sendable_entity.vertex_count()
-    };
+    self.m_batch.m_primitives.iter()
+      .find(|primitive| primitive.m_linked_shader == shader_associated)
+      .map(|matched| {
+        vbo_index = matched.m_vbo_index;
+        vbo_offset = self.m_batch.m_vbo_buffers[matched.m_vbo_index].m_size;
+      });
     
     if self.m_batch.m_vao_buffers.is_empty() {
-      let offset: usize = 0;
       
       // Allocate main dynamic vbo to hold all the data provided.
-      let mut vbo = GlVbo::new(REntity::size_of(), sendable_entity.vertex_count())?;
+      let mut vbo = GlVbo::new(sendable_entity.size(), sendable_entity.total_vertex_count())?;
       let mut vao = GlVao::new()?;
       
-      vbo.set_data(sendable_entity.m_data.as_ptr() as *const GLvoid,
-        REntity::size_of() * sendable_entity.vertex_count(), offset)?;
-      self.set_attributes(sendable_entity, &mut vao)?;
+      log!("INFO", "[GlContext] -->\t Submitting primitive {0}...", sendable_entity.m_data.get_name());
+      let vertices = sendable_entity.m_data.get_vertices();
       
+      let new_primitive: GlPrimitiveInfo = GlPrimitiveInfo {
+        m_uuid: sendable_entity.get_uuid(),
+        m_linked_shader: shader_associated,
+        m_vao_index: vao_index,
+        m_vbo_index: vbo_index,
+        m_vbo_offset: vbo_offset,
+        m_vbo_size: sendable_entity.size(),
+        m_vbo_count: vertices.len(),
+      };
+      
+      vbo.set_data(vertices.as_ptr() as *const GLvoid, sendable_entity.size() * vertices.len(), vbo_offset)?;
+      // vbo_offset += vertices.len() * sendable_entity.size();
+      self.m_batch.m_primitives.push(new_primitive);
+      
+      //   for sub_primitive in sendable_entity.get_submeshes() {
+      //     let vertices = sub_primitive.get_vertices();
+      //
+      //     let new_primitive: GlPrimitiveInfo = GlPrimitiveInfo {
+      //       m_uuid: sendable_entity.get_uuid(),
+      //       m_linked_shader: shader_associated,
+      //       m_vao_index: vao_index,
+      //       m_vbo_index: vbo_index,
+      //       m_vbo_offset: vbo_offset,
+      //       m_vbo_size: sendable_entity.size(),
+      //       m_vbo_count: vertices.len()
+      //     };
+      //
+      //     vbo.set_data(vertices.as_ptr() as *const GLvoid, sendable_entity.size() * vertices.len(), vbo_offset)?;
+      //     vbo_offset += vertices.len() * sendable_entity.size();
+      //     self.m_batch.m_primitives.push(new_primitive);
+      //   }
+      
+      self.set_attributes(sendable_entity, &mut vao)?;
       self.m_batch.m_vao_buffers.push(vao);
       self.m_batch.m_vbo_buffers.push(vbo);
       
@@ -537,20 +559,19 @@ impl TraitContext for GlContext {
       self.m_batch.m_ubo_buffers.push(ubo_model);
     }
     
-    self.m_batch.m_primitives.push(new_primitive);
     return Ok(());
   }
   
   fn dequeue(&mut self, uuid: u64) -> Result<(), renderer::EnumError> {
     for index in 0..self.m_batch.m_primitives.len() {
       if self.m_batch.m_primitives[index].m_uuid == uuid {
-        self.m_batch.m_vao_buffers[self.m_batch.m_primitives[index].m_vao_index as usize].bind()?;
+        self.m_batch.m_vao_buffers[self.m_batch.m_primitives[index].m_vao_index].bind()?;
         
-        if !self.m_batch.m_vbo_buffers[self.m_batch.m_primitives[index].m_vbo_index as usize].is_empty() {
+        if !self.m_batch.m_vbo_buffers[self.m_batch.m_primitives[index].m_vbo_index].is_empty() {
           // Free up space without reallocating buffer to save time and allow quick re enqueuing of the same entity.
-          self.m_batch.m_vbo_buffers[self.m_batch.m_primitives[index].m_vbo_index as usize]
-            .strip(self.m_batch.m_primitives[index].m_vbo_offset, self.m_batch.m_primitives[index].m_size,
-              self.m_batch.m_primitives[index].m_count)?;
+          self.m_batch.m_vbo_buffers[self.m_batch.m_primitives[index].m_vbo_index]
+            .strip(self.m_batch.m_primitives[index].m_vbo_offset, self.m_batch.m_primitives[index].m_vbo_size,
+              self.m_batch.m_primitives[index].m_vbo_count)?;
         }
         return Ok(());
       }
@@ -641,7 +662,7 @@ impl GlContext {
   
   fn set_attributes(&mut self, entity: &REntity, vao: &mut GlVao) -> Result<(), EnumError> {
     return match entity.m_type {
-      EnumEntityType::Mesh(is_flat_shaded) => {
+      EnumPrimitiveType::Mesh(is_flat_shaded) => {
         // Establish vao attributes.
         let mut attributes: Vec<GlVertexAttribute> = Vec::with_capacity(5);
         
@@ -674,7 +695,7 @@ impl GlContext {
         vao.enable_attributes(attributes)
       }
       _ => todo!()
-    }
+    };
   }
 }
 

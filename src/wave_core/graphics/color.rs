@@ -63,6 +63,19 @@ impl From<[u8; 4]> for Color {
   }
 }
 
+impl From<[f32; 4]> for Color {
+  fn from(rgba: [f32; 4]) -> Self {
+    // (RGBA) -> (ABGR)
+    let red: u32 = (rgba[0] * 255.0) as u32;
+    let green: u32 = ((rgba[1] * 255.0) as u32) << 8;
+    let blue: u32 = ((rgba[2] * 255.0) as u32) << 16;
+    let alpha: u32 = ((rgba[3] * 255.0) as u32) << 24;
+    return Color {
+      m_rgba: red + green + blue + alpha
+    }
+  }
+}
+
 impl From<u32> for Color {
   fn from(rgba: u32) -> Self {
     return Color {

@@ -293,7 +293,7 @@ pub mod wave_core {
       }
       
       if each_result.is_err() {
-        Self::panic_shutdown(each_result.err().unwrap());
+        log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Error while processing async event: {0:?}", each_result.err().unwrap());
       }
     }
     

@@ -26,6 +26,7 @@ use wave_engine::*;
 use wave_engine::wave_core::{Engine, events, input, camera, math};
 use wave_engine::wave_core::assets::asset_loader;
 use wave_engine::wave_core::assets::renderable_assets;
+use wave_engine::wave_core::assets::renderable_assets::{EnumPrimitiveType, Mesh, REntity};
 use wave_engine::wave_core::events::{EnumEventMask};
 use wave_engine::wave_core::graphics::renderer;
 use wave_engine::wave_core::graphics::renderer::Renderer;
@@ -37,7 +38,7 @@ use wave_engine::wave_core::window::{self, Window};
 
 pub struct Editor {
   m_shaders: Vec<shader::Shader>,
-  m_renderable_assets: Vec<renderable_assets::REntity>,
+  m_renderable_assets: Vec<REntity>,
   m_cameras: Vec<camera::Camera>,
   m_wireframe_on: bool
 }
@@ -80,9 +81,9 @@ impl TraitLayer for Editor {
     let aspect_ratio: f32 = window.get_aspect_ratio();
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
     
-    // self.m_renderable_assets.push(REntity::default());
-    self.m_renderable_assets.push(renderable_assets::REntity::new(asset_loader::ResLoader::new("awp.obj")?,
-      renderable_assets::EnumEntityType::Mesh(false)));
+    let asset = Box::new(Mesh::new(asset_loader::AssetLoader::new("awp.obj")?));
+    
+    self.m_renderable_assets.push(REntity::new(asset, EnumPrimitiveType::Mesh(false)));
     self.m_renderable_assets[0].translate(math::Vec3::new(&[10.0, -10.0, 50.0]));
     self.m_renderable_assets[0].rotate(math::Vec3::new(&[90.0, -90.0, 0.0]));
     self.m_renderable_assets[0].submit(&mut self.m_shaders[0])?;
@@ -91,12 +92,12 @@ impl TraitLayer for Editor {
     self.m_cameras.push(camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
     renderer.submit_camera(&self.m_cameras[0])?;
     
-    #[cfg(feature = "imgui")]
-    {
-      let mut imgui_layer: Layer = Layer::new("Imgui", ImguiLayer::new(Imgui::new(renderer.m_type, window)));
-      imgui_layer.enable_async_polling_for(EnumEventMask::c_input | EnumEventMask::c_window);
-      Engine::push_layer(imgui_layer)?;
-    }
+    // #[cfg(feature = "imgui")]
+    // {
+    //   let mut imgui_layer: Layer = Layer::new("Imgui", ImguiLayer::new(Imgui::new(renderer.m_type, window)));
+    //   imgui_layer.enable_async_polling_for(EnumEventMask::c_input | EnumEventMask::c_window);
+    //   Engine::push_layer(imgui_layer)?;
+    // }
     
     // Show our window when we are ready to present.
     window.show();
@@ -144,6 +145,10 @@ impl TraitLayer for Editor {
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
             renderer.toggle(renderer::EnumRendererOption::Wireframe(!self.m_wireframe_on))?;
             self.m_wireframe_on = !self.m_wireframe_on;
+            Ok(true)
+          }
+          (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
+            renderer.toggle(renderer::EnumRendererOption::MSAA(Some(4)))?;
             Ok(true)
           }
           (input::EnumKey::Delete, input::EnumAction::Pressed, _, m) => {
@@ -213,6 +218,7 @@ fn main() -> Result<(), wave_core::EnumError> {
   
   let mut renderer = Renderer::new(renderer::EnumApi::OpenGL)?;
   renderer.renderer_hint(renderer::EnumRendererOption::ApiCallChecking(renderer::EnumCallCheckingType::Async));
+  renderer.renderer_hint(renderer::EnumRendererOption::SRGB(true));
   renderer.renderer_hint(renderer::EnumRendererOption::Wireframe(true));
   
   // Supply it to our engine. Engine will NOT construct app and will only init the engine

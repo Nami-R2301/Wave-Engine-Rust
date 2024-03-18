@@ -27,6 +27,7 @@ pub extern crate ash;
 use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
+use std::mem::size_of;
 #[allow(unused)]
 use std::ops::{BitAnd, BitOr};
 
@@ -34,7 +35,7 @@ use ash::extensions::{ext, khr};
 pub(crate) use ash::vk::{self, PhysicalDeviceType, TaggedStructure};
 
 use crate::{log};
-use crate::wave_core::assets::renderable_assets::{EnumVertexMemberOffset, REntity};
+use crate::wave_core::assets::renderable_assets::{EnumVertexMemberOffset, REntity, Vertex};
 use crate::wave_core::camera::Camera;
 use crate::wave_core::{Engine, events};
 use crate::wave_core::graphics::{renderer, vulkan};
@@ -320,7 +321,7 @@ impl VkContext {
     ];
     
     // Setup vertex input.
-    self.m_vbo_array.push(VkVbo::new(REntity::size_of(), 0, REntity::size_of() as u32,
+    self.m_vbo_array.push(VkVbo::new(size_of::<Vertex>(), 0, size_of::<Vertex>() as u32,
       vk::VertexInputRate::VERTEX, self.m_logical_device.as_mut().unwrap(), None)
       .map_err(|error| {
         return EnumError::BufferOperationError(error);

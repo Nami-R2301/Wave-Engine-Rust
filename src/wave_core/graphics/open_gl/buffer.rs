@@ -30,11 +30,12 @@
 
 extern crate gl;
 
+use std::mem::size_of;
 pub(crate) use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLintptr, GLsizei, GLsizeiptr, GLuint,
   GLvoid};
 
 use crate::{check_gl_call, log};
-use crate::wave_core::assets::renderable_assets::REntity;
+use crate::wave_core::assets::renderable_assets::{Vertex};
 use crate::wave_core::graphics::open_gl;
 use crate::wave_core::math::Mat4;
 use crate::wave_core::S_ENGINE;
@@ -234,7 +235,7 @@ impl GlVao {
     check_gl_call!("Buffer (Attribute divisor)", gl::GetIntegerv(gl::MAX_VERTEX_ATTRIBS, &mut max_attrib_div));
     
     self.bind()?;
-    let stride = REntity::size_of();
+    let stride = size_of::<Vertex>();
     
     for (index, attribute) in attributes.iter().enumerate() {
       if index > max_attrib_div as usize {
@@ -440,6 +441,172 @@ impl GlVbo {
     
     log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVbo...");
     check_gl_call!("GlVbo", gl::DeleteBuffers(1, &self.m_renderer_id));
+    log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlVbo successfully");
+    
+    self.m_state = EnumState::Deleted;
+    return Ok(());
+  }
+}
+
+#[allow(unused)]
+pub(crate) struct GlIbo {
+  pub(crate) m_renderer_id: u32,
+  pub(crate) m_capacity: usize,
+  pub(crate) m_size: usize,
+  pub(crate) m_count: usize,
+  m_state: EnumState,
+}
+
+#[allow(unused)]
+impl GlIbo {
+  pub(crate) fn new(size_per_index: usize, index_count: usize) -> Result<Self, open_gl::renderer::EnumError> {
+    let mut new_ibo: GLuint = 0;
+    check_gl_call!("GlIbo", gl::CreateBuffers(1, &mut new_ibo));
+    check_gl_call!("GlIbo", gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, new_ibo));
+    check_gl_call!("GlIbo", gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (size_per_index * index_count) as GLsizeiptr,
+      std::ptr::null(), gl::DYNAMIC_DRAW));
+    
+    return Ok(Self {
+      m_renderer_id: new_ibo,
+      m_capacity: size_per_index * index_count,
+      m_size: size_per_index * index_count,
+      m_count: index_count,
+      m_state: EnumState::Created,
+    });
+  }
+  
+  pub(crate) fn bind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+    if self.m_state == EnumState::Created || self.m_state == EnumState::Unbound {
+      check_gl_call!("GlIbo", gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.m_renderer_id));
+    }
+    self.m_state = EnumState::Bound;
+    return Ok(());
+  }
+  
+  pub(crate) fn set_data(&mut self, data: *const GLvoid, alloc_size: usize, byte_offset: usize) -> Result<(), open_gl::renderer::EnumError> {
+    self.bind()?;
+    check_gl_call!("GlIbo", gl::BufferSubData(gl::ELEMENT_ARRAY_BUFFER, byte_offset as GLsizeiptr,
+      alloc_size as GLsizeiptr, data));
+    
+    return Ok(());
+  }
+  
+  #[allow(unused)]
+  pub(crate) fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumError> {
+    if vertex_size == 0 || vertex_count == 0 {
+      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+    }
+    let old_size: usize = self.m_size;
+    
+    if (vertex_size * vertex_count) + self.m_size >= self.m_capacity {
+      self.expand(vertex_size * vertex_count)?;
+    }
+    self.m_size += vertex_size * vertex_count;
+    self.m_count += vertex_count;
+    
+    // Set new data in new buffer.
+    self.set_data(data, vertex_size * vertex_count, old_size)?;
+    return Ok(());
+  }
+  
+  pub(crate) fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumError> {
+    if vertex_size * vertex_count == 0 || vertex_size * vertex_count > self.m_size {
+      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+    }
+    self.bind()?;
+    if vertex_size * vertex_count == self.m_size {
+      check_gl_call!("GlIbo", gl::MapBufferRange(gl::ELEMENT_ARRAY_BUFFER,
+        buffer_offset as GLintptr, (vertex_size * vertex_count) as GLsizeiptr,
+        gl::MAP_WRITE_BIT | gl::MAP_INVALIDATE_BUFFER_BIT));
+    } else {
+      check_gl_call!("GlIbo", gl::MapBufferRange(gl::ELEMENT_ARRAY_BUFFER,
+        buffer_offset as GLintptr, (vertex_size * vertex_count) as GLsizeiptr,
+        gl::MAP_WRITE_BIT | gl::MAP_INVALIDATE_RANGE_BIT));
+    }
+    check_gl_call!("GlIbo", gl::UnmapBuffer(gl::ELEMENT_ARRAY_BUFFER));
+    
+    self.m_size -= vertex_size * vertex_count;
+    self.m_count -= vertex_count;
+    return Ok(());
+  }
+  
+  #[allow(unused)]
+  pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), open_gl::renderer::EnumError> {
+    if alloc_size == 0 {
+      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+    }
+    
+    self.bind()?;
+    // Create new GlVbo to fit all contents.
+    let mut new_buffer: GLuint = 0;
+    check_gl_call!("GlIbo", gl::CreateBuffers(1, &mut new_buffer));
+    check_gl_call!("GlIbo", gl::BindBuffer(gl::COPY_WRITE_BUFFER, new_buffer));
+    check_gl_call!("GlIbo", gl::BufferData(gl::COPY_WRITE_BUFFER, (alloc_size + self.m_capacity) as GLsizeiptr,
+      std::ptr::null(), gl::DYNAMIC_DRAW));
+    
+    // Copy existing buffer contents up to the byte offset to new buffer.
+    check_gl_call!("GlIbo", gl::CopyBufferSubData(gl::COPY_READ_BUFFER, gl::COPY_WRITE_BUFFER,
+      0, 0, self.m_size as GLintptr));
+    
+    // Swap buffers.
+    self.unbind()?;
+    check_gl_call!("GlIbo", gl::DeleteBuffers(1, &self.m_renderer_id));
+    self.m_renderer_id = new_buffer;
+    self.m_capacity += alloc_size;
+    
+    return Ok(());
+  }
+  
+  #[allow(unused)]
+  pub(crate) fn shrink(&mut self, dealloc_size: usize) -> Result<(), open_gl::renderer::EnumError> {
+    if dealloc_size == 0 {
+      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+    }
+    
+    self.bind()?;
+    // Create new GlVbo to fit all contents.
+    let mut new_buffer: GLuint = 0;
+    check_gl_call!("GlIbo", gl::CreateBuffers(1, &mut new_buffer));
+    check_gl_call!("GlIbo", gl::BindBuffer(gl::COPY_WRITE_BUFFER, new_buffer));
+    check_gl_call!("GlIbo", gl::BufferData(gl::COPY_WRITE_BUFFER, (self.m_capacity - dealloc_size) as GLsizeiptr,
+      std::ptr::null(), gl::DYNAMIC_DRAW));
+    
+    // Copy existing buffer contents up to the byte offset to new buffer.
+    check_gl_call!("GlIbo", gl::CopyBufferSubData(gl::COPY_READ_BUFFER, gl::COPY_WRITE_BUFFER,
+      0, 0, self.m_size as GLintptr));
+    
+    // Swap buffers.
+    self.unbind()?;
+    check_gl_call!("GlIbo", gl::DeleteBuffers(1, &self.m_renderer_id));
+    self.m_renderer_id = new_buffer;
+    self.m_capacity -= dealloc_size;
+    
+    return Ok(());
+  }
+  
+  pub(crate) fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+    if self.m_state == EnumState::Bound {
+      check_gl_call!("GlIbo", gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0));
+    }
+    self.m_state = EnumState::Unbound;
+    return Ok(());
+  }
+  
+  pub fn is_empty(&self) -> bool {
+    return self.m_size == 0 || self.m_count == 0;
+  }
+  
+  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+    self.unbind()?;
+    
+    if self.m_state == EnumState::Deleted || self.m_state == EnumState::NotCreated {
+      log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Cannot delete GlVao : Already deleted \
+      or not created in the first place!");
+      return Ok(());
+    }
+    
+    log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVbo...");
+    check_gl_call!("GlIbo", gl::DeleteBuffers(1, &self.m_renderer_id));
     log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlVbo successfully");
     
     self.m_state = EnumState::Deleted;
