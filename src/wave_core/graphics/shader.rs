@@ -64,6 +64,7 @@ pub enum EnumError {
   UnsupportedFileType,
   UnsupportedFileVersion,
   ShaderNotCached,
+  ShaderModified,
   ShaderBinaryError,
   InvalidShaderSource,
   InvalidFileOperation,
@@ -229,8 +230,9 @@ impl Shader {
     
     let renderer: &mut Renderer = Engine::get_active_renderer();
     let mut shader_program: Shader = Shader::default();
+    let mut previous_cache_status: bool = false;
     
-    for shader_stage in shader_stages.iter_mut() {
+    for (position, shader_stage) in shader_stages.iter_mut().enumerate() {
       Self::check_validity(&shader_stage)?;
       shader_program.m_version = Self::check_version_compatibility(&shader_stage)?;
       
@@ -242,12 +244,22 @@ impl Shader {
           if Shader::check_cache(file_path).is_ok() {
             shader_stage.m_is_cached = true;
             
-            if file_path.extension().unwrap() == "spv" {
-              shader_stage.m_source = EnumShaderSource::FromFile(format!("cache/{0}",
-                file_path.file_name().unwrap().to_str().unwrap()));
-            } else {
-              shader_stage.m_source = EnumShaderSource::FromFile(format!("cache/{0}.spv",
-                file_path.file_name().unwrap().to_str().unwrap()));
+            // If one shader stage is non-binary, make the rest uniform.
+            if position != 0 && shader_stage.m_is_cached != previous_cache_status {
+              shader_stage.m_is_cached = previous_cache_status;
+            }
+            previous_cache_status = shader_stage.m_is_cached;
+            
+            if shader_stage.m_is_cached {
+              let mut cache_path_str: String = format!("cache/{0}", file_path.file_name()
+                .ok_or(EnumError::InvalidFileOperation)?
+                .to_str()
+                .ok_or(EnumError::InvalidFileOperation)?);
+              if file_path.extension().ok_or(EnumError::InvalidFileOperation)? != "spv" {
+                cache_path_str += ".spv";
+              }
+              
+              shader_stage.m_source = EnumShaderSource::FromFile(cache_path_str);
             }
           }
         }
@@ -286,17 +298,26 @@ impl Shader {
       return Err(EnumError::InvalidApi);
     }
     
-    let cache_path_str: String;
-    if shader_file_path.extension().unwrap() == "spv" {
-      cache_path_str = format!("cache/{0}", shader_file_path.file_name().unwrap()
-        .to_str().unwrap());
-    } else {
-      cache_path_str = format!("cache/{0}.spv", shader_file_path.file_name().unwrap()
-        .to_str().unwrap());
+    let cache_path: &std::path::Path;
+    let mut cache_path_str: String = format!("cache/{0}", shader_file_path.file_name()
+      .ok_or(EnumError::InvalidFileOperation)?
+      .to_str()
+      .ok_or(EnumError::InvalidFileOperation)?);
+    if shader_file_path.extension().ok_or(EnumError::InvalidFileOperation)? != "spv" {
+      cache_path_str += ".spv";
     }
-    let buffer = std::fs::read(cache_path_str)?;
     
-    return Ok(buffer);
+    cache_path = std::path::Path::new(&cache_path_str);
+    
+    let src_last_time_modified = shader_file_path.metadata()?.modified()?;
+    let cache_last_time_modified = cache_path.metadata()?.modified()?;
+    if src_last_time_modified > cache_last_time_modified {
+      log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Shader source modified since last cache, recompiling shader stages...");
+      return Err(EnumError::ShaderModified);
+    }
+    
+    let cache_buffer = std::fs::read(cache_path)?;
+    return Ok(cache_buffer);
   }
   
   pub fn cache(shader_name: &std::path::Path, binary: Vec<u8>) -> Result<(), EnumError> {

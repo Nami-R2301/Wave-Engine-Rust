@@ -162,6 +162,10 @@ impl TraitLayer for Editor {
           _ => Ok(false)
         }
       }
+      events::EnumEvent::WindowCloseEvent(_time) => {
+        self.on_free()?;
+        Ok(true)
+      }
       _ => Ok(false)
     };
   }

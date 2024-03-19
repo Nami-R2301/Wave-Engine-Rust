@@ -119,7 +119,7 @@ impl TraitShader for GlShader {
       }
       
       let c_str: std::ffi::CString = std::ffi::CString::new(shader_source)
-        .expect("[GlShader] -->\t Could not convert shader string in GlShader::source() from &str \
+        .expect("[GlShader] -->\t Could not convert shader string in GlShader::source() from Vec<u8> \
        to CString!");
       
       check_gl_call!("GlShader", gl::ShaderSource(shader_id, 1, &(c_str.as_ptr()), std::ptr::null()));

@@ -30,6 +30,10 @@ use bitflags::bitflags;
 use crate::wave_core::input;
 use crate::wave_core::utils::Time;
 
+pub trait TraitEvent {
+
+}
+
 #[derive(Debug, PartialEq)]
 pub enum EnumEvent {
   WindowIconifyEvent(bool),
@@ -43,6 +47,27 @@ pub enum EnumEvent {
   MouseScrollEvent(f64, f64),
   DragAndDrop(Vec<PathBuf>),
   UnknownEvent,
+}
+
+impl Display for EnumEvent {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    return match self {
+      EnumEvent::WindowIconifyEvent(_) => write!(f, "WindowIconifyEvent"),
+      EnumEvent::WindowMaximizeEvent(_) => write!(f, "WindowMaximizeEvent"),
+      EnumEvent::WindowCloseEvent(_) => write!(f, "WindowCloseEvent"),
+      EnumEvent::FramebufferEvent(_, _) => write!(f, "FramebufferEvent"),
+      EnumEvent::WindowPosEvent(_, _) => write!(f, "WindowPosEvent"),
+      EnumEvent::WindowFocusEvent(_) => write!(f, "WindowFocusEvent"),
+      EnumEvent::KeyEvent(_, _, _, _) => write!(f, "KeyEvent"),
+      EnumEvent::MouseBtnEvent(_, _, _) => write!(f, "MouseBtnEvent"),
+      EnumEvent::MouseScrollEvent(_, _) => write!(f, "MouseScrollEvent"),
+      EnumEvent::DragAndDrop(_) => write!(f, "DragAndDrop"),
+      EnumEvent::UnknownEvent => write!(f, "UnknownEvent")
+    }
+  }
+}
+
+impl TraitEvent for EnumEvent {
 }
 
 impl From<glfw::WindowEvent> for EnumEvent {

@@ -242,6 +242,14 @@ impl<'a> Renderer {
   }
   
   pub fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
+    match event {
+      events::EnumEvent::WindowCloseEvent(_time) => {
+        self.m_api.free()?;
+        self.m_state = EnumState::Deleted;
+        return Ok(true);
+      }
+      _ => {}
+    }
     return self.m_api.on_event(event);
   }
   

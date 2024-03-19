@@ -26,13 +26,19 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
-use crate::wave_core;
+use crate::{log, wave_core};
 use crate::wave_core::{events};
-use crate::wave_core::events::{EnumEvent, EnumEventMask};
+use crate::wave_core::events::{EnumEvent, EnumEventMask, TraitEvent};
 
 pub mod window_layer;
 pub mod renderer_layer;
 pub mod imgui_layer;
+
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, PartialEq, Eq, Hash)]
+pub enum EnumLayerError {
+  InvalidCallback,
+  InvalidEventMask
+}
 
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq)]

@@ -34,6 +34,6 @@ void main() {
     vout_entity_ID = in_entity_ID;
     vout_vertex_data.vout_normal = in_normal;
     vout_vertex_data.vout_tex_coords = in_tex_coords;
-    vout_vertex_data.vout_frag_color = vec4(in_color & 0x000000FFu, (in_color & 0x0000FF00u) >> 8,
+    vout_vertex_data.vout_frag_color = vec4(in_color & 0xFFu, (in_color & 0x0000FF00u) >> 8,
     (in_color & 0x00FF0000u) >> 16, (in_color & 0xFF000000u) >> 24);
 }

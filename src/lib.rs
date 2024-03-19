@@ -221,7 +221,7 @@ pub mod wave_core {
       self.m_window.set_title(&title_cache);
       
       // Loop until the user closes the window or an error occurs.
-      while !self.m_window.is_closing() {
+      while !self.m_window.is_closed() {
         self.m_time_step = Time::get_delta(frame_start, Time::from(chrono::Utc::now())).to_secs();
         frame_start = Time::from(chrono::Utc::now());
         
@@ -279,18 +279,18 @@ pub mod wave_core {
       let _result = engine.m_layers_vec.iter_mut().rev()
         .filter(|layer| layer.polls(&event))
         .all(|matching_layer| {
+          // Mandatory event handling, ignoring if the event has been processed or not.
+          match event {
+            EnumEvent::WindowCloseEvent(_) | EnumEvent::FramebufferEvent(_, _) => {
+              each_result = matching_layer.on_async_event(event);
+              return each_result.is_ok();
+            }
+            _ => {}
+          }
           each_result = matching_layer.on_async_event(&event);
           // Short circuit if an error occurred or if the event has been processed.
           return each_result.is_ok() && !each_result.as_ref().unwrap();
         });
-      
-      // Mandatory event handling by the window context ignoring if the event has been processed or not.
-      match event {
-        EnumEvent::WindowCloseEvent(_) | EnumEvent::FramebufferEvent(_, _) => {
-          engine.m_window.on_event(event);
-        }
-        _ => {}
-      }
       
       if each_result.is_err() {
         log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Error while processing async event: {0:?}", each_result.err().unwrap());

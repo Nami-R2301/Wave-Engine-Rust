@@ -400,6 +400,16 @@ impl<'a> Window {
         self.m_window_resolution = Some((*width, *height));
         true
       }
+      EnumEvent::WindowCloseEvent(_time) => {
+        match self.free() {
+          Err(err) => {
+            log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Error while freeing resources during close event, Error => {0}", err);
+          }
+          _ => {}
+        }
+        self.m_state = EnumState::Closed;
+        true
+      }
       EnumEvent::WindowPosEvent(pos_x, pos_y) => {
         if self.m_is_windowed {
           self.m_window_pos = Some((*pos_x, *pos_y));
@@ -653,6 +663,10 @@ impl<'a> Window {
   
   pub fn is_closing(&self) -> bool {
     return self.m_api_window.as_ref().unwrap().should_close();
+  }
+  
+  pub fn is_closed(&self) -> bool {
+    return self.m_state == EnumState::Closed;
   }
   
   pub fn close(&mut self) {
