@@ -25,13 +25,12 @@
 use wave_engine::*;
 use wave_engine::wave_core::{Engine, events, input, camera, math};
 use wave_engine::wave_core::assets::asset_loader;
-use wave_engine::wave_core::assets::renderable_assets;
 use wave_engine::wave_core::assets::renderable_assets::{EnumPrimitiveType, Mesh, REntity};
 use wave_engine::wave_core::events::{EnumEventMask};
 use wave_engine::wave_core::graphics::renderer;
 use wave_engine::wave_core::graphics::renderer::Renderer;
 use wave_engine::wave_core::graphics::shader;
-use wave_engine::wave_core::layers::{EnumLayerType, Layer, TraitLayer};
+use wave_engine::wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 use wave_engine::wave_core::ui::ui_imgui::Imgui;
 use wave_engine::wave_core::layers::imgui_layer::ImguiLayer;
 use wave_engine::wave_core::window::{self, Window};
@@ -59,7 +58,7 @@ impl TraitLayer for Editor {
     return EnumLayerType::App;
   }
   
-  fn on_submit(&mut self) -> Result<(), wave_core::EnumError> {
+  fn on_submit(&mut self) -> Result<(), wave_core::EnumEngineError> {
     let window = Engine::get_active_window();
     let renderer = Engine::get_active_renderer();
     
@@ -104,7 +103,7 @@ impl TraitLayer for Editor {
     return Ok(());
   }
   
-  fn on_sync_event(&mut self) -> Result<(), wave_core::EnumError> {
+  fn on_sync_event(&mut self) -> Result<(), wave_core::EnumEngineError> {
     // Process synchronous events.
     let time_step = Engine::get_time_step();
     
@@ -136,7 +135,7 @@ impl TraitLayer for Editor {
   }
   
   
-  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, wave_core::EnumError> {
+  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, wave_core::EnumEngineError> {
     // Process asynchronous events.
     return match event {
       events::EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
@@ -170,7 +169,7 @@ impl TraitLayer for Editor {
     };
   }
   
-  fn on_update(&mut self, _time_step: f64) -> Result<(), wave_core::EnumError> {
+  fn on_update(&mut self, _time_step: f64) -> Result<(), wave_core::EnumEngineError> {
     if self.m_renderable_assets[0].has_changed() {
       // Update transform Ubo in associated shader.
       self.m_renderable_assets[0].resend_transform(&mut self.m_shaders[0])?;
@@ -178,11 +177,11 @@ impl TraitLayer for Editor {
     return Ok(());
   }
   
-  fn on_render(&mut self) -> Result<(), wave_core::EnumError> {
+  fn on_render(&mut self) -> Result<(), wave_core::EnumEngineError> {
     return Ok(());
   }
   
-  fn on_free(&mut self) -> Result<(), wave_core::EnumError> {
+  fn on_free(&mut self) -> Result<(), wave_core::EnumEngineError> {
     return Ok(());
   }
   
@@ -204,14 +203,15 @@ impl TraitLayer for Editor {
   }
 }
 
-fn main() -> Result<(), wave_core::EnumError> {
+fn main() -> Result<(), wave_core::EnumEngineError> {
   
   // Instantiate an app layer containing our app and essentially making the layer own it.
   let mut my_app: Layer = Layer::new("Wave Engine Editor", Editor::default());
   // Making editor poll input events during async call.
-  my_app.enable_async_polling_for(EnumEventMask::c_input | EnumEventMask::c_window_close);
-  // Make editor synchronously poll on each frame (after async), for movement and spontaneous event handling.
+  my_app.enable_async_polling_for(EnumEventMask::Input | EnumEventMask::WindowClose);
+  // Make editor synchronously poll on each frame interval (after async), for movement and spontaneous event handling.
   my_app.enable_sync_polling();
+  my_app.set_sync_interval(EnumSyncInterval::Every(10))?;
   
   let mut window = Window::new()?;
   window.window_hint(window::EnumWindowOption::RendererApi(renderer::EnumApi::OpenGL));

@@ -63,23 +63,24 @@ pub mod wave_core {
   }
   
   #[derive(Debug, PartialEq)]
-  pub enum EnumError {
+  pub enum EnumEngineError {
     NoActiveEngine,
     UndefinedError,
     AppError,
-    ResourceError(assets::asset_loader::EnumError),
-    ShaderError(shader::EnumError),
-    RendererError(renderer::EnumError),
-    WindowError(window::EnumError),
-    InputError(input::EnumError),
-    UiError(ui::EnumError),
-    EventError(events::EnumError),
+    LayerError(layers::EnumLayerError),
+    ResourceError(assets::asset_loader::EnumAssetError),
+    ShaderError(shader::EnumShaderError),
+    RendererError(renderer::EnumRendererError),
+    WindowError(window::EnumWindowError),
+    InputError(input::EnumInputError),
+    UiError(ui::EnumUIError),
+    EventError(events::EnumEventError),
   }
   
   macro_rules! impl_enum_error {
   ($error_type: ty, $resulting_error: expr) => {
-    impl From<$error_type> for EnumError {
-      fn from(err: $error_type) -> EnumError {
+    impl From<$error_type> for EnumEngineError {
+      fn from(err: $error_type) -> EnumEngineError {
         log!(EnumLogColor::Red, "ERROR", "{0}", err);
         return $resulting_error(err);
       }
@@ -87,25 +88,28 @@ pub mod wave_core {
   }
 }
   
+  // Convert layer error to wave_core::EnumError.
+  impl_enum_error!(layers::EnumLayerError, EnumEngineError::LayerError);
+  
   // Convert renderer error to wave_core::EnumError.
-  impl_enum_error!(renderer::EnumError, EnumError::RendererError);
+  impl_enum_error!(renderer::EnumRendererError, EnumEngineError::RendererError);
   
   // Convert resource loader error to wave_core::EnumError.
-  impl_enum_error!(assets::asset_loader::EnumError, EnumError::ResourceError);
+  impl_enum_error!(assets::asset_loader::EnumAssetError, EnumEngineError::ResourceError);
   
   // Convert shader error to wave_core::EnumError.
-  impl_enum_error!(shader::EnumError, EnumError::ShaderError);
+  impl_enum_error!(shader::EnumShaderError, EnumEngineError::ShaderError);
   
   // Convert window error to wave_core::EnumError.
-  impl_enum_error!(window::EnumError, EnumError::WindowError);
+  impl_enum_error!(window::EnumWindowError, EnumEngineError::WindowError);
   
   // Convert input error to wave_core::EnumError.
-  impl_enum_error!(input::EnumError, EnumError::InputError);
+  impl_enum_error!(input::EnumInputError, EnumEngineError::InputError);
   
   // Convert ui errors to wave_core::EnumError.
-  impl_enum_error!(ui::EnumError, EnumError::UiError);
+  impl_enum_error!(ui::EnumUIError, EnumEngineError::UiError);
   
-  impl_enum_error!(events::EnumError, EnumError::EventError);
+  impl_enum_error!(events::EnumEventError, EnumEngineError::EventError);
   
   pub struct Engine {
     m_layers_vec: Vec<Layer>,
@@ -126,12 +130,12 @@ pub mod wave_core {
     /// * `app_provided`: A boxed generic app struct `T` which respects the trait [TraitApp].
     ///
     /// ### Returns:
-    ///   - `Result<GlREntity, EnumError>` : Will return a valid Engine if successful, otherwise an [EnumError]
+    ///   - `Result<GlREntity, EnumError>` : Will return a valid Engine if successful, otherwise an [EnumEngineError]
     ///     on any error encountered. These include, but are not limited to :
-    ///     + [EnumError::AppError] : If the app crashes for whatever reason the client may choose.
-    ///     + [EnumError::RendererError] : If the renderer crashes due to an invalid process loading,
+    ///     + [EnumEngineError::AppError] : If the app crashes for whatever reason the client may choose.
+    ///     + [EnumEngineError::RendererError] : If the renderer crashes due to an invalid process loading,
     ///       missing extensions, unsupported version and/or invalid GPU command.
-    ///     + [EnumError::WindowError] : If the window context crashes due to invalid context creation,
+    ///     + [EnumEngineError::WindowError] : If the window context crashes due to invalid context creation,
     ///       deletion and/or command (GLX/X11 for Linux, WIN32 for Windows).
     ///
     /// ### Examples
@@ -149,7 +153,7 @@ pub mod wave_core {
     /// engine.free();
     /// return Ok(());
     /// ```
-    pub fn new(window: Window, renderer: Renderer, app_layer: Layer) -> Result<Self, EnumError> {
+    pub fn new(window: Window, renderer: Renderer, app_layer: Layer) -> Result<Self, EnumEngineError> {
       log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
       
       // Setup basic layers.
@@ -168,10 +172,10 @@ pub mod wave_core {
       })
     }
     
-    pub fn submit(&mut self) -> Result<(), EnumError> {
+    pub fn submit(&mut self) -> Result<(), EnumEngineError> {
       if self.m_state != EnumState::NotStarted {
         log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Cannot instantiate engine : Engine already started!");
-        return Err(EnumError::AppError);
+        return Err(EnumEngineError::AppError);
       }
       
       self.m_state = EnumState::Starting;
@@ -179,16 +183,16 @@ pub mod wave_core {
       let mut window_layer: Layer = Layer::new("Main Window", WindowLayer::new(&mut self.m_window));
       let mut renderer_layer: Layer = Layer::new("Renderer", RendererLayer::new(&mut self.m_renderer));
       
-      window_layer.enable_async_polling_for(EnumEventMask::c_window_close | EnumEventMask::c_window_size
-        | EnumEventMask::c_keyboard);
-      renderer_layer.enable_async_polling_for(EnumEventMask::c_window_close | EnumEventMask::c_window_size
-        | EnumEventMask::c_keyboard);
+      window_layer.enable_async_polling_for(EnumEventMask::WindowClose | EnumEventMask::WindowSize
+        | EnumEventMask::Keyboard);
+      renderer_layer.enable_async_polling_for(EnumEventMask::WindowClose | EnumEventMask::WindowSize
+        | EnumEventMask::Keyboard);
       
       Engine::set_singleton(self);
       
       Self::push_layer(window_layer)?;
       Self::push_layer(renderer_layer)?;
-      self.m_window.enable_callback(EnumEventMask::c_window_size | EnumEventMask::c_window_close | EnumEventMask::c_keyboard);
+      self.m_window.enable_callback(EnumEventMask::WindowSize | EnumEventMask::WindowClose | EnumEventMask::Keyboard);
       
       for index in 2..self.m_layers_vec.len() {
         self.m_layers_vec[index].submit()?;
@@ -198,12 +202,12 @@ pub mod wave_core {
       return Ok(());
     }
     
-    pub fn run(&mut self) -> Result<(), EnumError> {
+    pub fn run(&mut self) -> Result<(), EnumEngineError> {
       self.submit()?;
       
       if self.m_state != EnumState::Started {
         log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Cannot run : Engine has not started up correctly!");
-        return Err(EnumError::AppError);
+        return Err(EnumEngineError::AppError);
       }
       
       self.m_state = EnumState::Running;
@@ -228,9 +232,14 @@ pub mod wave_core {
         self.m_window.poll_events();
         
         // Sync event polling.
-        let mut result: Result<(), EnumError> = Ok(());
+        let mut result: Result<(), EnumEngineError> = Ok(());
         self.m_layers_vec.iter_mut().rev()
-          .filter(|layer| layer.is_sync_enabled())
+          .filter(|layer| {
+            if !layer.is_sync_enabled() {
+              return false;
+            }
+            frame_counter % layer.get_sync_interval() == 0
+          })
           .all(|matching_layer| {
             result = matching_layer.on_sync_event();
             return result.is_ok();
@@ -275,7 +284,7 @@ pub mod wave_core {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
       
       // Async event polling.
-      let mut each_result: Result<bool, EnumError> = Ok(false);
+      let mut each_result: Result<bool, EnumEngineError> = Ok(false);
       let _result = engine.m_layers_vec.iter_mut().rev()
         .filter(|layer| layer.polls(&event))
         .all(|matching_layer| {
@@ -297,7 +306,7 @@ pub mod wave_core {
       }
     }
     
-    pub fn free(&mut self) -> Result<(), EnumError> {
+    pub fn free(&mut self) -> Result<(), EnumEngineError> {
       self.m_state = EnumState::Deleting;
       
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down app layers...");
@@ -321,7 +330,7 @@ pub mod wave_core {
       return Ok(());
     }
     
-    pub fn panic_shutdown(error: EnumError) {
+    pub fn panic_shutdown(error: EnumEngineError) {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Dropping engine...");
       
@@ -339,7 +348,7 @@ pub mod wave_core {
       panic!("{}", format!("Fatal error occurred : {0:?}", error))
     }
     
-    pub fn push_layer(mut new_layer: Layer) -> Result<(), EnumError> {
+    pub fn push_layer(mut new_layer: Layer) -> Result<(), EnumEngineError> {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
       
       new_layer.submit()?;
@@ -354,7 +363,7 @@ pub mod wave_core {
       return Ok(());
     }
     
-    pub fn pop_layer(popped_layer: &mut Layer) -> Result<bool, EnumError> {
+    pub fn pop_layer(popped_layer: &mut Layer) -> Result<bool, EnumEngineError> {
       let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
       
       let position_found = engine.m_layers_vec.iter_mut().position(|layer| layer == popped_layer);
@@ -445,27 +454,27 @@ pub mod wave_core {
       return EnumLayerType::App;
     }
     
-    fn on_submit(&mut self) -> Result<(), EnumError> {
+    fn on_submit(&mut self) -> Result<(), EnumEngineError> {
       return Ok(());
     }
     
-    fn on_sync_event(&mut self) -> Result<(), EnumError> {
+    fn on_sync_event(&mut self) -> Result<(), EnumEngineError> {
       todo!()
     }
     
-    fn on_async_event(&mut self, _event: &EnumEvent) -> Result<bool, EnumError> {
+    fn on_async_event(&mut self, _event: &EnumEvent) -> Result<bool, EnumEngineError> {
       return Ok(false);
     }
     
-    fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {
+    fn on_update(&mut self, _time_step: f64) -> Result<(), EnumEngineError> {
       return Ok(());
     }
     
-    fn on_render(&mut self) -> Result<(), EnumError> {
+    fn on_render(&mut self) -> Result<(), EnumEngineError> {
       return Ok(());
     }
     
-    fn on_free(&mut self) -> Result<(), EnumError> {
+    fn on_free(&mut self) -> Result<(), EnumEngineError> {
       return Ok(());
     }
     

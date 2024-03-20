@@ -77,7 +77,7 @@ impl TraitShader for GlShader {
     };
   }
   
-  fn new(shader_stages: Vec<ShaderStage>) -> Result<Self, shader::EnumError> {
+  fn new(shader_stages: Vec<ShaderStage>) -> Result<Self, shader::EnumShaderError> {
     return Ok(GlShader {
       m_program_id: 0,
       m_shader_ids: HashMap::with_capacity(shader_stages.len()),
@@ -94,13 +94,13 @@ impl TraitShader for GlShader {
     return EnumApi::OpenGL;
   }
   
-  fn source(&mut self) -> Result<(), shader::EnumError> {
+  fn source(&mut self) -> Result<(), shader::EnumShaderError> {
     for shader_stage in self.m_shader_stages.iter() {
       check_gl_call!("GlShader", let shader_id: GLuint = gl::CreateShader(shader_stage.m_stage as GLenum));
       if shader_id == 0 {
         log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Cannot create shader of type {0} : Error \
         => ShaderType is not an accepted value!", shader_stage.m_stage);
-        return Err(shader::EnumError::from(EnumError::ShaderSourcingError));
+        return Err(shader::EnumShaderError::from(EnumError::ShaderSourcingError));
       }
       let shader_source: Vec<u8>;
       
@@ -129,7 +129,7 @@ impl TraitShader for GlShader {
     return Ok(());
   }
   
-  fn compile(&mut self) -> Result<(), shader::EnumError> {
+  fn compile(&mut self) -> Result<(), shader::EnumShaderError> {
     let mut cached_shader_array: Vec<ShaderStage> = Vec::with_capacity(self.m_shader_stages.len());
     
     for shader_stage in self.m_shader_stages.iter() {
@@ -184,7 +184,7 @@ impl TraitShader for GlShader {
         std::ffi::CStr::from_ptr(buffer.as_ptr().cast()).to_str()
           .expect("[GlShader] -->\t Cannot convert shader info log to Rust str in compile!")
       });
-        return Err(shader::EnumError::from(EnumError::ShaderSyntaxError));
+        return Err(shader::EnumShaderError::from(EnumError::ShaderSyntaxError));
       }
     }
     
@@ -195,7 +195,7 @@ impl TraitShader for GlShader {
     return Ok(());
   }
   
-  fn submit(&mut self) -> Result<(), shader::EnumError> {
+  fn submit(&mut self) -> Result<(), shader::EnumShaderError> {
     if self.m_shader_stages.is_empty() {
       log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Cannot send shader : No shader stages \
       provided!");
@@ -229,7 +229,7 @@ impl TraitShader for GlShader {
           self.m_program_id, unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str()
           .expect("[GlShader] -->\t Cannot convert shader info log to Rust str in submit!")
         });
-      return Err(shader::EnumError::from(EnumError::ProgramCreationError));
+      return Err(shader::EnumShaderError::from(EnumError::ProgramCreationError));
     }
     
     // Delete shaders CPU-side, since we uploaded it to the GPU VRAM.
@@ -252,7 +252,7 @@ impl TraitShader for GlShader {
     return format;
   }
   
-  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn Any) -> Result<(), shader::EnumError> {
+  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn Any) -> Result<(), shader::EnumShaderError> {
     match self.bind() {
       Ok(_) => {}
       Err(err) => {
@@ -269,7 +269,7 @@ impl TraitShader for GlShader {
       if new_uniform == -1 {
         log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Could not upload uniform '{0}'!",
         uniform_name);
-        return Err(shader::EnumError::from(EnumError::UniformNotFound));
+        return Err(shader::EnumShaderError::from(EnumError::UniformNotFound));
       }
       self.m_uniform_cache.insert(uniform_name, new_uniform);
       
@@ -293,7 +293,7 @@ impl TraitShader for GlShader {
       } else {
         log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Type of uniform '{0}' is unsupported for glsl!",
           uniform_name);
-        return Err(shader::EnumError::from(EnumError::UnsupportedUniformType));
+        return Err(shader::EnumShaderError::from(EnumError::UnsupportedUniformType));
       }
     }
     return Ok(());
@@ -307,11 +307,11 @@ impl TraitShader for GlShader {
     return self;
   }
   
-  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumError> {
+  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumShaderError> {
     unsafe {
       if (*active_renderer).m_type != EnumApi::OpenGL {
         log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Cannot delete shader : Renderer is not OpenGL!");
-        return Err(shader::EnumError::InvalidApi);
+        return Err(shader::EnumShaderError::InvalidApi);
       }
       
       gl::UseProgram(0);
@@ -322,12 +322,12 @@ impl TraitShader for GlShader {
 }
 
 impl GlShader {
-  pub fn bind(&self) -> Result<(), shader::EnumError> {
+  pub fn bind(&self) -> Result<(), shader::EnumShaderError> {
     check_gl_call!("GlShader", gl::UseProgram(self.m_program_id));
     return Ok(());
   }
   
-  fn compile_binary(&mut self, binary_shader_stages: Vec<ShaderStage>) -> Result<(), shader::EnumError> {
+  fn compile_binary(&mut self, binary_shader_stages: Vec<ShaderStage>) -> Result<(), shader::EnumShaderError> {
     let gl4_6 = unsafe { S_GL_4_6.as_ref().unwrap() };
     let entry_point = std::ffi::CString::new("main").expect("Cannot convert entry point main to C str!");
     
@@ -335,7 +335,7 @@ impl GlShader {
     check_gl_call!("GlShader", gl::GetIntegerv(gl::NUM_SHADER_BINARY_FORMATS, &mut supported_binary_format_count));
     if supported_binary_format_count == 0 {
       log!(EnumLogColor::Red, "Error", "[GlShader] -->\t Cannot compile shader binary : No binary formats supported!");
-      return Err(shader::EnumError::from(EnumError::NoBinaryFormatsError));
+      return Err(shader::EnumShaderError::from(EnumError::NoBinaryFormatsError));
     }
     
     let mut supported_binary_format_array: Vec<GLint> = Vec::with_capacity(supported_binary_format_count as usize);
@@ -388,7 +388,7 @@ impl GlShader {
             log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Error, could not compile {0}! \
                 \nInfo => {1}", file_path_str, _c_string.to_str().unwrap_or("Error"));
             
-            return Err(shader::EnumError::ShaderBinaryError);
+            return Err(shader::EnumShaderError::ShaderBinaryError);
           }
           
           // Specialize the shader (specify the entry point)
@@ -415,7 +415,7 @@ impl GlShader {
                 .expect("[GlShader] -->\t Cannot convert shader info log to Rust str in compile_binary!")
                 });
             
-            return Err(shader::EnumError::from(EnumError::ShaderBinaryCompilationError));
+            return Err(shader::EnumShaderError::from(EnumError::ShaderBinaryCompilationError));
           }
         }
       }

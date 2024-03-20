@@ -82,7 +82,7 @@ impl TraitShader for VkShader {
     };
   }
   
-  fn new(shader_stages: Vec<ShaderStage>) -> Result<Self, shader::EnumError> where Self: Sized {
+  fn new(shader_stages: Vec<ShaderStage>) -> Result<Self, shader::EnumShaderError> where Self: Sized {
     let shader_stages_len = shader_stages.len();
     return Ok(VkShader {
       m_id: 0,
@@ -99,11 +99,11 @@ impl TraitShader for VkShader {
     return EnumApi::Vulkan;
   }
   
-  fn source(&mut self) -> Result<(), shader::EnumError> {
+  fn source(&mut self) -> Result<(), shader::EnumShaderError> {
     return Ok(());
   }
   
-  fn compile(&mut self) -> Result<(), shader::EnumError> {
+  fn compile(&mut self) -> Result<(), shader::EnumShaderError> {
     let entry_point = "main";
     let compiler = shaderc::Compiler::new().unwrap();
     let mut options = shaderc::CompileOptions::new().unwrap();
@@ -146,7 +146,7 @@ impl TraitShader for VkShader {
             Err(err) => {
               log!(EnumLogColor::Red, "ERROR", "[VkShader] -->\t Cannot compile {0} shader into \
                   SPIR-V : Error => \n{err}", shader_stage.m_stage);
-              return Err(shader::EnumError::from(EnumError::SpirVCompilationError(err)));
+              return Err(shader::EnumShaderError::from(EnumError::SpirVCompilationError(err)));
             }
           };
         }
@@ -158,7 +158,7 @@ impl TraitShader for VkShader {
     return Ok(());
   }
   
-  fn submit(&mut self) -> Result<(), shader::EnumError> {
+  fn submit(&mut self) -> Result<(), shader::EnumShaderError> {
     self.source()?;
     self.compile()?;
     return Ok(());
@@ -174,7 +174,7 @@ impl TraitShader for VkShader {
     return format;
   }
   
-  fn upload_data(&mut self, _uniform_name: &'static str, _uniform: &dyn std::any::Any) -> Result<(), shader::EnumError> {
+  fn upload_data(&mut self, _uniform_name: &'static str, _uniform: &dyn std::any::Any) -> Result<(), shader::EnumShaderError> {
     return Ok(());
   }
   
@@ -186,7 +186,7 @@ impl TraitShader for VkShader {
     return self;
   }
   
-  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumError> {
+  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumShaderError> {
     unsafe {
       let vk_context =
         (*active_renderer).get_api_handle()
@@ -205,7 +205,7 @@ impl VkShader {
     return &self.m_vk_shader_modules;
   }
   
-  fn create_vk_shader(shader_binary: &Vec<u8>) -> Result<vk::ShaderModule, shader::EnumError> {
+  fn create_vk_shader(shader_binary: &Vec<u8>) -> Result<vk::ShaderModule, shader::EnumShaderError> {
     let mut shader_module_create_info: vk::ShaderModuleCreateInfo = vk::ShaderModuleCreateInfo::default();
     shader_module_create_info.code_size = shader_binary.len();
     shader_module_create_info.p_code = shader_binary.as_ptr() as *const u32;
@@ -221,7 +221,7 @@ impl VkShader {
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[VkShader] -->\t Cannot create Vulkan shader module : \
           Vulkan returned with error => {err:#?}");
-        Err(shader::EnumError::from(EnumError::ShaderModuleError))
+        Err(shader::EnumShaderError::from(EnumError::ShaderModuleError))
       }
     };
   }

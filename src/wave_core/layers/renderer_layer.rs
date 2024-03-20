@@ -23,7 +23,7 @@
 */
 
 use crate::{log, wave_core};
-use crate::wave_core::{Engine, EnumError, events, input};
+use crate::wave_core::{Engine, EnumEngineError, events, input};
 use crate::wave_core::graphics::renderer::{Renderer};
 use crate::wave_core::layers::{EnumLayerType, TraitLayer};
 
@@ -44,7 +44,7 @@ impl TraitLayer for RendererLayer {
     return EnumLayerType::Renderer;
   }
   
-  fn on_submit(&mut self) -> Result<(), EnumError> {
+  fn on_submit(&mut self) -> Result<(), EnumEngineError> {
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Setting up renderer...");
     
     // Enable features BEFORE finalizing context.
@@ -57,11 +57,11 @@ impl TraitLayer for RendererLayer {
     return Ok(());
   }
   
-  fn on_sync_event(&mut self) -> Result<(), EnumError> {
+  fn on_sync_event(&mut self) -> Result<(), EnumEngineError> {
     todo!()
   }
   
-  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
+  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumEngineError> {
       match event {
         events::EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
           match (key, action, repeat_count, modifiers) {
@@ -74,22 +74,22 @@ impl TraitLayer for RendererLayer {
         }
         _ => {}
       }
-    return unsafe { (*self.m_context).on_event(event).map_err(|err| wave_core::EnumError::from(err)) };
+    return unsafe { (*self.m_context).on_event(event).map_err(|err| wave_core::EnumEngineError::from(err)) };
   }
   
-  fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {
+  fn on_update(&mut self, _time_step: f64) -> Result<(), EnumEngineError> {
     return Ok(());
   }
   
-  fn on_render(&mut self) -> Result<(), EnumError> {
+  fn on_render(&mut self) -> Result<(), EnumEngineError> {
     return unsafe {
-      (*self.m_context).on_render().map_err(|err| EnumError::from(err))
+      (*self.m_context).on_render().map_err(|err| EnumEngineError::from(err))
     }
   }
   
-  fn on_free(&mut self) -> Result<(), EnumError> {
+  fn on_free(&mut self) -> Result<(), EnumEngineError> {
     return unsafe {
-      (*self.m_context).free().map_err(|err| EnumError::from(err))
+      (*self.m_context).free().map_err(|err| EnumEngineError::from(err))
     }
   }
   

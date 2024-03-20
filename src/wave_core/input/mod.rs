@@ -38,7 +38,7 @@ static mut S_KEY_STATES: [(EnumAction, Option<u32>); C_NUM_KEYS] = [(EnumAction:
 static mut S_MOUSE_BUTTON_STATES: [EnumAction; C_NUM_MOUSE_BUTTONS] = [EnumAction::Released; C_NUM_MOUSE_BUTTONS];
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum EnumError {
+pub enum EnumInputError {
   InvalidWindowContext,
   InvalidKey,
   InvalidMouseButton,
@@ -552,7 +552,7 @@ fn convert_api_action_to_action(api_action: glfw::Action) -> EnumAction {
   }
 }
 
-impl Display for EnumError {
+impl Display for EnumInputError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "[Input] -->\t Error encountered with input(s) : {:?}", self)
   }
@@ -602,14 +602,14 @@ impl Input {
   }
   
   #[allow(unused)]
-  pub(crate) fn get_key_name(key_code: EnumKey) -> Result<String, EnumError> {
+  pub(crate) fn get_key_name(key_code: EnumKey) -> Result<String, EnumInputError> {
     let api_key = convert_key_to_api_key(key_code);
     if api_key.get_name().is_some() {
       return Ok(api_key.get_name().unwrap());
     }
     log!(EnumLogColor::Red, "ERROR", "[Input] -->\t Cannot retrieve key name from {:?} : \
     Invalid key code!", api_key);
-    return Err(EnumError::InvalidKey);
+    return Err(EnumInputError::InvalidKey);
   }
   
   #[allow(unused)]
@@ -733,7 +733,7 @@ impl Input {
   }
   
   #[allow(unused)]
-  pub(crate) fn get_mouse_cursor_attribute(window: &Window) -> Result<glfw::CursorMode, EnumError> {
+  pub(crate) fn get_mouse_cursor_attribute(window: &Window) -> Result<glfw::CursorMode, EnumInputError> {
     return Ok(window.m_api_window.as_ref().unwrap().get_cursor_mode());
   }
   

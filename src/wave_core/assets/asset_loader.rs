@@ -35,20 +35,20 @@ use crate::log;
  */
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum EnumError {
+pub enum EnumAssetError {
   InvalidPath,
   InvalidFileExtension,
   InvalidRead,
   InvalidShapeData,
 }
 
-impl Display for EnumError {
+impl Display for EnumAssetError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "[ResLoader] -->\t Error encountered while loading resource : {:?}", self)
   }
 }
 
-impl std::error::Error for EnumError {
+impl std::error::Error for EnumAssetError {
 
 }
 
@@ -66,12 +66,12 @@ impl AssetLoader {
   /// * `file_name`: A file path **including** the extension of its format.
   ///
   /// # Returns:
-  ///   - Result<Shape, EnumError> : Will return a valid shape if successful, otherwise an [EnumError]
+  ///   - Result<Shape, EnumError> : Will return a valid shape if successful, otherwise an [EnumAssetError]
   ///     on any error encountered. These include, but are not limited to :
-  ///     + [EnumError::InvalidPath] : If the file path provided is not a valid for for assets or
+  ///     + [EnumAssetError::InvalidPath] : If the file path provided is not a valid for for assets or
   ///     if the working directory leads to the incorrect *res* path.
-  ///     + [EnumError::InvalidFileExtension] : If the file extension is not supported.
-  ///     + [EnumError::InvalidRead] : If the file could not be read due to invalid formatting or
+  ///     + [EnumAssetError::InvalidFileExtension] : If the file extension is not supported.
+  ///     + [EnumAssetError::InvalidRead] : If the file could not be read due to invalid formatting or
   ///     missing read permissions.
   ///
   /// # Examples
@@ -89,7 +89,7 @@ impl AssetLoader {
   /// assert_eq!(diamond, EnumError::InvalidPath);
   /// assert!(pyramid.is_ok());
   /// ```
-  pub fn new(file_name: &str) -> Result<assimp::scene::Scene, EnumError> {
+  pub fn new(file_name: &str) -> Result<assimp::scene::Scene, EnumAssetError> {
     let asset_path = &("res/assets/".to_string() + file_name);
     let path = std::path::Path::new(asset_path).extension();
     
@@ -97,7 +97,7 @@ impl AssetLoader {
       None => {
         log!(EnumLogColor::Red, "ERROR", "[ResLoader] -->\t Could not find path {0}! Make sure it \
           exists and you have the appropriate permissions to read it.", asset_path);
-        Err(EnumError::InvalidPath)
+        Err(EnumAssetError::InvalidPath)
       }
       Some(_) => {
         let mut importer = assimp::import::Importer::new();
@@ -131,7 +131,7 @@ impl AssetLoader {
         
         if scene.is_err() || scene.as_ref().unwrap().is_incomplete() {
           log!(EnumLogColor::Red, "Error", "[ResLoader] -->\t Asset file {0} incomplete or corrupted!", asset_path);
-          return Err(EnumError::InvalidShapeData);
+          return Err(EnumAssetError::InvalidShapeData);
         }
         
         return Ok(scene.unwrap());

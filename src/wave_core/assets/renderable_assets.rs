@@ -265,7 +265,7 @@ pub struct REntity {
 }
 
 impl REntity {
-  pub fn default() -> Result<Self, renderer::EnumError> {
+  pub fn default() -> Result<Self, renderer::EnumRendererError> {
     let mut new_entity: REntity = REntity {
       m_data: Box::new(Sprite {
         m_name: "".to_string(),
@@ -371,11 +371,11 @@ impl REntity {
     self.m_changed = true;
   }
   
-  pub fn resend_transform(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+  pub fn resend_transform(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
     if !self.m_sent {
       log!(EnumLogColor::Red, "ERROR", "[RAssets] -->\t Cannot update shader ({0}) of entity, entity not sent previously!",
         shader_associated.get_id());
-      return Err(renderer::EnumError::EntityNotFound);
+      return Err(renderer::EnumRendererError::EntityNotFound);
     }
     
     // Only update if the entity changed.
@@ -387,7 +387,7 @@ impl REntity {
     return Ok(());
   }
   
-  pub fn submit(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+  pub fn submit(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
     let renderer = Engine::get_active_renderer();
     
     return match renderer.enqueue(self, shader_associated) {
@@ -404,11 +404,11 @@ impl REntity {
     };
   }
   
-  pub fn resend(&mut self, _shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+  pub fn resend(&mut self, _shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
     todo!()
   }
   
-  pub fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+  pub fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
     let renderer = Engine::get_active_renderer();
     
     return match renderer.dequeue(self.m_renderer_id) {

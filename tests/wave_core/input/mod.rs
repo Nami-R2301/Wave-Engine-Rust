@@ -24,12 +24,12 @@
 
 use std::collections::HashMap;
 
-use wave_engine::wave_core::EnumError;
+use wave_engine::wave_core::EnumEngineError;
 use wave_engine::wave_core::input::{EnumAction, EnumKey, EnumModifiers, EnumMouseButton, Input};
 use wave_engine::wave_core::window::{EnumWindowMode, EnumWindowOption, Window};
 
 fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, bool>, action_required: EnumAction,
-                               modifier: EnumModifiers) -> Result<(), EnumError> {
+                               modifier: EnumModifiers) -> Result<(), EnumEngineError> {
   let copy = keys.clone();
   while !window.is_closing() {
     // Migrates new states from last frame to old ones to avoid reading an input multiple times.
@@ -55,7 +55,7 @@ fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, 
 }
 
 fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut HashMap<EnumMouseButton, bool>,
-                                        action_required: EnumAction) -> Result<(), EnumError> {
+                                        action_required: EnumAction) -> Result<(), EnumEngineError> {
   let copy = mouse_buttons.clone();
   while !window.is_closing() {
     // Migrates new states from last frame to old ones to avoid reading an input multiple times.
@@ -79,7 +79,7 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
 
 #[ignore]
 #[test]
-fn test_synchronous_key_inputs() -> Result<(), EnumError> {
+fn test_synchronous_key_inputs() -> Result<(), EnumEngineError> {
   let mut window = Window::new()?;
   window.window_hint(EnumWindowOption::WindowMode(EnumWindowMode::Windowed));
   window.window_hint(EnumWindowOption::Resolution(1024, 768));
@@ -165,7 +165,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumError> {
 
 #[ignore]
 #[test]
-fn test_synchronous_mouse_button_inputs() -> Result<(), EnumError> {
+fn test_synchronous_mouse_button_inputs() -> Result<(), EnumEngineError> {
   let mut window = Window::new()?;
   window.window_hint(EnumWindowOption::WindowMode(EnumWindowMode::Windowed));
   window.window_hint(EnumWindowOption::Resolution(1024, 768));

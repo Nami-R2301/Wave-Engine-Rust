@@ -206,7 +206,7 @@ impl TraitContext for GlContext {
     };
   }
   
-  fn on_new(window: &mut Window) -> Result<Self, renderer::EnumError> {
+  fn on_new(window: &mut Window) -> Result<Self, renderer::EnumRendererError> {
     // Init context.
     window.init_opengl_surface();
     gl::load_with(|f_name| window.get_api_ref().get_proc_address_raw(f_name));
@@ -221,7 +221,7 @@ impl TraitContext for GlContext {
         Err(_err) => {
           log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot load one or more OpenGL API \
           functions! Error => {_err}");
-          return Err(renderer::EnumError::from(EnumError::ApiFunctionLoadingError));
+          return Err(renderer::EnumRendererError::from(EnumError::ApiFunctionLoadingError));
         }
       }
     }
@@ -273,7 +273,7 @@ impl TraitContext for GlContext {
     return self.m_ext.contains_key(&str);
   }
   
-  fn on_event(&mut self, event: &EnumEvent) -> Result<bool, renderer::EnumError> {
+  fn on_event(&mut self, event: &EnumEvent) -> Result<bool, renderer::EnumRendererError> {
     return match event {
       EnumEvent::FramebufferEvent(width, height) => {
         check_gl_call!("GlContext", gl::Viewport(0, 0, *width as GLsizei, *height as GLsizei));
@@ -283,7 +283,7 @@ impl TraitContext for GlContext {
     };
   }
   
-  fn on_render(&mut self) -> Result<(), renderer::EnumError> {
+  fn on_render(&mut self) -> Result<(), renderer::EnumRendererError> {
     check_gl_call!("Renderer", gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
     for primitive in self.m_batch.m_primitives.iter() {
       check_gl_call!("Renderer", gl::UseProgram((*primitive.m_linked_shader).get_id()));
@@ -294,7 +294,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumError> {
+  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumRendererError> {
     // Enable or disable features AFTER context creation since we need a context to load our openGL
     // functions.
     for feature in features {
@@ -309,7 +309,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn get_max_msaa_count(&self) -> Result<u8, renderer::EnumError> {
+  fn get_max_msaa_count(&self) -> Result<u8, renderer::EnumRendererError> {
     // let framebuffer_color_sample_count: u8 = self.m_framebuffer.max_color_sample_count;
     // let framebuffer_depth_sample_count: u8 = self.m_framebuffer.max_depth_sample_count;
     //
@@ -346,7 +346,7 @@ impl TraitContext for GlContext {
     }
   }
   
-  fn toggle(&mut self, option: EnumRendererOption) -> Result<(), renderer::EnumError> {
+  fn toggle(&mut self, option: EnumRendererOption) -> Result<(), renderer::EnumRendererError> {
     match option {
       EnumRendererOption::ApiCallChecking(debug_type) => {
         match debug_type {
@@ -393,7 +393,7 @@ impl TraitContext for GlContext {
           max_sample_count = self.get_max_msaa_count()?;
           if max_sample_count < 2 {
             log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot enable MSAA!");
-            return Err(renderer::EnumError::from(EnumError::MSAAError));
+            return Err(renderer::EnumRendererError::from(EnumError::MSAAError));
           } else if sample_count.unwrap() > max_sample_count {
             log!(EnumLogColor::Yellow, "WARN", "[GlContext] -->\t Cannot enable MSAA with X{0}! \
               Defaulting to {1}...", sample_count.unwrap(), max_sample_count);
@@ -452,7 +452,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn setup_camera(&mut self, camera: &Camera) -> Result<(), renderer::EnumError> {
+  fn setup_camera(&mut self, camera: &Camera) -> Result<(), renderer::EnumRendererError> {
     // Setup view-projection ubo.
     let mut ubo = GlUbo::new(EnumUboTypeSize::ViewProjection, Some("ubo_camera"), 0)?;
     
@@ -471,7 +471,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn flush(&mut self) -> Result<(), renderer::EnumError> {
+  fn flush(&mut self) -> Result<(), renderer::EnumRendererError> {
     self.on_render()?;
     
     self.m_batch.m_primitives.clear();
@@ -481,7 +481,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+  fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
     if sendable_entity.is_empty() {
       log!(EnumLogColor::Yellow, "WARN", "[GlContext] --> Entity [{0}] has no \
       vertices! Not sending it...", sendable_entity)
@@ -562,7 +562,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn dequeue(&mut self, uuid: u64) -> Result<(), renderer::EnumError> {
+  fn dequeue(&mut self, uuid: u64) -> Result<(), renderer::EnumRendererError> {
     for index in 0..self.m_batch.m_primitives.len() {
       if self.m_batch.m_primitives[index].m_uuid == uuid {
         self.m_batch.m_vao_buffers[self.m_batch.m_primitives[index].m_vao_index].bind()?;
@@ -576,17 +576,17 @@ impl TraitContext for GlContext {
         return Ok(());
       }
     }
-    return Err(renderer::EnumError::from(EnumError::EntityUUIDNotFound));
+    return Err(renderer::EnumRendererError::from(EnumError::EntityUUIDNotFound));
   }
   
-  fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), renderer::EnumError> {
+  fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), renderer::EnumRendererError> {
     let shader_found = self.m_batch.m_primitives.iter_mut()
       .find(|primitive| shader_associated.get_id() == unsafe { (*primitive.m_linked_shader).get_id() });
     
     if shader_found.is_none() {
       log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot update shader ({0}), shader not found in batch!",
         shader_associated.get_id());
-      return Err(renderer::EnumError::ShaderNotFound);
+      return Err(renderer::EnumRendererError::ShaderNotFound);
     }
     
     let ubo_model_found = self.m_batch.m_ubo_buffers.iter_mut()
@@ -595,7 +595,7 @@ impl TraitContext for GlContext {
     // If we didn't manually bind to a block name (for glsl versions < 420), otherwise binding is optional.
     if ubo_model_found.is_none() && shader_associated.get_version() < 420 {
       log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot update transform ubo, ubo not found in batch!");
-      return Err(renderer::EnumError::UboNotFound);
+      return Err(renderer::EnumRendererError::UboNotFound);
     }
     
     self.m_batch.m_ubo_buffers[0].bind()?;
@@ -603,17 +603,17 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn free(&mut self) -> Result<(), renderer::EnumError> {
+  fn free(&mut self) -> Result<(), renderer::EnumRendererError> {
     if self.m_state == EnumState::NotCreated {
       log!(EnumLogColor::Yellow, "WARN", "[GlContext] -->\t Cannot free resources : OpenGL renderer \
       has not been created!");
-      return Err(renderer::EnumError::from(EnumError::InvalidContext));
+      return Err(renderer::EnumRendererError::from(EnumError::InvalidContext));
     }
     
     if self.m_state == EnumState::Deleted {
       log!(EnumLogColor::Yellow, "WARN", "[GlContext] -->\t Cannot free resources : OpenGL renderer \
       has already been deleted!");
-      return Err(renderer::EnumError::from(EnumError::InvalidContext));
+      return Err(renderer::EnumRendererError::from(EnumError::InvalidContext));
     }
     
     log!(EnumLogColor::Purple, "INFO", "[GlContext] -->\t Freeing buffers...");

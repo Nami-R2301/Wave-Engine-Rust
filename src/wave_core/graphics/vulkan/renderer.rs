@@ -192,7 +192,7 @@ pub struct VkContext {
 }
 
 impl VkContext {
-  pub fn create_swap_chain(&mut self, vsync_preferred: bool) -> Result<(), renderer::EnumError> {
+  pub fn create_swap_chain(&mut self, vsync_preferred: bool) -> Result<(), renderer::EnumRendererError> {
     // Setup swap chain.
     let mut swap_chain_properties = VkContext::query_swap_properties(self.m_surface.as_ref().unwrap(),
       self.m_physical_device, self.m_surface_khr)?;
@@ -257,7 +257,7 @@ impl VkContext {
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Could not create swap chain, Vulkan \
       returned with : {:?}", err);
-        return Err(renderer::EnumError::from(EnumError::SwapError));
+        return Err(renderer::EnumRendererError::from(EnumError::SwapError));
       }
     }
     
@@ -268,7 +268,7 @@ impl VkContext {
     return Ok(());
   }
   
-  pub fn create_swap_image_views(&mut self) -> Result<(), renderer::EnumError> {
+  pub fn create_swap_image_views(&mut self) -> Result<(), renderer::EnumRendererError> {
     self.m_swap_chain_image_views.reserve_exact(self.m_swap_chain_images.len());
     
     for &swap_image in self.m_swap_chain_images.iter() {
@@ -295,7 +295,7 @@ impl VkContext {
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot create image view : \
           Vulkan returned with Err => {:?}", err);
-          return Err(renderer::EnumError::from(EnumError::SwapImagesError));
+          return Err(renderer::EnumRendererError::from(EnumError::SwapImagesError));
         }
       }
     }
@@ -351,9 +351,9 @@ impl VkContext {
   /// ### Returns:
   ///   * `Result<Vec<std::ffi::CString>, renderer::EnumError>`:
   /// A list of nul-terminated strings of extension names to enable during instance creation if
-  /// successful, otherwise an [renderer::EnumError] on any error encountered.
+  /// successful, otherwise an [renderer::EnumRendererError] on any error encountered.
   ///
-  pub fn load_extensions(window_context: &glfw::Glfw, additional_extensions: Option<Vec<&str>>) -> Result<Vec<std::ffi::CString>, renderer::EnumError> {
+  pub fn load_extensions(window_context: &glfw::Glfw, additional_extensions: Option<Vec<&str>>) -> Result<Vec<std::ffi::CString>, renderer::EnumRendererError> {
     
     // Get required extensions.
     let window_extensions = window_context.get_required_instance_extensions();
@@ -388,7 +388,7 @@ impl VkContext {
       
       return Ok(c_extensions);
     }
-    return Err(renderer::EnumError::ContextError);
+    return Err(renderer::EnumRendererError::ContextError);
   }
   
   /// Load validation layers for the Vulkan instance.
@@ -400,9 +400,9 @@ impl VkContext {
   /// ### Returns:
   ///   * `Result<Vec<std::ffi::CString>, renderer::EnumError>`:
   /// A list of nul-terminated strings of layer names to enable during instance creation if
-  /// successful, otherwise an [renderer::EnumError] on any error encountered.
+  /// successful, otherwise an [renderer::EnumRendererError] on any error encountered.
   ///
-  pub fn load_layers(additional_layers: Option<Vec<&str>>) -> Result<Vec<std::ffi::CString>, renderer::EnumError> {
+  pub fn load_layers(additional_layers: Option<Vec<&str>>) -> Result<Vec<std::ffi::CString>, renderer::EnumRendererError> {
     // Get required layers.
     let mut c_layers = vec![std::ffi::CString::new("VK_LAYER_KHRONOS_validation")
       .expect("Failed to create C string in load_layers()")];
@@ -430,9 +430,9 @@ impl VkContext {
   ///   * `Result<(), renderer::EnumError>`: Nothing if successful,
   /// otherwise an [renderer::EnumError::VulkanError(EnumVulkanErrors::NotSupported)] if any of the supplied extension names is not supported.
   ///
-  pub fn check_extension_support(entry: &ash::Entry, extension_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumError> {
+  pub fn check_extension_support(entry: &ash::Entry, extension_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumRendererError> {
     if entry.enumerate_instance_extension_properties(None).is_err() {
-      return Err(renderer::EnumError::from(EnumError::ExtensionError));
+      return Err(renderer::EnumRendererError::from(EnumError::ExtensionError));
     }
     
     let all_extensions = entry.enumerate_instance_extension_properties(None).unwrap();
@@ -445,7 +445,7 @@ impl VkContext {
       }) {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Vulkan extension {:#?} not supported!",
           extension_name.to_str().expect("Failed to convert C String to &str in check_extension_support()"));
-        return Err(renderer::EnumError::from(EnumError::ExtensionError));
+        return Err(renderer::EnumRendererError::from(EnumError::ExtensionError));
       }
     }
     return Ok(());
@@ -462,9 +462,9 @@ impl VkContext {
   ///   * `Result<(), renderer::EnumError>`: Nothing if successful,
   /// otherwise an [renderer::EnumError::VulkanError(EnumVulkanErrors::NotSupported)] if any of the supplied layer names is not supported.
   ///
-  pub fn check_layer_support(entry: &ash::Entry, layer_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumError> {
+  pub fn check_layer_support(entry: &ash::Entry, layer_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumRendererError> {
     if entry.enumerate_instance_extension_properties(None).is_err() {
-      return Err(renderer::EnumError::from(EnumError::ExtensionError));
+      return Err(renderer::EnumRendererError::from(EnumError::ExtensionError));
     }
     
     let all_layers = entry.enumerate_instance_layer_properties().unwrap();
@@ -477,19 +477,19 @@ impl VkContext {
       }) {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Vulkan layer {:#?} not supported!",
           layer_name.to_str().expect("Failed to convert C String to &str in check_layer_support()"));
-        return Err(renderer::EnumError::from(EnumError::LayerError));
+        return Err(renderer::EnumRendererError::from(EnumError::LayerError));
       }
     }
     return Ok(());
   }
   
-  pub fn check_device_extension_support(ash_instance: &ash::Instance, vk_physical_device: &vk::PhysicalDevice, extension_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumError> {
+  pub fn check_device_extension_support(ash_instance: &ash::Instance, vk_physical_device: &vk::PhysicalDevice, extension_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumRendererError> {
     let extension_properties = unsafe {
       ash_instance.enumerate_device_extension_properties(*vk_physical_device)
     };
     if extension_properties.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot retrieve device extensions: None available!");
-      return Err(renderer::EnumError::from(EnumError::ExtensionError));
+      return Err(renderer::EnumRendererError::from(EnumError::ExtensionError));
     }
     
     let available_device_extensions = extension_properties.unwrap();
@@ -502,7 +502,7 @@ impl VkContext {
       }) {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Vulkan device extension {:#?} not supported!",
           extension_name.to_str().expect("Failed to convert C String to &str in check_device_extension_support()"));
-        return Err(renderer::EnumError::from(EnumError::ExtensionError));
+        return Err(renderer::EnumRendererError::from(EnumError::ExtensionError));
       }
     }
     
@@ -529,7 +529,7 @@ impl VkContext {
     };
   }
   
-  fn create_instance(window: &mut Window, additional_extensions: Option<Vec<&str>>, additional_layers: Option<Vec<&str>>) -> Result<(ash::Entry, ash::Instance), renderer::EnumError> {
+  fn create_instance(window: &mut Window, additional_extensions: Option<Vec<&str>>, additional_layers: Option<Vec<&str>>) -> Result<(ash::Entry, ash::Instance), renderer::EnumRendererError> {
     let entry = ash::Entry::linked();
     
     let app_name = std::ffi::CString::new("Wave Engine Rust").unwrap();
@@ -605,13 +605,13 @@ impl VkContext {
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[VkContext] --> \t Vulkan Error : {:#?}", err);
           
-          Err(renderer::EnumError::from(EnumError::InstanceError))
+          Err(renderer::EnumRendererError::from(EnumError::InstanceError))
         }
       };
     }
   }
   
-  fn create_logical_device(ash_instance: &ash::Instance, vk_physical_device: vk::PhysicalDevice, graphics_queue_family_index: u32, additional_extensions: Option<Vec<&str>>) -> Result<ash::Device, renderer::EnumError> {
+  fn create_logical_device(ash_instance: &ash::Instance, vk_physical_device: vk::PhysicalDevice, graphics_queue_family_index: u32, additional_extensions: Option<Vec<&str>>) -> Result<ash::Device, renderer::EnumRendererError> {
     let physical_device_features = unsafe {
       ash_instance.get_physical_device_features(vk_physical_device)
     };
@@ -655,7 +655,7 @@ impl VkContext {
       ash_instance.create_device(vk_physical_device, &device_create_info, None)
     };
     if vk_device.is_err() {
-      return Err(renderer::EnumError::from(EnumError::LogicalDeviceError));
+      return Err(renderer::EnumRendererError::from(EnumError::LogicalDeviceError));
     }
     
     return Ok(vk_device.unwrap());
@@ -670,10 +670,10 @@ impl VkContext {
   /// ### Returns:
   ///   * `Result<(ext::DebugUtils, vk::DebugUtilsMessengerEXT), renderer::EnumError>`:
   /// A tuple containing the created debug messenger and debug extension if
-  /// successful, otherwise an [renderer::EnumError] on any error encountered.
+  /// successful, otherwise an [renderer::EnumRendererError] on any error encountered.
   ///
   #[allow(unused)]
-  fn set_api_callback(entry: &ash::Entry, instance: &ash::Instance) -> Result<(ext::DebugUtils, vk::DebugUtilsMessengerEXT), renderer::EnumError> {
+  fn set_api_callback(entry: &ash::Entry, instance: &ash::Instance) -> Result<(ext::DebugUtils, vk::DebugUtilsMessengerEXT), renderer::EnumRendererError> {
     #[cfg(feature = "trace_api")]
     {
       // For debug callback function
@@ -696,16 +696,16 @@ impl VkContext {
         }
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Vulkan error : {:#?}", err);
-          Err(renderer::EnumError::from(EnumError::DebugError))
+          Err(renderer::EnumRendererError::from(EnumError::DebugError))
         }
       };
     }
     #[cfg(not(feature = "debug"))]
     {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] --> Cannot setup debug callback: Debug feature not enabled!");
-      return Err(renderer::EnumError::from(EnumError::DebugError));
+      return Err(renderer::EnumRendererError::from(EnumError::DebugError));
     }
-    return Err(renderer::EnumError::from(EnumError::DebugError));
+    return Err(renderer::EnumRendererError::from(EnumError::DebugError));
   }
   
   /// Pick the first suitable Vulkan physical device.
@@ -716,20 +716,20 @@ impl VkContext {
   ///
   /// ### Returns:
   ///   * `Result<vk::PhysicalDevice, renderer::EnumError>`: A suitable Vulkan physical device if successful
-  /// , otherwise an [renderer::EnumError].
+  /// , otherwise an [renderer::EnumRendererError].
   ///
-  fn pick_physical_device(ash_instance: &ash::Instance, surface: &khr::Surface, surface_khr: vk::SurfaceKHR) -> Result<vk::PhysicalDevice, renderer::EnumError> {
+  fn pick_physical_device(ash_instance: &ash::Instance, surface: &khr::Surface, surface_khr: vk::SurfaceKHR) -> Result<vk::PhysicalDevice, renderer::EnumRendererError> {
     let devices = unsafe { ash_instance.enumerate_physical_devices() };
     if devices.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Error getting physical devices! \
         Error => {:#?}", devices.unwrap());
-      return Err(renderer::EnumError::from(EnumError::PhysicalDeviceError));
+      return Err(renderer::EnumRendererError::from(EnumError::PhysicalDeviceError));
     }
     
     // Check if we have found at least one.
     if devices.as_ref().unwrap().len() == 0 {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Not Vulkan physical devices found!");
-      return Err(renderer::EnumError::from(EnumError::PhysicalDeviceError));
+      return Err(renderer::EnumRendererError::from(EnumError::PhysicalDeviceError));
     }
     
     // Check if device is suitable, aka if it has presentation support.
@@ -741,13 +741,13 @@ impl VkContext {
     if device.is_none() {
       log!(EnumLogColor::Red, "ERROR",
         "[VkContext] -->\t Vulkan Physical device does not support graphics for queue family 0!");
-      return Err(renderer::EnumError::from(EnumError::PhysicalDeviceError));
+      return Err(renderer::EnumRendererError::from(EnumError::PhysicalDeviceError));
     }
     
     return Ok(device.unwrap());
   }
   
-  fn pick_swap_format(surface_formats: &Vec<vk::SurfaceFormatKHR>) -> Result<vk::SurfaceFormatKHR, renderer::EnumError> {
+  fn pick_swap_format(surface_formats: &Vec<vk::SurfaceFormatKHR>) -> Result<vk::SurfaceFormatKHR, renderer::EnumRendererError> {
     let ideal_format = surface_formats.into_iter()
       .find(|&&khr_format| {
         return khr_format.format == vk::Format::B8G8R8A8_SRGB && khr_format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR;
@@ -759,7 +759,7 @@ impl VkContext {
     }
     
     log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot pick a suitable surface color format : Not supported!");
-    return Err(renderer::EnumError::from(EnumError::SurfaceError));
+    return Err(renderer::EnumRendererError::from(EnumError::SurfaceError));
   }
   
   fn pick_swap_presentation_mode(vsync_requested: bool, surface_present_modes: &Vec<vk::PresentModeKHR>) -> vk::PresentModeKHR {
@@ -778,7 +778,7 @@ impl VkContext {
     return vk::PresentModeKHR::IMMEDIATE;
   }
   
-  fn pick_swap_extent(surface_capabilities: &vk::SurfaceCapabilitiesKHR, desired_dimensions: Option<[u32; 2]>) -> Result<vk::Extent2D, renderer::EnumError> {
+  fn pick_swap_extent(surface_capabilities: &vk::SurfaceCapabilitiesKHR, desired_dimensions: Option<[u32; 2]>) -> Result<vk::Extent2D, renderer::EnumRendererError> {
     use num::clamp;
     
     if surface_capabilities.current_extent.width != u32::MAX {
@@ -807,7 +807,7 @@ impl VkContext {
     });
   }
   
-  fn query_queue_families(ash_instance: &ash::Instance, surface: &khr::Surface, surface_khr: vk::SurfaceKHR, vk_physical_device: vk::PhysicalDevice) -> Result<VkQueueFamilyIndices, renderer::EnumError> {
+  fn query_queue_families(ash_instance: &ash::Instance, surface: &khr::Surface, surface_khr: vk::SurfaceKHR, vk_physical_device: vk::PhysicalDevice) -> Result<VkQueueFamilyIndices, renderer::EnumRendererError> {
     let queue_families = unsafe {
       ash_instance.get_physical_device_queue_family_properties(vk_physical_device)
     };
@@ -815,7 +815,7 @@ impl VkContext {
     if queue_families.is_empty() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot retrieve queue families for physical \
       device {0:#?}!", vk_physical_device);
-      return Err(renderer::EnumError::from(EnumError::PhysicalDeviceError));
+      return Err(renderer::EnumRendererError::from(EnumError::PhysicalDeviceError));
     }
     
     let mut queue_family_indices: VkQueueFamilyIndices = VkQueueFamilyIndices::default();
@@ -844,7 +844,7 @@ impl VkContext {
     return Ok(queue_family_indices);
   }
   
-  fn query_swap_properties(surface: &khr::Surface, vk_device: vk::PhysicalDevice, khr_surface: vk::SurfaceKHR) -> Result<VkSwapChainProperties, renderer::EnumError> {
+  fn query_swap_properties(surface: &khr::Surface, vk_device: vk::PhysicalDevice, khr_surface: vk::SurfaceKHR) -> Result<VkSwapChainProperties, renderer::EnumRendererError> {
     let formats = unsafe {
       // Query the supported SwapChain format-color space pairs for a surface.
       surface.get_physical_device_surface_formats(vk_device, khr_surface)
@@ -852,7 +852,7 @@ impl VkContext {
     if formats.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot choose an ideal surface format, \
         Vulkan returned result : {:?}", formats.unwrap());
-      return Err(renderer::EnumError::from(EnumError::SwapError));
+      return Err(renderer::EnumRendererError::from(EnumError::SwapError));
     }
     
     // Query the basic capabilities of a surface, needed in order to create a SwapChain.
@@ -862,7 +862,7 @@ impl VkContext {
     if capabilities.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot choose an ideal surface format, \
         Vulkan returned result : {:?}", formats.unwrap());
-      return Err(renderer::EnumError::from(EnumError::SwapError));
+      return Err(renderer::EnumRendererError::from(EnumError::SwapError));
     }
     
     // Query the supported presentation modes for a surface.
@@ -872,7 +872,7 @@ impl VkContext {
     if present_modes.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot choose an ideal surface format, \
         Vulkan returned result : {:?}", formats.unwrap());
-      return Err(renderer::EnumError::from(EnumError::SwapError));
+      return Err(renderer::EnumRendererError::from(EnumError::SwapError));
     }
     
     let swap_chain_info = VkSwapChainProperties::new(capabilities.unwrap(), formats.unwrap(),
@@ -926,7 +926,7 @@ impl TraitContext for VkContext {
     }
   }
   
-  fn on_new(window: &mut Window) -> Result<Self, renderer::EnumError> {
+  fn on_new(window: &mut Window) -> Result<Self, renderer::EnumRendererError> {
     let (ash_entry, ash_instance) =
       VkContext::create_instance(window, None, None)?;
     #[allow(unused)]
@@ -997,15 +997,15 @@ impl TraitContext for VkContext {
     todo!()
   }
   
-  fn on_event(&mut self, _event: &events::EnumEvent) -> Result<bool, renderer::EnumError> {
+  fn on_event(&mut self, _event: &events::EnumEvent) -> Result<bool, renderer::EnumRendererError> {
     return Ok(false);
   }
   
-  fn on_render(&mut self) -> Result<(), renderer::EnumError> {
+  fn on_render(&mut self) -> Result<(), renderer::EnumRendererError> {
     return Ok(());
   }
   
-  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumError> {
+  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumRendererError> {
     // Toggle features.
     for feature in features {
       self.toggle(*feature)?;
@@ -1018,14 +1018,14 @@ impl TraitContext for VkContext {
       if self.m_swap_chain.is_none() {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot retrieve swap chain images : \
         No active swap chain!");
-        return Err(renderer::EnumError::from(EnumError::SwapError));
+        return Err(renderer::EnumRendererError::from(EnumError::SwapError));
       }
       self.m_swap_chain.as_ref().unwrap().get_swapchain_images(self.m_swap_chain_khr)
     };
     if swap_chain_images.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Could not retrieve swap chain images : \
         Vulkan returned with : {:?}", swap_chain_images.unwrap());
-      return Err(renderer::EnumError::from(EnumError::SwapImagesError));
+      return Err(renderer::EnumRendererError::from(EnumError::SwapImagesError));
     }
     
     self.m_swap_chain_images = swap_chain_images.unwrap();
@@ -1034,7 +1034,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn get_max_msaa_count(&self) -> Result<u8, renderer::EnumError> {
+  fn get_max_msaa_count(&self) -> Result<u8, renderer::EnumRendererError> {
     let device_properties =
       unsafe {
         self.m_instance.as_ref().unwrap().get_physical_device_properties(self.m_physical_device)
@@ -1096,7 +1096,7 @@ impl TraitContext for VkContext {
     return info_physical_device + info_logical_device.as_str();
   }
   
-  fn toggle(&mut self, feature: EnumRendererOption) -> Result<(), renderer::EnumError> {
+  fn toggle(&mut self, feature: EnumRendererOption) -> Result<(), renderer::EnumRendererError> {
     match feature {
       EnumRendererOption::ApiCallChecking(debug_type) => {
         if debug_type != EnumCallCheckingType::None {
@@ -1133,7 +1133,7 @@ impl TraitContext for VkContext {
               Defaulting to {1}...", sample_count.unwrap(), max_sample_count);
           } else if max_sample_count == 1 {
             log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot enable MSAA!");
-            return Err(renderer::EnumError::from(EnumError::MSAAError));
+            return Err(renderer::EnumRendererError::from(EnumError::MSAAError));
           }
           todo!("Apply the new multisample count to the color and depth attachments.");
         }
@@ -1148,15 +1148,15 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn setup_camera(&mut self, _camera: &Camera) -> Result<(), renderer::EnumError> {
+  fn setup_camera(&mut self, _camera: &Camera) -> Result<(), renderer::EnumRendererError> {
     return Ok(());
   }
   
-  fn flush(&mut self) -> Result<(), renderer::EnumError> {
+  fn flush(&mut self) -> Result<(), renderer::EnumRendererError> {
     todo!()
   }
   
-  fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), renderer::EnumError> {
+  fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
     let vk_shader = shader_associated.get_api().get_api_handle().downcast_ref::<VkShader>()
       .expect("[VkContext] -->\t Cannot enqueue data in VkContext : Renderer is not Vulkan!");
     
@@ -1164,25 +1164,25 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn dequeue(&mut self, _id: u64) -> Result<(), renderer::EnumError> {
+  fn dequeue(&mut self, _id: u64) -> Result<(), renderer::EnumRendererError> {
     todo!()
   }
   
-  fn update(&mut self, _shader_associated: &mut Shader, _transform: Mat4) -> Result<(), renderer::EnumError> {
+  fn update(&mut self, _shader_associated: &mut Shader, _transform: Mat4) -> Result<(), renderer::EnumRendererError> {
     todo!()
   }
   
-  fn free(&mut self) -> Result<(), renderer::EnumError> {
+  fn free(&mut self) -> Result<(), renderer::EnumRendererError> {
     if self.m_state == EnumState::NotCreated {
       log!(EnumLogColor::Yellow, "WARN", "[VkContext] -->\t Cannot free resources : Vulkan renderer \
       has not been created!");
-      return Err(renderer::EnumError::InvalidApi);
+      return Err(renderer::EnumRendererError::InvalidApi);
     }
     
     if self.m_state == EnumState::Deleted {
       log!(EnumLogColor::Yellow, "WARN", "[VkContext] -->\t Cannot free resources : Renderer has been \
       deleted!");
-      return Err(renderer::EnumError::InvalidApi);
+      return Err(renderer::EnumRendererError::InvalidApi);
     }
     
     unsafe {
@@ -1196,7 +1196,7 @@ impl TraitContext for VkContext {
       if self.m_logical_device.as_ref().unwrap().device_wait_idle().is_err() {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot wait for device \
          (Vulkan logical device) to finish!");
-        return Err(renderer::EnumError::from(EnumError::LogicalDeviceError));
+        return Err(renderer::EnumRendererError::from(EnumError::LogicalDeviceError));
       }
       
       // Free vbos.

@@ -23,7 +23,7 @@
 */
 
 use crate::log;
-use crate::wave_core::{EnumError, events};
+use crate::wave_core::{EnumEngineError, events};
 use crate::wave_core::layers::{EnumLayerType, TraitLayer};
 use crate::wave_core::window::{Window};
 
@@ -44,7 +44,7 @@ impl TraitLayer for WindowLayer {
     return EnumLayerType::Window;
   }
   
-  fn on_submit(&mut self) -> Result<(), EnumError> {
+  fn on_submit(&mut self) -> Result<(), EnumEngineError> {
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Creating window...");
     unsafe {
       (*self.m_context).submit()?
@@ -53,30 +53,30 @@ impl TraitLayer for WindowLayer {
     return Ok(());
   }
   
-  fn on_sync_event(&mut self) -> Result<(), EnumError> {
+  fn on_sync_event(&mut self) -> Result<(), EnumEngineError> {
     return Ok(());
   }
   
-  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
+  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumEngineError> {
     return unsafe {
       Ok((*self.m_context).on_event(event))
     };
   }
   
-  fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {
+  fn on_update(&mut self, _time_step: f64) -> Result<(), EnumEngineError> {
     return unsafe {
-      (*self.m_context).on_update().map_err(|err| EnumError::from(err))
+      (*self.m_context).on_update().map_err(|err| EnumEngineError::from(err))
     };
   }
   
-  fn on_render(&mut self) -> Result<(), EnumError> {
+  fn on_render(&mut self) -> Result<(), EnumEngineError> {
     unsafe { (*self.m_context).refresh() };
     return Ok(());
   }
   
-  fn on_free(&mut self) -> Result<(), EnumError> {
+  fn on_free(&mut self) -> Result<(), EnumEngineError> {
     return unsafe {
-      (*self.m_context).free().map_err(|err| EnumError::from(err))
+      (*self.m_context).free().map_err(|err| EnumEngineError::from(err))
     };
   }
   

@@ -54,7 +54,7 @@ pub enum EnumShaderLanguageType {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum EnumError {
+pub enum EnumShaderError {
   NoShaderStagesProvided,
   NoActiveRendererError,
   InvalidApi,
@@ -74,38 +74,38 @@ pub enum EnumError {
   VulkanShaderError(vulkan::shader::EnumError),
 }
 
-impl Display for EnumError {
+impl Display for EnumShaderError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "[Shader] -->\t Error encountered with shader(s) : {:?}", self)
   }
 }
 
-impl From<std::io::Error> for EnumError {
+impl From<std::io::Error> for EnumShaderError {
   fn from(err: std::io::Error) -> Self {
-    return EnumError::IoError(err.kind());
+    return EnumShaderError::IoError(err.kind());
   }
 }
 
-impl From<open_gl::renderer::EnumError> for EnumError {
+impl From<open_gl::renderer::EnumError> for EnumShaderError {
   fn from(_value: open_gl::renderer::EnumError) -> Self {
-    return EnumError::OpenGLShaderError(open_gl::shader::EnumError::OpenGLApiError);
+    return EnumShaderError::OpenGLShaderError(open_gl::shader::EnumError::OpenGLApiError);
   }
 }
 
-impl From<open_gl::shader::EnumError> for EnumError {
+impl From<open_gl::shader::EnumError> for EnumShaderError {
   fn from(value: open_gl::shader::EnumError) -> Self {
-    return EnumError::OpenGLShaderError(value);
+    return EnumShaderError::OpenGLShaderError(value);
   }
 }
 
 #[cfg(feature = "vulkan")]
-impl From<vulkan::shader::EnumError> for EnumError {
+impl From<vulkan::shader::EnumError> for EnumShaderError {
   fn from(value: vulkan::shader::EnumError) -> Self {
-    return EnumError::VulkanShaderError(value);
+    return EnumShaderError::VulkanShaderError(value);
   }
 }
 
-impl std::error::Error for EnumError {}
+impl std::error::Error for EnumShaderError {}
 
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Hash)]
@@ -152,17 +152,17 @@ impl From<EnumShaderSource> for String {
 
 pub trait TraitShader {
   fn default() -> Self where Self: Sized;
-  fn new(shader_module: Vec<ShaderStage>) -> Result<Self, EnumError> where Self: Sized;
+  fn new(shader_module: Vec<ShaderStage>) -> Result<Self, EnumShaderError> where Self: Sized;
   fn from(other_shader: Self) -> Self where Self: Sized;
   fn get_name(&self) -> EnumApi;
-  fn source(&mut self) -> Result<(), EnumError>;
-  fn compile(&mut self) -> Result<(), EnumError>;
-  fn submit(&mut self) -> Result<(), EnumError>;
+  fn source(&mut self) -> Result<(), EnumShaderError>;
+  fn compile(&mut self) -> Result<(), EnumShaderError>;
+  fn submit(&mut self) -> Result<(), EnumShaderError>;
   fn to_string(&self) -> String;
-  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumError>;
+  fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumShaderError>;
   fn get_id(&self) -> u32;
   fn get_api_handle(&self) -> &dyn std::any::Any;
-  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), EnumError>;
+  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), EnumShaderError>;
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -221,11 +221,11 @@ impl Shader {
     };
   }
   
-  pub fn new(mut shader_stages: Vec<ShaderStage>) -> Result<Self, EnumError> {
+  pub fn new(mut shader_stages: Vec<ShaderStage>) -> Result<Self, EnumShaderError> {
     if shader_stages.is_empty() {
       log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create shader : No shader stages \
         provided!");
-      return Err(EnumError::NoShaderStagesProvided);
+      return Err(EnumShaderError::NoShaderStagesProvided);
     }
     
     let renderer: &mut Renderer = Engine::get_active_renderer();
@@ -252,10 +252,10 @@ impl Shader {
             
             if shader_stage.m_is_cached {
               let mut cache_path_str: String = format!("cache/{0}", file_path.file_name()
-                .ok_or(EnumError::InvalidFileOperation)?
+                .ok_or(EnumShaderError::InvalidFileOperation)?
                 .to_str()
-                .ok_or(EnumError::InvalidFileOperation)?);
-              if file_path.extension().ok_or(EnumError::InvalidFileOperation)? != "spv" {
+                .ok_or(EnumShaderError::InvalidFileOperation)?);
+              if file_path.extension().ok_or(EnumShaderError::InvalidFileOperation)? != "spv" {
                 cache_path_str += ".spv";
               }
               
@@ -267,7 +267,7 @@ impl Shader {
           if literal_string.is_empty() {
             log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create shader : Empty source \
           string given for shader source!");
-            return Err(EnumError::InvalidShaderSource);
+            return Err(EnumShaderError::InvalidShaderSource);
           }
         }
       }
@@ -289,21 +289,21 @@ impl Shader {
     return Ok(shader_program);
   }
   
-  pub fn check_cache(shader_file_path: &std::path::Path) -> Result<Vec<u8>, EnumError> {
+  pub fn check_cache(shader_file_path: &std::path::Path) -> Result<Vec<u8>, EnumShaderError> {
     let renderer: &mut Renderer = Engine::get_active_renderer();
     if renderer.m_type == EnumApi::OpenGL && !renderer.check_extension("GL_ARB_gl_spirv") {
       log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Cannot load from cached SPIR-V binary : \
           \n{0:113}Current OpenGL renderer doesn't support the extension required 'GL_ARB_gl_spirv'\
           \n{0:113}Attempting to load from glsl shader directly...", "");
-      return Err(EnumError::InvalidApi);
+      return Err(EnumShaderError::InvalidApi);
     }
     
     let cache_path: &std::path::Path;
     let mut cache_path_str: String = format!("cache/{0}", shader_file_path.file_name()
-      .ok_or(EnumError::InvalidFileOperation)?
+      .ok_or(EnumShaderError::InvalidFileOperation)?
       .to_str()
-      .ok_or(EnumError::InvalidFileOperation)?);
-    if shader_file_path.extension().ok_or(EnumError::InvalidFileOperation)? != "spv" {
+      .ok_or(EnumShaderError::InvalidFileOperation)?);
+    if shader_file_path.extension().ok_or(EnumShaderError::InvalidFileOperation)? != "spv" {
       cache_path_str += ".spv";
     }
     
@@ -313,14 +313,14 @@ impl Shader {
     let cache_last_time_modified = cache_path.metadata()?.modified()?;
     if src_last_time_modified > cache_last_time_modified {
       log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Shader source modified since last cache, recompiling shader stages...");
-      return Err(EnumError::ShaderModified);
+      return Err(EnumShaderError::ShaderModified);
     }
     
     let cache_buffer = std::fs::read(cache_path)?;
     return Ok(cache_buffer);
   }
   
-  pub fn cache(shader_name: &std::path::Path, binary: Vec<u8>) -> Result<(), EnumError> {
+  pub fn cache(shader_name: &std::path::Path, binary: Vec<u8>) -> Result<(), EnumShaderError> {
     let cache_path_str: String = format!("cache/{0}.spv", shader_name.file_name().unwrap().to_str().unwrap());
     
     std::fs::write(cache_path_str, binary.as_slice())?;
@@ -331,31 +331,31 @@ impl Shader {
     return self.m_version;
   }
   
-  fn check_validity(shader_stage: &ShaderStage) -> Result<(), EnumError> {
+  fn check_validity(shader_stage: &ShaderStage) -> Result<(), EnumShaderError> {
     match &shader_stage.m_source {
       EnumShaderSource::FromFile(file_path_str) => {
         let file_path = std::path::Path::new(file_path_str);
         if !file_path.exists() {
           log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot open shader file : File {0:?} does not exist!", file_path);
-          return Err(EnumError::FileNotFound);
+          return Err(EnumShaderError::FileNotFound);
         }
         
-        let shader_extension = file_path.extension().ok_or(EnumError::PathError)?;
+        let shader_extension = file_path.extension().ok_or(EnumShaderError::PathError)?;
         if shader_extension != "vert" && shader_extension != "frag" && shader_extension != "spv" {
           log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error while opening shader : Unsupported \
       shader file '.{1:?}'!\n{0:113}Supported file types => '.vert', '.spv', '.frag'", "",
         shader_extension);
-          return Err(EnumError::UnsupportedFileType);
+          return Err(EnumShaderError::UnsupportedFileType);
         }
         
         let source = std::fs::read_to_string(file_path_str)?;
         if !source.contains("#version") || !source.contains("void main()") {
-          return Err(EnumError::InvalidShaderSource);
+          return Err(EnumShaderError::InvalidShaderSource);
         }
       }
       EnumShaderSource::FromStr(literal_str) => {
         if !literal_str.contains("#version") || !literal_str.contains("void main()") {
-          return Err(EnumError::InvalidShaderSource);
+          return Err(EnumShaderError::InvalidShaderSource);
         }
       }
     }
@@ -363,7 +363,7 @@ impl Shader {
     return Ok(());
   }
   
-  fn check_version_compatibility(shader_stage: &ShaderStage) -> Result<u16, EnumError> {
+  fn check_version_compatibility(shader_stage: &ShaderStage) -> Result<u16, EnumShaderError> {
     let source: String;
     match &shader_stage.m_source {
       EnumShaderSource::FromFile(file_path_str) => {
@@ -398,14 +398,14 @@ impl Shader {
     return Ok(renderer.get_max_shader_version_available());
   }
   
-  fn parse_language(&mut self, shader_stage: &ShaderStage) -> Result<(), EnumError> {
+  fn parse_language(&mut self, shader_stage: &ShaderStage) -> Result<(), EnumShaderError> {
     let source: String;
     match &shader_stage.m_source {
       EnumShaderSource::FromFile(file_path_str) => {
         let file_path = std::path::Path::new(&file_path_str);
         
         if !file_path.exists() {
-          return Err(EnumError::FileNotFound);
+          return Err(EnumShaderError::FileNotFound);
         }
         
         if file_path.extension().unwrap() == "bin" {
@@ -434,10 +434,10 @@ impl Shader {
     return Ok(());
   }
   
-  pub fn submit(&mut self) -> Result<(), EnumError> {
+  pub fn submit(&mut self) -> Result<(), EnumShaderError> {
     return self.m_api_data.submit();
   }
-  pub fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumError> {
+  pub fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumShaderError> {
     return self.m_api_data.upload_data(uniform_name, uniform);
   }
   
@@ -458,7 +458,7 @@ impl Shader {
       "", self.get_id(), self.m_api_data.to_string());
   }
   
-  pub fn free(&mut self) -> Result<(), EnumError> {
+  pub fn free(&mut self) -> Result<(), EnumShaderError> {
     if self.m_state == EnumState::NotCreated || self.m_state == EnumState::Deleted {
       log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t Cannot delete renderer : Renderer not \
       created or already deleted!");

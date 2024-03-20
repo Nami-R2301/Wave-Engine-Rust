@@ -25,13 +25,13 @@
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub enum EnumError {
+pub enum EnumUIError {
   InvalidContext,
   InvalidUiOptions,
   ApiError,
 }
 
-impl Display for EnumError {
+impl Display for EnumUIError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "[Ui] -->\t Error encountered with Ui element(s) : {:?}", self)
   }
@@ -62,7 +62,7 @@ pub mod ui_imgui {
   use crate::wave_core::events::EnumEvent;
   use crate::wave_core::graphics::renderer::EnumApi;
   use crate::wave_core::input::{EnumAction, EnumModifiers, EnumMouseButton};
-  use crate::wave_core::ui::EnumError;
+  use crate::wave_core::ui::EnumUIError;
   use crate::wave_core::utils::Time;
   use crate::wave_core::window::Window;
   
@@ -86,7 +86,7 @@ pub mod ui_imgui {
     fn on_event(&mut self, event: &EnumEvent) -> bool;
     fn on_update(&mut self);
     fn on_render(&mut self);
-    fn free(&mut self) -> Result<(), EnumError>;
+    fn free(&mut self) -> Result<(), EnumUIError>;
   }
   
   
@@ -251,7 +251,7 @@ pub mod ui_imgui {
       }
     }
     
-    fn free(&mut self) -> Result<(), EnumError> {
+    fn free(&mut self) -> Result<(), EnumUIError> {
       return Ok(());
     }
   }

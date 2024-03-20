@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-use wave_engine::wave_core::{EmptyApp, Engine, EnumError};
+use wave_engine::wave_core::{EmptyApp, Engine, EnumEngineError};
 use wave_engine::wave_core::graphics::renderer::{EnumApi, Renderer};
 use wave_engine::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStage, Shader, ShaderStage};
 use wave_engine::wave_core::layers::Layer;
@@ -32,7 +32,7 @@ use wave_engine::wave_core::window::Window;
 
 #[ignore]
 #[test]
-fn test_shader_send() -> Result<(), EnumError> {
+fn test_shader_send() -> Result<(), EnumEngineError> {
   let layer = Layer::new("Shader send", EmptyApp::default());
   let window = Window::new()?;
   let renderer = Renderer::new(EnumApi::OpenGL)?;
@@ -49,13 +49,13 @@ fn test_shader_send() -> Result<(), EnumError> {
   // Sourcing and compilation.
   return match result.submit() {
     Ok(_) => { Ok(()) }
-    Err(err) => { Err(EnumError::from(err)) }
+    Err(err) => { Err(EnumEngineError::from(err)) }
   };
 }
 
 #[ignore]
 #[test]
-fn test_load_uniforms() -> Result<(), EnumError> {
+fn test_load_uniforms() -> Result<(), EnumEngineError> {
   let layer = Layer::new("Shader load", EmptyApp::default());
   let window = Window::new()?;
   let renderer = Renderer::new(EnumApi::OpenGL)?;
@@ -76,6 +76,6 @@ fn test_load_uniforms() -> Result<(), EnumError> {
   return match  new_shader.upload_data("u_model_matrix",
     &Mat4::new(1.0)) {
     Ok(_) => { Ok(()) }
-    Err(err) => { Err(EnumError::from(err)) }
+    Err(err) => { Err(EnumEngineError::from(err)) }
   };
 }

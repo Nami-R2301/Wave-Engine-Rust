@@ -75,7 +75,7 @@ pub enum EnumRendererOption {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum EnumError {
+pub enum EnumRendererError {
   Init,
   NoApi,
   NoActiveRenderer,
@@ -83,7 +83,7 @@ pub enum EnumError {
   UnsupportedApi,
   NotImplemented,
   ContextError,
-  InvalidAssetSource(asset_loader::EnumError),
+  InvalidAssetSource(asset_loader::EnumAssetError),
   InvalidEntity,
   EntityNotFound,
   ShaderNotFound,
@@ -97,32 +97,32 @@ pub enum EnumError {
   VulkanInvalidBufferOperation(vulkan::buffer::EnumError),
 }
 
-impl From<asset_loader::EnumError> for EnumError {
-  fn from(value: asset_loader::EnumError) -> Self {
-    return EnumError::InvalidAssetSource(value);
+impl From<asset_loader::EnumAssetError> for EnumRendererError {
+  fn from(value: asset_loader::EnumAssetError) -> Self {
+    return EnumRendererError::InvalidAssetSource(value);
   }
 }
 
-impl From<open_gl::renderer::EnumError> for EnumError {
+impl From<open_gl::renderer::EnumError> for EnumRendererError {
   fn from(value: open_gl::renderer::EnumError) -> Self {
-    return EnumError::OpenGLError(value);
+    return EnumRendererError::OpenGLError(value);
   }
 }
 
 #[cfg(feature = "vulkan")]
-impl From<vulkan::renderer::EnumError> for EnumError {
+impl From<vulkan::renderer::EnumError> for EnumRendererError {
   fn from(value: vulkan::renderer::EnumError) -> Self {
-    return EnumError::VulkanError(value);
+    return EnumRendererError::VulkanError(value);
   }
 }
 
-impl Display for EnumError {
+impl Display for EnumRendererError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "[Renderer] -->\t Error encountered with renderer : {:?}", self)
   }
 }
 
-impl std::error::Error for EnumError {}
+impl std::error::Error for EnumRendererError {}
 
 pub(crate) struct Stats {
   m_entities_sent_count: u32,
@@ -156,23 +156,23 @@ impl Stats {
 
 pub(crate) trait TraitContext {
   fn default() -> Self where Self: Sized;
-  fn on_new(window: &mut Window) -> Result<Self, EnumError> where Self: Sized;
+  fn on_new(window: &mut Window) -> Result<Self, EnumRendererError> where Self: Sized;
   fn get_api_handle(&mut self) -> &mut dyn Any;
   fn get_api_version(&self) -> f32;
   fn get_max_shader_version_available(&self) -> u16;
   fn check_extension(&self, desired_extension: &str) -> bool;
-  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError>;
-  fn on_render(&mut self) -> Result<(), EnumError>;
-  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), EnumError>;
-  fn get_max_msaa_count(&self) -> Result<u8, EnumError>;
+  fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumRendererError>;
+  fn on_render(&mut self) -> Result<(), EnumRendererError>;
+  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), EnumRendererError>;
+  fn get_max_msaa_count(&self) -> Result<u8, EnumRendererError>;
   fn to_string(&self) -> String;
-  fn toggle(&mut self, option: EnumRendererOption) -> Result<(), EnumError>;
-  fn setup_camera(&mut self, camera: &Camera) -> Result<(), EnumError>;
-  fn flush(&mut self) -> Result<(), EnumError>;
-  fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError>;
-  fn dequeue(&mut self, id: u64) -> Result<(), EnumError>;
-  fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), EnumError>;
-  fn free(&mut self) -> Result<(), EnumError>;
+  fn toggle(&mut self, option: EnumRendererOption) -> Result<(), EnumRendererError>;
+  fn setup_camera(&mut self, camera: &Camera) -> Result<(), EnumRendererError>;
+  fn flush(&mut self) -> Result<(), EnumRendererError>;
+  fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError>;
+  fn dequeue(&mut self, id: u64) -> Result<(), EnumRendererError>;
+  fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), EnumRendererError>;
+  fn free(&mut self) -> Result<(), EnumRendererError>;
 }
 
 pub struct Renderer {
@@ -183,7 +183,7 @@ pub struct Renderer {
 }
 
 impl<'a> Renderer {
-  pub fn new(api_preference: EnumApi) -> Result<Self, EnumError> {
+  pub fn new(api_preference: EnumApi) -> Result<Self, EnumRendererError> {
     return match api_preference {
       EnumApi::OpenGL => {
         Ok(Renderer {
@@ -207,7 +207,7 @@ impl<'a> Renderer {
           log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot create renderer : Vulkan feature \
             not enabled!\nMake sure to turn on Vulkan rendering by enabling it in the Cargo.toml \
             file under features!");
-          Err(EnumError::UnsupportedApi)
+          Err(EnumRendererError::UnsupportedApi)
         }
       }
     };
@@ -221,11 +221,11 @@ impl<'a> Renderer {
     self.m_options = features_desired;
   }
   
-  pub fn submit_camera(&mut self, camera: &Camera) -> Result<(), EnumError> {
+  pub fn submit_camera(&mut self, camera: &Camera) -> Result<(), EnumRendererError> {
     return self.m_api.setup_camera(camera);
   }
   
-  pub fn submit(&mut self, window: &mut Window) -> Result<(), EnumError> {
+  pub fn submit(&mut self, window: &mut Window) -> Result<(), EnumRendererError> {
     match self.m_type {
       EnumApi::OpenGL => {
         self.m_api = Box::new(GlContext::on_new(window)?);
@@ -241,7 +241,7 @@ impl<'a> Renderer {
     return self.m_api.check_extension(desired_extension);
   }
   
-  pub fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
+  pub fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumRendererError> {
     match event {
       events::EnumEvent::WindowCloseEvent(_time) => {
         self.m_api.free()?;
@@ -253,16 +253,16 @@ impl<'a> Renderer {
     return self.m_api.on_event(event);
   }
   
-  pub fn flush(&mut self) -> Result<(), EnumError> {
+  pub fn flush(&mut self) -> Result<(), EnumRendererError> {
     log!("INFO", "[Renderer] -->\t User called for manual flushing of rendered assets");
     return self.m_api.flush();
   }
   
-  pub fn on_render(&mut self) -> Result<(), EnumError> {
+  pub fn on_render(&mut self) -> Result<(), EnumRendererError> {
     return self.m_api.on_render();
   }
   
-  pub fn toggle(&mut self, feature: EnumRendererOption) -> Result<(), EnumError> {
+  pub fn toggle(&mut self, feature: EnumRendererOption) -> Result<(), EnumRendererError> {
     return self.m_api.toggle(feature);
   }
   
@@ -270,7 +270,7 @@ impl<'a> Renderer {
     return self.m_api.get_api_handle();
   }
   
-  pub fn free(&mut self) -> Result<(), EnumError> {
+  pub fn free(&mut self) -> Result<(), EnumRendererError> {
     log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Freeing resources...");
     if self.m_state == EnumState::NotCreated || self.m_state == EnumState::Deleted {
       log!(EnumLogColor::Yellow, "WARN", "[Renderer] -->\t Cannot delete renderer : Renderer not \
@@ -285,17 +285,17 @@ impl<'a> Renderer {
     return Ok(());
   }
   
-  pub fn enqueue(&mut self, r_entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumError> {
+  pub fn enqueue(&mut self, r_entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
     log!("INFO", "[Renderer] -->\t Enqueuing entity : {0}, associated with shader : {1}", r_entity.get_uuid(), shader_associated.get_id());
     return self.m_api.enqueue(r_entity, shader_associated);
   }
   
-  pub fn dequeue(&mut self, id: u64) -> Result<(), EnumError> {
+  pub fn dequeue(&mut self, id: u64) -> Result<(), EnumRendererError> {
     log!("INFO", "[Renderer] -->\t De-queuing entity : {0}", id);
     return self.m_api.dequeue(id);
   }
   
-  pub fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), EnumError> {
+  pub fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), EnumRendererError> {
     return self.m_api.update(shader_associated, transform);
   }
   

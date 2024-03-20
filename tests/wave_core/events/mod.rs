@@ -26,14 +26,14 @@ use wave_engine::wave_core::events::EnumEventMask;
 
 #[test]
 fn test_event_masking() {
-  let window = EnumEventMask::c_window;
-  let inputs = EnumEventMask::c_input;
-  let keys = EnumEventMask::c_keyboard;
+  let window = EnumEventMask::Window;
+  let inputs = EnumEventMask::Input;
+  let keys = EnumEventMask::Keyboard;
   
   assert!(inputs.contains(keys));
   assert!(keys.intersects(inputs));
   
-  assert_eq!(keys & EnumEventMask::c_none, keys.intersection(EnumEventMask::c_none));
+  assert_eq!(keys & EnumEventMask::None, keys.intersection(EnumEventMask::None));
   assert_eq!(keys | inputs, keys.union(inputs));
   assert_eq!(inputs & !keys, inputs.difference(keys));
   

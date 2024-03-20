@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-use crate::wave_core::{EnumError, events};
+use crate::wave_core::{EnumEngineError, events};
 use crate::wave_core::layers::{EnumLayerType, TraitLayer};
 use crate::wave_core::ui::ui_imgui::Imgui;
 
@@ -43,27 +43,27 @@ impl TraitLayer for ImguiLayer {
     return EnumLayerType::Imgui;
   }
   
-  fn on_submit(&mut self) -> Result<(), EnumError> {
+  fn on_submit(&mut self) -> Result<(), EnumEngineError> {
     return Ok(());
   }
   
-  fn on_sync_event(&mut self) -> Result<(), EnumError> {
+  fn on_sync_event(&mut self) -> Result<(), EnumEngineError> {
     todo!()
   }
   
-  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumError> {
+  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumEngineError> {
     return Ok(self.m_ui.on_event(event));
   }
   
-  fn on_update(&mut self, _time_step: f64) -> Result<(), EnumError> {
+  fn on_update(&mut self, _time_step: f64) -> Result<(), EnumEngineError> {
     return Ok(self.m_ui.on_update());
   }
   
-  fn on_render(&mut self) -> Result<(), EnumError> {
+  fn on_render(&mut self) -> Result<(), EnumEngineError> {
     return Ok(self.m_ui.on_render());
   }
   
-  fn on_free(&mut self) -> Result<(), EnumError> {
+  fn on_free(&mut self) -> Result<(), EnumEngineError> {
     return Ok(());
   }
   
