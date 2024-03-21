@@ -1,0 +1,41 @@
+[package]
+name = "wave-core"
+version = "0.1.3"
+edition = "2021"
+authors = ["Nami Reghbati"]
+
+[dependencies]
+# Tools.
+num = "0.4.1"  # For initializing templates with 'zeroes' in macros.
+rand = "0.8.5"  # For generating random numbers.
+chrono = "0.4.31"  # For time.
+once_cell = "1.19.0"  # For statics initialized with non-const functions.
+bitflags = "2.4.2"  # For masking purposes.
+
+# Rendering.
+gl = "0.14.0"  # For most OpenGL function bindings.
+gl46 = { version = "0.2.1", features = ["track_caller"] }  # For glSpecialize() and GL_SPIRV format for shader binary.
+ash = { version = "0.37.3", features = ["linked"] }  # For Vulkan function bindings.
+shaderc = "0.8.3"  # For Vulkan SpirV compilation.
+
+# Windowing and UI.
+glfw = { version = "0.55.0", features = ["vulkan"] }  # For window context.
+imgui = { version = "0.11.0", features = ["docking"] }  # For UI and docking feature.
+imgui-opengl-renderer = "0.12.1"    # For Imgui using OpenGL backend.
+
+assimp = "0.3.1"  # For importing assets.
+
+[features]
+default = []
+debug = []
+imgui = []
+profiler = []
+vulkan = []
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = false

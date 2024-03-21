@@ -1,0 +1,19 @@
+[package]
+name = "wave-editor"
+version = "0.1.1"
+edition = "2021"
+authors = ["Nami Reghbati"]
+
+[dependencies]
+wave-core = {path = "../wave_core", features = ["debug", "vulkan", "imgui"]}
+
+[features]
+debug = []
+vulkan = []
+imgui = []
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
