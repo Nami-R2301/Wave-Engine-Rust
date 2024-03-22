@@ -5,12 +5,7 @@ edition = "2021"
 authors = ["Nami Reghbati"]
 
 [dependencies]
-wave-core = {path = "../wave_core", features = ["debug", "vulkan", "imgui"]}
-
-[features]
-debug = []
-vulkan = []
-imgui = []
+wave-core = {path = "../wave_core", features = ["imgui"]}
 
 [profile.dev]
 opt-level = 0

@@ -83,7 +83,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumEngineError> {
   let mut window = Window::new()?;
   window.window_hint(EnumWindowOption::WindowMode(EnumWindowMode::Windowed));
   window.window_hint(EnumWindowOption::Resolution(1024, 768));
-  window.submit()?;
+  window.apply()?;
   
   // Check if PRESS input events work properly.
   {
@@ -169,7 +169,7 @@ fn test_synchronous_mouse_button_inputs() -> Result<(), EnumEngineError> {
   let mut window = Window::new()?;
   window.window_hint(EnumWindowOption::WindowMode(EnumWindowMode::Windowed));
   window.window_hint(EnumWindowOption::Resolution(1024, 768));
-  window.submit()?;
+  window.apply()?;
   
   // Check if PRESS input events work properly.
   {

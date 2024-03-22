@@ -28,43 +28,56 @@
 ///////////////////////////////////                    ///////////////////////////////////
  */
 
+#[cfg(feature = "vulkan")]
 use std::any::Any;
 
+#[cfg(feature = "vulkan")]
 use crate::utils::macros::logger::*;
+#[cfg(feature = "vulkan")]
 use crate::Engine;
-use crate::graphics::renderer::{EnumApi, Renderer};
+#[cfg(feature = "vulkan")]
+use crate::graphics::renderer::{EnumRendererApi, Renderer};
+#[cfg(feature = "vulkan")]
 use crate::graphics::shader::{self, EnumShaderSource, EnumShaderStage, Shader, ShaderStage, TraitShader};
+#[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::renderer::VkContext;
+#[cfg(feature = "vulkan")]
 use crate::dependencies::ash::vk;
 
+#[cfg(feature = "vulkan")]
 #[derive(Debug, PartialEq)]
-pub enum EnumError {
+pub enum EnumSpirVError {
   SpirVCompilationError(shaderc::Error),
   ShaderModuleError,
   InvalidPushConstant,
   ShaderPipelineCreationError,
 }
 
+#[cfg(feature = "vulkan")]
 impl From<EnumShaderStage> for shaderc::ShaderKind {
   fn from(value: EnumShaderStage) -> Self {
     return match value {
       EnumShaderStage::Vertex => shaderc::ShaderKind::Vertex,
       EnumShaderStage::Fragment => shaderc::ShaderKind::Fragment,
+      EnumShaderStage::Geometry => shaderc::ShaderKind::Geometry,
       EnumShaderStage::Compute => shaderc::ShaderKind::Compute,
     };
   }
 }
 
+#[cfg(feature = "vulkan")]
 impl From<EnumShaderStage> for vk::ShaderStageFlags {
   fn from(value: EnumShaderStage) -> Self {
     return match value {
       EnumShaderStage::Vertex => vk::ShaderStageFlags::VERTEX,
       EnumShaderStage::Fragment => vk::ShaderStageFlags::FRAGMENT,
+      EnumShaderStage::Geometry => vk::ShaderStageFlags::GEOMETRY,
       EnumShaderStage::Compute => vk::ShaderStageFlags::COMPUTE,
     };
   }
 }
 
+#[cfg(feature = "vulkan")]
 #[derive(Debug, Clone)]
 pub struct VkShader {
   m_id: u32,
@@ -72,6 +85,7 @@ pub struct VkShader {
   m_vk_shader_modules: Vec<vk::ShaderModule>,
 }
 
+#[cfg(feature = "vulkan")]
 impl TraitShader for VkShader {
   fn default() -> Self where Self: Sized {
     return Self {
@@ -94,8 +108,8 @@ impl TraitShader for VkShader {
     todo!()
   }
   
-  fn get_name(&self) -> EnumApi {
-    return EnumApi::Vulkan;
+  fn get_name(&self) -> EnumRendererApi {
+    return EnumRendererApi::Vulkan;
   }
   
   fn source(&mut self) -> Result<(), shader::EnumShaderError> {
@@ -145,7 +159,7 @@ impl TraitShader for VkShader {
             Err(err) => {
               log!(EnumLogColor::Red, "ERROR", "[VkShader] -->\t Cannot compile {0} shader into \
                   SPIR-V : Error => \n{err}", shader_stage.m_stage);
-              return Err(shader::EnumShaderError::from(EnumError::SpirVCompilationError(err)));
+              return Err(shader::EnumShaderError::from(EnumSpirVError::SpirVCompilationError(err)));
             }
           };
         }
@@ -157,7 +171,7 @@ impl TraitShader for VkShader {
     return Ok(());
   }
   
-  fn submit(&mut self) -> Result<(), shader::EnumShaderError> {
+  fn apply(&mut self) -> Result<(), shader::EnumShaderError> {
     self.source()?;
     self.compile()?;
     return Ok(());
@@ -199,6 +213,7 @@ impl TraitShader for VkShader {
   }
 }
 
+#[cfg(feature = "vulkan")]
 impl VkShader {
   pub fn get_vk_shaders(&self) -> &Vec<vk::ShaderModule> {
     return &self.m_vk_shader_modules;
@@ -220,7 +235,7 @@ impl VkShader {
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[VkShader] -->\t Cannot create Vulkan shader module : \
           Vulkan returned with error => {err:#?}");
-        Err(shader::EnumShaderError::from(EnumError::ShaderModuleError))
+        Err(shader::EnumShaderError::from(EnumSpirVError::ShaderModuleError))
       }
     };
   }

@@ -53,9 +53,10 @@ impl Display for EnumLayerError {
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EnumLayerType {
   Window = 0,
-  Imgui = 1,
+  Overlay = 1,
   Renderer = 2,
-  App = 3,
+  Editor = 3,
+  App = 4,
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, PartialEq, Eq, Hash)]
@@ -96,12 +97,12 @@ impl Ord for Layer {
 
 pub trait TraitLayer {
   fn get_type(&self) -> EnumLayerType;
-  fn on_submit(&mut self) -> Result<(), EnumEngineError>;
+  fn on_apply(&mut self) -> Result<(), EnumEngineError>;
   fn on_sync_event(&mut self) -> Result<(), EnumEngineError>;
   fn on_async_event(&mut self, event: &EnumEvent) -> Result<bool, EnumEngineError>;
   fn on_update(&mut self, time_step: f64) -> Result<(), EnumEngineError>;
   fn on_render(&mut self) -> Result<(), EnumEngineError>;
-  fn on_free(&mut self) -> Result<(), EnumEngineError>;
+  fn free(&mut self) -> Result<(), EnumEngineError>;
   fn to_string(&self) -> String;
 }
 
@@ -133,11 +134,6 @@ impl Layer {
     return self.m_data.get_type();
   }
   
-  pub(crate) fn submit(&mut self) -> Result<(), EnumEngineError> {
-    self.m_uuid = rand::random::<u64>();
-    return self.m_data.on_submit();
-  }
-  
   pub fn is_type(&self, layer_type: EnumLayerType) -> bool {
     return self.m_data.get_type() == layer_type;
   }
@@ -146,12 +142,17 @@ impl Layer {
     return self.m_name == name;
   }
   
+  pub fn enable_async_polling_for(&mut self, event_mask: EnumEventMask) {
+    self.m_poll_mask = event_mask;
+  }
+  
   pub(crate) fn get_poll_mask(&self) -> EnumEventMask {
     return self.m_poll_mask;
   }
   
-  pub fn enable_async_polling_for(&mut self, event_mask: EnumEventMask) {
-    self.m_poll_mask = event_mask;
+  pub(crate) fn apply(&mut self) -> Result<(), EnumEngineError> {
+    self.m_uuid = rand::random::<u64>();
+    return self.m_data.on_apply();
   }
   
   /// Set a specific interval for polling synchronous events. This is useful when
@@ -211,7 +212,7 @@ impl Layer {
   }
   
   pub(crate) fn free(&mut self) -> Result<(), EnumEngineError> {
-    return self.m_data.on_free();
+    return self.m_data.free();
   }
   
   pub fn to_string(&self) -> String {
@@ -221,8 +222,10 @@ impl Layer {
 
 impl Display for Layer {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "'{1}'\n{0:113}UUID: {2}\n{0:113}Poll mask: {3}\n{0:113}Sync polled?: {4}\
+    let log_color: &str = color_to_str(EnumLogColor::Purple);
+    write!(f, "'{7}{1}\x1b[0m'\n{0:113}UUID: {2}\n{0:113}Poll mask: {3}\n{0:113}Sync polled?: {4}\
     \n{0:113}Priority: {5}\n{0:113}Data: {6}", "",
-      self.m_name, self.m_uuid, self.m_poll_mask, self.m_sync_polling_enabled, self.m_priority, self.m_data.to_string())
+      self.m_name, self.m_uuid, self.m_poll_mask, self.m_sync_polling_enabled, self.m_priority, self.m_data.to_string(),
+    log_color)
   }
 }

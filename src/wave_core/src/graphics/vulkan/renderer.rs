@@ -22,26 +22,46 @@
  SOFTWARE.
 */
 
+#[cfg(feature = "vulkan")]
 use std::any::Any;
+#[cfg(feature = "vulkan")]
 use std::collections::HashSet;
-use std::fmt::{Display, Formatter};
+
+#[cfg(feature = "vulkan")]
+use std::fmt::{Display};
+#[cfg(feature = "vulkan")]
+use std::fmt::{Formatter};
+#[cfg(feature = "vulkan")]
 use std::mem::size_of;
-#[allow(unused)]
+#[cfg(feature = "vulkan")]
 use std::ops::{BitAnd, BitOr};
 
+#[cfg(feature = "vulkan")]
 use ash::extensions::{ext, khr};
+#[cfg(feature = "vulkan")]
 use ash::vk::{self, PhysicalDeviceType, TaggedStructure};
 
+#[cfg(feature = "vulkan")]
 use crate::utils::macros::logger::*;
+#[cfg(feature = "vulkan")]
 use crate::assets::renderable_assets::{EnumVertexMemberOffset, REntity, Vertex};
+#[cfg(feature = "vulkan")]
 use crate::camera::Camera;
+#[cfg(feature = "vulkan")]
 use crate::{Engine, events};
+#[cfg(feature = "vulkan")]
 use crate::graphics::{renderer, vulkan};
-use crate::graphics::renderer::{EnumCallCheckingType, EnumRendererOption, EnumState, TraitContext};
+#[cfg(feature = "vulkan")]
+use crate::graphics::renderer::{EnumCallCheckingType, EnumRendererOption, EnumRendererState, TraitContext};
+#[cfg(feature = "vulkan")]
 use crate::graphics::shader::Shader;
+#[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::buffer::{VkVbo, VkVertexAttribute};
+#[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::shader::VkShader;
+#[cfg(feature = "vulkan")]
 use crate::math::{Mat4};
+#[cfg(feature = "vulkan")]
 use crate::window::Window;
 
 /*
@@ -49,9 +69,9 @@ use crate::window::Window;
 ///////////////////////////////////                      ///////////////////////////////////
 ///////////////////////////////////                      ///////////////////////////////////
  */
-
+#[cfg(feature = "vulkan")]
 #[derive(Debug, PartialEq)]
-pub enum EnumError {
+pub enum EnumVkContextError {
   NotSupported,
   NoActiveWindow,
   LayerError,
@@ -63,23 +83,26 @@ pub enum EnumError {
   SurfaceError,
   SwapError,
   SwapImagesError,
-  ShaderOperationError(vulkan::shader::EnumError),
-  BufferOperationError(vulkan::buffer::EnumError),
+  ShaderOperationError(vulkan::shader::EnumSpirVError),
+  BufferOperationError(vulkan::buffer::EnumVulkanBufferError),
   MSAAError,
 }
 
-impl From<vulkan::buffer::EnumError> for EnumError {
-  fn from(value: vulkan::buffer::EnumError) -> Self {
-    return EnumError::BufferOperationError(value);
+#[cfg(feature = "vulkan")]
+impl From<vulkan::buffer::EnumVulkanBufferError> for EnumVkContextError {
+  fn from(value: vulkan::buffer::EnumVulkanBufferError) -> Self {
+    return EnumVkContextError::BufferOperationError(value);
   }
 }
 
-impl From<vulkan::shader::EnumError> for EnumError {
-  fn from(value: vulkan::shader::EnumError) -> Self {
-    return EnumError::ShaderOperationError(value);
+#[cfg(feature = "vulkan")]
+impl From<vulkan::shader::EnumSpirVError> for EnumVkContextError {
+  fn from(value: vulkan::shader::EnumSpirVError) -> Self {
+    return EnumVkContextError::ShaderOperationError(value);
   }
 }
 
+#[cfg(feature = "vulkan")]
 #[derive(Debug, PartialEq)]
 pub(crate) struct VkQueueFamilyIndices {
   pub(crate) m_graphics_family_index: Option<u32>,
@@ -87,6 +110,7 @@ pub(crate) struct VkQueueFamilyIndices {
   // Add more family indices for desired queue pipeline features.
 }
 
+#[cfg(feature = "vulkan")]
 impl VkQueueFamilyIndices {
   pub(crate) fn default() -> Self {
     return VkQueueFamilyIndices {
@@ -96,6 +120,7 @@ impl VkQueueFamilyIndices {
   }
 }
 
+#[cfg(feature = "vulkan")]
 #[derive(Debug)]
 pub(crate) struct VkSwapChainProperties {
   m_capabilities: vk::SurfaceCapabilitiesKHR,
@@ -106,6 +131,7 @@ pub(crate) struct VkSwapChainProperties {
   m_swap_extent: vk::Extent2D,
 }
 
+#[cfg(feature = "vulkan")]
 impl VkSwapChainProperties {
   pub(crate) fn default() -> Self {
     return Self {
@@ -130,6 +156,7 @@ impl VkSwapChainProperties {
   }
 }
 
+#[cfg(feature = "vulkan")]
 impl Display for VkSwapChainProperties {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     let mut present_mode_str: String = String::from("");
@@ -169,8 +196,9 @@ impl Display for VkSwapChainProperties {
   }
 }
 
+#[cfg(feature = "vulkan")]
 pub struct VkContext {
-  m_state: EnumState,
+  m_state: EnumRendererState,
   #[allow(unused)]
   m_entry: ash::Entry,
   m_instance: Option<ash::Instance>,
@@ -189,6 +217,7 @@ pub struct VkContext {
   m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
 }
 
+#[cfg(feature = "vulkan")]
 impl VkContext {
   pub fn create_swap_chain(&mut self, vsync_preferred: bool) -> Result<(), renderer::EnumRendererError> {
     // Setup swap chain.
@@ -255,7 +284,7 @@ impl VkContext {
       Err(err) => {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Could not create swap chain, Vulkan \
       returned with : {:?}", err);
-        return Err(renderer::EnumRendererError::from(EnumError::SwapError));
+        return Err(renderer::EnumRendererError::from(EnumVkContextError::SwapError));
       }
     }
     
@@ -293,7 +322,7 @@ impl VkContext {
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot create image view : \
           Vulkan returned with Err => {:?}", err);
-          return Err(renderer::EnumRendererError::from(EnumError::SwapImagesError));
+          return Err(renderer::EnumRendererError::from(EnumVkContextError::SwapImagesError));
         }
       }
     }
@@ -301,7 +330,7 @@ impl VkContext {
     return Ok(());
   }
   
-  pub fn create_pipeline(&mut self, shader_modules: &Vec<vk::ShaderModule>, _sendable_entity: &REntity) -> Result<(), EnumError> {
+  pub fn create_pipeline(&mut self, shader_modules: &Vec<vk::ShaderModule>, _sendable_entity: &REntity) -> Result<(), EnumVkContextError> {
     // Setup dynamic states.
     self.m_dynamic_states.push(vk::DynamicState::VIEWPORT);
     self.m_dynamic_states.push(vk::DynamicState::SCISSOR);
@@ -322,7 +351,7 @@ impl VkContext {
     self.m_vbo_array.push(VkVbo::new(size_of::<Vertex>(), 0, size_of::<Vertex>() as u32,
       vk::VertexInputRate::VERTEX, self.m_logical_device.as_mut().unwrap(), None)
       .map_err(|error| {
-        return EnumError::BufferOperationError(error);
+        return EnumVkContextError::BufferOperationError(error);
       })?);
     
     for _shader_module in shader_modules.iter() {}
@@ -430,7 +459,7 @@ impl VkContext {
   ///
   pub fn check_extension_support(entry: &ash::Entry, extension_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumRendererError> {
     if entry.enumerate_instance_extension_properties(None).is_err() {
-      return Err(renderer::EnumRendererError::from(EnumError::ExtensionError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::ExtensionError));
     }
     
     let all_extensions = entry.enumerate_instance_extension_properties(None).unwrap();
@@ -443,7 +472,7 @@ impl VkContext {
       }) {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Vulkan extension {:#?} not supported!",
           extension_name.to_str().expect("Failed to convert C String to &str in check_extension_support()"));
-        return Err(renderer::EnumRendererError::from(EnumError::ExtensionError));
+        return Err(renderer::EnumRendererError::from(EnumVkContextError::ExtensionError));
       }
     }
     return Ok(());
@@ -462,7 +491,7 @@ impl VkContext {
   ///
   pub fn check_layer_support(entry: &ash::Entry, layer_names: &Vec<std::ffi::CString>) -> Result<(), renderer::EnumRendererError> {
     if entry.enumerate_instance_extension_properties(None).is_err() {
-      return Err(renderer::EnumRendererError::from(EnumError::ExtensionError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::ExtensionError));
     }
     
     let all_layers = entry.enumerate_instance_layer_properties().unwrap();
@@ -475,7 +504,7 @@ impl VkContext {
       }) {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Vulkan layer {:#?} not supported!",
           layer_name.to_str().expect("Failed to convert C String to &str in check_layer_support()"));
-        return Err(renderer::EnumRendererError::from(EnumError::LayerError));
+        return Err(renderer::EnumRendererError::from(EnumVkContextError::LayerError));
       }
     }
     return Ok(());
@@ -487,7 +516,7 @@ impl VkContext {
     };
     if extension_properties.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot retrieve device extensions: None available!");
-      return Err(renderer::EnumRendererError::from(EnumError::ExtensionError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::ExtensionError));
     }
     
     let available_device_extensions = extension_properties.unwrap();
@@ -500,7 +529,7 @@ impl VkContext {
       }) {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Vulkan device extension {:#?} not supported!",
           extension_name.to_str().expect("Failed to convert C String to &str in check_device_extension_support()"));
-        return Err(renderer::EnumRendererError::from(EnumError::ExtensionError));
+        return Err(renderer::EnumRendererError::from(EnumVkContextError::ExtensionError));
       }
     }
     
@@ -603,7 +632,7 @@ impl VkContext {
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[VkContext] --> \t Vulkan Error : {:#?}", err);
           
-          Err(renderer::EnumRendererError::from(EnumError::InstanceError))
+          Err(renderer::EnumRendererError::from(EnumVkContextError::InstanceError))
         }
       };
     }
@@ -653,7 +682,7 @@ impl VkContext {
       ash_instance.create_device(vk_physical_device, &device_create_info, None)
     };
     if vk_device.is_err() {
-      return Err(renderer::EnumRendererError::from(EnumError::LogicalDeviceError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::LogicalDeviceError));
     }
     
     return Ok(vk_device.unwrap());
@@ -694,16 +723,16 @@ impl VkContext {
         }
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Vulkan error : {:#?}", err);
-          Err(renderer::EnumRendererError::from(EnumError::DebugError))
+          Err(renderer::EnumRendererError::from(EnumVkContextError::DebugError))
         }
       };
     }
     #[cfg(not(feature = "debug"))]
     {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] --> Cannot setup debug callback: Debug feature not enabled!");
-      return Err(renderer::EnumRendererError::from(EnumError::DebugError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::DebugError));
     }
-    return Err(renderer::EnumRendererError::from(EnumError::DebugError));
+    return Err(renderer::EnumRendererError::from(EnumVkContextError::DebugError));
   }
   
   /// Pick the first suitable Vulkan physical device.
@@ -721,13 +750,13 @@ impl VkContext {
     if devices.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Error getting physical devices! \
         Error => {:#?}", devices.unwrap());
-      return Err(renderer::EnumRendererError::from(EnumError::PhysicalDeviceError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::PhysicalDeviceError));
     }
     
     // Check if we have found at least one.
     if devices.as_ref().unwrap().len() == 0 {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Not Vulkan physical devices found!");
-      return Err(renderer::EnumRendererError::from(EnumError::PhysicalDeviceError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::PhysicalDeviceError));
     }
     
     // Check if device is suitable, aka if it has presentation support.
@@ -739,7 +768,7 @@ impl VkContext {
     if device.is_none() {
       log!(EnumLogColor::Red, "ERROR",
         "[VkContext] -->\t Vulkan Physical device does not support graphics for queue family 0!");
-      return Err(renderer::EnumRendererError::from(EnumError::PhysicalDeviceError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::PhysicalDeviceError));
     }
     
     return Ok(device.unwrap());
@@ -757,7 +786,7 @@ impl VkContext {
     }
     
     log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot pick a suitable surface color format : Not supported!");
-    return Err(renderer::EnumRendererError::from(EnumError::SurfaceError));
+    return Err(renderer::EnumRendererError::from(EnumVkContextError::SurfaceError));
   }
   
   fn pick_swap_presentation_mode(vsync_requested: bool, surface_present_modes: &Vec<vk::PresentModeKHR>) -> vk::PresentModeKHR {
@@ -813,7 +842,7 @@ impl VkContext {
     if queue_families.is_empty() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot retrieve queue families for physical \
       device {0:#?}!", vk_physical_device);
-      return Err(renderer::EnumRendererError::from(EnumError::PhysicalDeviceError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::PhysicalDeviceError));
     }
     
     let mut queue_family_indices: VkQueueFamilyIndices = VkQueueFamilyIndices::default();
@@ -850,7 +879,7 @@ impl VkContext {
     if formats.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot choose an ideal surface format, \
         Vulkan returned result : {:?}", formats.unwrap());
-      return Err(renderer::EnumRendererError::from(EnumError::SwapError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::SwapError));
     }
     
     // Query the basic capabilities of a surface, needed in order to create a SwapChain.
@@ -860,7 +889,7 @@ impl VkContext {
     if capabilities.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot choose an ideal surface format, \
         Vulkan returned result : {:?}", formats.unwrap());
-      return Err(renderer::EnumRendererError::from(EnumError::SwapError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::SwapError));
     }
     
     // Query the supported presentation modes for a surface.
@@ -870,7 +899,7 @@ impl VkContext {
     if present_modes.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot choose an ideal surface format, \
         Vulkan returned result : {:?}", formats.unwrap());
-      return Err(renderer::EnumRendererError::from(EnumError::SwapError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::SwapError));
     }
     
     let swap_chain_info = VkSwapChainProperties::new(capabilities.unwrap(), formats.unwrap(),
@@ -902,10 +931,11 @@ impl VkContext {
   }
 }
 
+#[cfg(feature = "vulkan")]
 impl TraitContext for VkContext {
   fn default() -> Self where Self: Sized {
     return Self {
-      m_state: EnumState::NotCreated,
+      m_state: EnumRendererState::NotCreated,
       m_entry: Default::default(),
       m_instance: None,
       m_physical_device: Default::default(),
@@ -945,7 +975,7 @@ impl TraitContext for VkContext {
       queue_family_indices.m_graphics_family_index.unwrap_or(0), None)?;
     
     Ok(VkContext {
-      m_state: EnumState::Created,
+      m_state: EnumRendererState::Created,
       m_entry: ash_entry,
       m_instance: Some(ash_instance),
       m_surface: Some(vk_surface),
@@ -1003,7 +1033,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumRendererError> {
+  fn apply(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumRendererError> {
     // Toggle features.
     for feature in features {
       self.toggle(*feature)?;
@@ -1016,14 +1046,14 @@ impl TraitContext for VkContext {
       if self.m_swap_chain.is_none() {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot retrieve swap chain images : \
         No active swap chain!");
-        return Err(renderer::EnumRendererError::from(EnumError::SwapError));
+        return Err(renderer::EnumRendererError::from(EnumVkContextError::SwapError));
       }
       self.m_swap_chain.as_ref().unwrap().get_swapchain_images(self.m_swap_chain_khr)
     };
     if swap_chain_images.is_err() {
       log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Could not retrieve swap chain images : \
         Vulkan returned with : {:?}", swap_chain_images.unwrap());
-      return Err(renderer::EnumRendererError::from(EnumError::SwapImagesError));
+      return Err(renderer::EnumRendererError::from(EnumVkContextError::SwapImagesError));
     }
     
     self.m_swap_chain_images = swap_chain_images.unwrap();
@@ -1131,7 +1161,7 @@ impl TraitContext for VkContext {
               Defaulting to {1}...", sample_count.unwrap(), max_sample_count);
           } else if max_sample_count == 1 {
             log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot enable MSAA!");
-            return Err(renderer::EnumRendererError::from(EnumError::MSAAError));
+            return Err(renderer::EnumRendererError::from(EnumVkContextError::MSAAError));
           }
           todo!("Apply the new multisample count to the color and depth attachments.");
         }
@@ -1141,12 +1171,12 @@ impl TraitContext for VkContext {
           .unwrap_or("disabled".to_string()));
       }
       EnumRendererOption::SRGB(_) => {}
-      EnumRendererOption::Blending(_, _, _) => {}
+      EnumRendererOption::Blending(_, _) => {}
     }
     return Ok(());
   }
   
-  fn setup_camera(&mut self, _camera: &Camera) -> Result<(), renderer::EnumRendererError> {
+  fn setup_camera_ubo(&mut self, _camera: &Camera) -> Result<(), renderer::EnumRendererError> {
     return Ok(());
   }
   
@@ -1171,13 +1201,13 @@ impl TraitContext for VkContext {
   }
   
   fn free(&mut self) -> Result<(), renderer::EnumRendererError> {
-    if self.m_state == EnumState::NotCreated {
+    if self.m_state == EnumRendererState::NotCreated {
       log!(EnumLogColor::Yellow, "WARN", "[VkContext] -->\t Cannot free resources : Vulkan renderer \
       has not been created!");
       return Err(renderer::EnumRendererError::InvalidApi);
     }
     
-    if self.m_state == EnumState::Deleted {
+    if self.m_state == EnumRendererState::Deleted {
       log!(EnumLogColor::Yellow, "WARN", "[VkContext] -->\t Cannot free resources : Renderer has been \
       deleted!");
       return Err(renderer::EnumRendererError::InvalidApi);
@@ -1194,13 +1224,13 @@ impl TraitContext for VkContext {
       if self.m_logical_device.as_ref().unwrap().device_wait_idle().is_err() {
         log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot wait for device \
          (Vulkan logical device) to finish!");
-        return Err(renderer::EnumRendererError::from(EnumError::LogicalDeviceError));
+        return Err(renderer::EnumRendererError::from(EnumVkContextError::LogicalDeviceError));
       }
       
       // Free vbos.
       log!(EnumLogColor::Purple, "INFO", "[VkContext] -->\t Freeing buffers...");
       for vbo in self.m_vbo_array.iter_mut() {
-        vbo.free().map_err(|vbo_err| EnumError::BufferOperationError(vbo_err))?;
+        vbo.free().map_err(|vbo_err| EnumVkContextError::BufferOperationError(vbo_err))?;
       };
       log!(EnumLogColor::Green, "INFO", "[VkContext] -->\t Freed buffers successfully");
       

@@ -22,18 +22,19 @@
  SOFTWARE.
 */
 
-use events::{EnumEvent, EnumEventMask};
+use events::{EnumEvent};
 use graphics::renderer::{self, Renderer};
 use graphics::shader::{self};
-use once_cell::sync::Lazy;
-use utils::Time;
-use window::Window;
-
 use input::{EnumAction, EnumKey, EnumMouseButton, Input};
 use layers::{EnumLayerType, Layer, TraitLayer};
 use layers::renderer_layer::RendererLayer;
 use layers::window_layer::WindowLayer;
-use utils::macros::logger::{EnumLogColor, color_to_str};
+use once_cell::sync::Lazy;
+#[cfg(feature = "debug")]
+use utils::macros::logger::{color_to_str, EnumLogColor};
+use utils::Time;
+use window::Window;
+use crate::events::EnumEventMask;
 
 pub mod dependencies;
 pub mod ui;
@@ -51,7 +52,7 @@ static mut S_ENGINE: Option<*mut Engine> = None;
 pub(crate) static S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::macros::logger::init().unwrap());
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-enum EnumState {
+enum EnumEngineState {
   NotStarted,
   Starting,
   Started,
@@ -111,12 +112,12 @@ impl_enum_error!(ui::EnumUIError, EnumEngineError::UiError);
 impl_enum_error!(events::EnumEventError, EnumEngineError::EventError);
 
 pub struct Engine {
-  m_layers_vec: Vec<Layer>,
+  m_layers: Vec<Layer>,
   m_window: Window,
   m_renderer: Renderer,
   m_time_step: f64,
   m_tick_rate: f32,
-  m_state: EnumState,
+  m_state: EnumEngineState,
 }
 
 impl<'a> Engine {
@@ -152,64 +153,61 @@ impl<'a> Engine {
   /// engine.free();
   /// return Ok(());
   /// ```
-  pub fn new(window: Window, renderer: Renderer, app_layer: Layer) -> Result<Self, EnumEngineError> {
-    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
-    
-    // Setup basic layers.
-    let layers = vec![app_layer];
-    
-    Ok({
-      log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
-      Engine {
-        m_layers_vec: layers,
-        m_window: window,
-        m_renderer: renderer,
-        m_time_step: 0.0,
-        m_tick_rate: 0.0,
-        m_state: EnumState::NotStarted,
-      }
+  pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Result<Self, EnumEngineError> {
+    Ok(Engine {
+      m_layers: app_layers,
+      m_window: window,
+      m_renderer: renderer,
+      m_time_step: 0.0,
+      m_tick_rate: 0.0,
+      m_state: EnumEngineState::NotStarted,
     })
   }
   
-  pub fn submit(&mut self) -> Result<(), EnumEngineError> {
-    if self.m_state != EnumState::NotStarted {
+  pub fn apply(&mut self) -> Result<(), EnumEngineError> {
+    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Launching Wave Engine...");
+    if self.m_state != EnumEngineState::NotStarted {
       log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Cannot instantiate engine : Engine already started!");
       return Err(EnumEngineError::AppError);
     }
     
-    self.m_state = EnumState::Starting;
-    
-    let mut window_layer: Layer = Layer::new("Main Window", WindowLayer::new(&mut self.m_window));
-    let mut renderer_layer: Layer = Layer::new("Renderer", RendererLayer::new(&mut self.m_renderer));
+    self.m_state = EnumEngineState::Starting;
+    let mut window_layer = Layer::new("Window Layer", WindowLayer::new(&mut self.m_window));
+    let mut renderer_layer = Layer::new("Renderer Layer", RendererLayer::new(&mut self.m_renderer));
     
     window_layer.enable_async_polling_for(EnumEventMask::WindowClose | EnumEventMask::WindowSize
       | EnumEventMask::Keyboard);
     renderer_layer.enable_async_polling_for(EnumEventMask::WindowClose | EnumEventMask::WindowSize
       | EnumEventMask::Keyboard);
     
+    // Setup window context for polling to ba available when pushing subsequent layers.
+    self.m_window.apply()?;
+    
+    self.m_layers.push(window_layer);
+    self.m_layers.push(renderer_layer);
+    self.m_layers.sort_unstable();
+    
     Engine::set_singleton(self);
     
-    Self::push_layer(window_layer)?;
-    Self::push_layer(renderer_layer)?;
-    self.m_window.enable_callback(EnumEventMask::WindowSize | EnumEventMask::WindowClose | EnumEventMask::Keyboard);
-    
-    for index in 2..self.m_layers_vec.len() {
-      self.m_layers_vec[index].submit()?;
+    for layer in self.m_layers.iter_mut() {
+      Self::enable_async_polling_for(layer);
+      layer.apply()?;
     }
     
-    self.m_state = EnumState::Started;
+    self.m_state = EnumEngineState::Started;
+    log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Launched Wave Engine successfully");
     return Ok(());
   }
   
   pub fn run(&mut self) -> Result<(), EnumEngineError> {
-    self.submit()?;
+    self.apply()?;
     
-    if self.m_state != EnumState::Started {
+    if self.m_state != EnumEngineState::Started {
       log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Cannot run : Engine has not started up correctly!");
       return Err(EnumEngineError::AppError);
     }
     
-    self.m_state = EnumState::Running;
+    self.m_state = EnumEngineState::Running;
     
     // For time step.
     let mut frame_start: Time = Time::from(chrono::Utc::now());
@@ -232,12 +230,12 @@ impl<'a> Engine {
       
       // Sync event polling.
       let mut result: Result<(), EnumEngineError> = Ok(());
-      self.m_layers_vec.iter_mut().rev()
+      self.m_layers.iter_mut().rev()
         .filter(|layer| {
           if !layer.is_sync_enabled() {
             return false;
           }
-          frame_counter % layer.get_sync_interval() == 0
+          layer.get_sync_interval() == 0 || frame_counter % layer.get_sync_interval() == 0
         })
         .all(|matching_layer| {
           result = matching_layer.on_sync_event();
@@ -248,12 +246,12 @@ impl<'a> Engine {
       result?;
       
       // Update layers.
-      for layer in self.m_layers_vec.iter_mut().rev() {
+      for layer in self.m_layers.iter_mut().rev() {
         layer.on_update(self.m_time_step)?;
       }
       
       // Render layers.
-      for layer in self.m_layers_vec.iter_mut().rev() {
+      for layer in self.m_layers.iter_mut().rev() {
         layer.on_render()?;
       }
       
@@ -279,12 +277,138 @@ impl<'a> Engine {
     return Ok(());
   }
   
+  pub fn get_window_ref(&self) -> &Window {
+    return &self.m_window;
+  }
+  
+  pub fn get_window_mut(&mut self) -> &mut Window {
+    return &mut self.m_window;
+  }
+  
+  pub fn get_renderer_ref(&self) -> &Renderer {
+    return &self.m_renderer;
+  }
+  
+  pub fn get_renderer_mut(&mut self) -> &mut Renderer {
+    return &mut self.m_renderer;
+  }
+  
+  pub fn free(&mut self) -> Result<(), EnumEngineError> {
+    self.m_state = EnumEngineState::Deleting;
+    
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down layers...");
+    
+    // Free all layers in reverse.
+    for layer in self.m_layers.iter_mut().rev() {
+      log!("INFO", "[Engine] -->\t Deleting layer: {0}", layer);
+      layer.free()?;
+    }
+    
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Shut down layers successfully");
+    
+    self.m_state = EnumEngineState::Deleted;
+    return Ok(());
+  }
+  
+  pub fn panic_shutdown(mut self, error: EnumEngineError) {
+    log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Dropping engine...");
+    
+    match self.free() {
+      Ok(_) => {
+        self.m_state = EnumEngineState::ShutDown;
+        log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Dropped engine successfully");
+      }
+      #[allow(unused)]
+      Err(err) => {
+        log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Error while dropping engine : Engine \
+        returned with error => {:?} while trying to delete app!", err);
+      }
+    }
+    panic!("{}", format!("Fatal error occurred : {0:?}", error))
+  }
+  
+  pub fn push_layer(&mut self, mut new_layer: Layer, apply_on_push: bool) -> Result<(), EnumEngineError> {
+    if apply_on_push {
+      new_layer.apply()?;
+    }
+    
+    log!("INFO", "[Engine] -->\t Pushed layer: {0}", new_layer);
+    self.m_layers.push(new_layer);
+    self.m_layers.sort_unstable();
+    return Ok(());
+  }
+  
+  pub fn pop_layer(&mut self) -> Result<Option<Layer>, EnumEngineError> {
+    if self.m_layers.is_empty() {
+      return Ok(None);
+    }
+    
+    log!("INFO", "[Engine] -->\t Popping layer: {0}", self.m_layers.last().unwrap().m_name);
+    let layer_popped = self.m_layers.pop();
+    self.m_layers.sort_unstable();
+    
+    return Ok(layer_popped);
+  }
+  
+  pub fn get_time_step(&self) -> f64 {
+    return self.m_time_step;
+  }
+  
+  pub fn is_key_from(key: EnumKey, state: EnumAction) -> bool {
+    let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
+    return Input::get_key_state(&engine.m_window, key, state);
+  }
+  
+  pub fn is_mouse_btn_from(button: EnumMouseButton, state: EnumAction) -> bool {
+    let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
+    return Input::get_mouse_button_state(&engine.m_window, button, state);
+  }
+  
+  pub fn get_log_file() -> &'a std::fs::File {
+    return &S_LOG_FILE_PTR;
+  }
+  
+  ////////////////////////////// PRIVATE FUNCTIONS ////////////////////////////////
+  
+  pub(crate) fn enable_async_polling_for(requested_layer: &mut Layer) {
+    let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
+    
+    // If a window context exists at this moment in order to enable polling for it.
+    if !engine.m_window.is_applied() {
+      log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Cannot enable polling for {0} in window, No active window!",
+        requested_layer.get_poll_mask());
+      return;
+    }
+    let poll_mask = requested_layer.get_poll_mask();
+    
+    if engine.m_layers.iter().any(|layer| layer.poll_includes(poll_mask)) {
+      engine.m_window.enable_polling_for(poll_mask);
+      engine.m_window.enable_callback_for(poll_mask);
+    }
+  }
+  
+  #[allow(unused)]
+  pub(crate) fn disable_async_polling_for(poll_mask: EnumEventMask) {
+    let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
+    
+    // If a window context exists at this moment in order to enable polling for it.
+    if !engine.m_window.is_applied() {
+      log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Cannot enable polling for {0} in window, No active window!", poll_mask);
+      return;
+    }
+    
+    // If no other layer polls for the specific poll mask, remove polling for those types of events.
+    if engine.m_layers.iter().all(|layer| !layer.poll_includes(poll_mask)) {
+      engine.m_window.disable_polling(poll_mask);
+    }
+  }
+  
   pub(crate) fn on_async_event(event: &EnumEvent) {
     let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
     
     // Async event polling.
     let mut each_result: Result<bool, EnumEngineError> = Ok(false);
-    let _result = engine.m_layers_vec.iter_mut().rev()
+    let _result = engine.m_layers.iter_mut().rev()
       .filter(|layer| layer.polls(&event))
       .all(|matching_layer| {
         // Mandatory event handling, ignoring if the event has been processed or not.
@@ -305,108 +429,14 @@ impl<'a> Engine {
     }
   }
   
-  pub fn free(&mut self) -> Result<(), EnumEngineError> {
-    self.m_state = EnumState::Deleting;
-    
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Shutting down app layers...");
-    
-    // Free all layers expect renderer and window in reverse.
-    let matched_layers =
-      self.m_layers_vec.iter_mut().rev().filter(|layer| !layer.is_type(EnumLayerType::Renderer) &&
-        !layer.is_type(EnumLayerType::Window));
-    
-    for layer in matched_layers {
-      log!("INFO", "[Engine] -->\t Deleting layer: {0}", layer);
-      layer.free()?;
-    }
-    
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Shut down app layers successfully");
-    
-    self.m_renderer.free()?;
-    self.m_window.free()?;
-    
-    self.m_state = EnumState::Deleted;
-    return Ok(());
-  }
-  
-  pub fn panic_shutdown(error: EnumEngineError) {
-    let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Dropping engine...");
-    
-    match engine.free() {
-      Ok(_) => {
-        engine.m_state = EnumState::ShutDown;
-        log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Dropped engine successfully");
-      }
-      #[allow(unused)]
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Engine] -->\t Error while dropping engine : Engine \
-        returned with error => {:?} while trying to delete app!", err);
-      }
-    }
-    panic!("{}", format!("Fatal error occurred : {0:?}", error))
-  }
-  
-  pub fn push_layer(mut new_layer: Layer) -> Result<(), EnumEngineError> {
-    let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
-    
-    new_layer.submit()?;
-    // If this was the first layer requesting polling with this poll mask, enable polling for this type of event.
-    if engine.m_layers_vec.iter().all(|layer| !layer.poll_includes(new_layer.get_poll_mask())) {
-      engine.m_window.enable_polling(new_layer.get_poll_mask());
-    }
-    
-    log!("INFO", "[Engine] -->\t Pushed layer: {0}", new_layer);
-    engine.m_layers_vec.push(new_layer);
-    engine.m_layers_vec.sort_unstable();
-    return Ok(());
-  }
-  
-  pub fn pop_layer(popped_layer: &mut Layer) -> Result<bool, EnumEngineError> {
-    let engine = unsafe { &mut *S_ENGINE.expect("Cannot push layer, engine not active!") };
-    
-    let position_found = engine.m_layers_vec.iter_mut().position(|layer| layer == popped_layer);
-    if position_found.is_some() {
-      log!("INFO", "[Engine] -->\t Popping layer: {0}", popped_layer.m_name);
-      engine.m_layers_vec.remove(position_found.unwrap());
-      engine.m_layers_vec.sort_unstable();
-      
-      // If no other layer polls for the specific poll mask, remove polling for those types of events.
-      if engine.m_layers_vec.iter().all(|layer| !layer.poll_includes(layer.get_poll_mask())) {
-        engine.m_window.disable_polling(popped_layer.get_poll_mask());
-      }
-      return Ok(true);
-    }
-    return Ok(false);
-  }
-  
-  pub fn get_log_file() -> &'a std::fs::File {
-    return &S_LOG_FILE_PTR;
-  }
-  
-  pub fn get_time_step() -> f64 {
-    let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
-    return engine.m_time_step;
-  }
-  
-  pub fn get_active_renderer() -> &'a mut Renderer {
+  pub(crate) fn get_active_renderer() -> &'a mut Renderer {
     let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
     return &mut engine.m_renderer;
   }
   
-  pub fn get_active_window() -> &'a mut Window {
+  pub(crate) fn get_active_window() -> &'a mut Window {
     let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
     return &mut engine.m_window;
-  }
-  
-  pub fn is_key(key: EnumKey, state: EnumAction) -> bool {
-    let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
-    return Input::get_key_state(&engine.m_window, key, state);
-  }
-  
-  pub fn is_mouse_btn(button: EnumMouseButton, state: EnumAction) -> bool {
-    let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
-    return Input::get_mouse_button_state(&engine.m_window, button, state);
   }
   
   fn set_singleton(engine: &mut Engine) -> () {
@@ -420,7 +450,7 @@ impl Drop for Engine {
     
     match self.free() {
       Ok(_) => {
-        self.m_state = EnumState::ShutDown;
+        self.m_state = EnumEngineState::ShutDown;
         log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Dropped engine successfully");
       }
       #[allow(unused)]
@@ -453,7 +483,7 @@ impl TraitLayer for EmptyApp {
     return EnumLayerType::App;
   }
   
-  fn on_submit(&mut self) -> Result<(), EnumEngineError> {
+  fn on_apply(&mut self) -> Result<(), EnumEngineError> {
     return Ok(());
   }
   
@@ -473,7 +503,7 @@ impl TraitLayer for EmptyApp {
     return Ok(());
   }
   
-  fn on_free(&mut self) -> Result<(), EnumEngineError> {
+  fn free(&mut self) -> Result<(), EnumEngineError> {
     return Ok(());
   }
   

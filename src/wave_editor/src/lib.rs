@@ -24,120 +24,232 @@
 
 pub extern crate wave_core;
 
-use wave_core::{camera, Engine, EnumEngineError, events, input, math};
+use wave_core::{camera, Engine, EnumEngineError, input, math};
 use wave_core::assets::asset_loader;
 use wave_core::assets::renderable_assets::{EnumPrimitiveType, Mesh, REntity};
+#[allow(unused)]
 use wave_core::dependencies::chrono;
+use wave_core::events::{EnumEvent, EnumEventMask};
 use wave_core::graphics::renderer;
+use wave_core::graphics::renderer::Renderer;
 use wave_core::graphics::shader;
-use wave_core::layers::{EnumLayerType, TraitLayer};
+use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
+#[allow(unused)]
+use wave_core::layers::imgui_layer::ImguiLayer;
+#[allow(unused)]
+use wave_core::ui::ui_imgui::Imgui;
 use wave_core::utils::macros::logger::*;
+use wave_core::window::Window;
+
+static mut S_EDITOR: Option<*mut Editor> = None;
+
+pub struct EditorLayer {
+  m_editor: *mut Editor,
+}
+
+impl EditorLayer {
+  pub fn new(editor: &mut Editor) -> Self {
+    return Self {
+      m_editor: editor
+    };
+  }
+}
+
+impl TraitLayer for EditorLayer {
+  fn get_type(&self) -> EnumLayerType {
+    return unsafe { (*self.m_editor).get_type() };
+  }
+  
+  fn on_apply(&mut self) -> Result<(), EnumEngineError> {
+    return unsafe { (*self.m_editor).on_apply() };
+  }
+  
+  fn on_sync_event(&mut self) -> Result<(), EnumEngineError> {
+    return unsafe { (*self.m_editor).on_sync_event() };
+  }
+  
+  fn on_async_event(&mut self, event: &EnumEvent) -> Result<bool, EnumEngineError> {
+    return unsafe { (*self.m_editor).on_async_event(event) };
+  }
+  
+  fn on_update(&mut self, time_step: f64) -> Result<(), EnumEngineError> {
+    return unsafe { (*self.m_editor).on_update(time_step) };
+  }
+  
+  fn on_render(&mut self) -> Result<(), EnumEngineError> {
+    return unsafe { (*self.m_editor).on_render() };
+  }
+  
+  fn free(&mut self) -> Result<(), EnumEngineError> {
+    return unsafe { (*self.m_editor).free() };
+  }
+  
+  fn to_string(&self) -> String {
+    return unsafe { (*self.m_editor).to_string() };
+  }
+}
 
 pub struct Editor {
-  m_shaders: Vec<shader::Shader>,
-  m_renderable_assets: Vec<REntity>,
+  m_engine: Engine,
+  m_renderable_assets: Vec<(shader::Shader, Vec<REntity>)>,
   m_cameras: Vec<camera::Camera>,
   m_wireframe_on: bool,
 }
 
 impl Editor {
-  pub fn default() -> Self {
-    return Editor {
-      m_shaders: Vec::new(),
+  pub fn default() -> Result<Self, EnumEngineError> {
+    #[cfg(feature = "vulkan")]
+    {
+      let window = Window::new()?;
+      let renderer = Renderer::new(renderer::EnumRendererApi::Vulkan)?;
+      
+      return Ok(Editor {
+        m_engine: Engine::new(window, renderer, vec![])?,
+        m_shaders: Vec::new(),
+        m_renderable_assets: Vec::new(),
+        m_cameras: Vec::new(),
+        m_wireframe_on: true,
+      });
+    }
+    
+    #[cfg(not(feature = "vulkan"))]
+    {
+      let window = Window::new()?;
+      let renderer = Renderer::new(renderer::EnumRendererApi::OpenGL)?;
+      
+      return Ok(Editor {
+        m_engine: Engine::new(window, renderer, vec![])?,
+        m_renderable_assets: Vec::new(),
+        m_cameras: Vec::new(),
+        m_wireframe_on: true,
+      });
+    }
+  }
+  
+  pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Result<Self, EnumEngineError> {
+    return Ok(Editor {
+      m_engine: Engine::new(window, renderer, app_layers)?,
       m_renderable_assets: Vec::new(),
       m_cameras: Vec::new(),
       m_wireframe_on: true,
-    };
+    });
+  }
+  
+  pub fn run(&mut self) -> Result<(), EnumEngineError> {
+    let mut editor_layer = Layer::new("Editor Layer", EditorLayer::new(self));
+    
+    // Making editor poll input events during async call.
+    editor_layer.enable_async_polling_for(EnumEventMask::Input | EnumEventMask::WindowClose);
+    // Make editor synchronously poll on each frame interval (after async), for movement and spontaneous event handling.
+    editor_layer.enable_sync_polling();
+    editor_layer.set_sync_interval(EnumSyncInterval::EveryFrame)?;
+    
+    self.m_engine.push_layer(editor_layer, false)?;
+    
+    unsafe { S_EDITOR = Some(self) };
+    
+    return self.m_engine.run();
   }
 }
 
 impl TraitLayer for Editor {
   fn get_type(&self) -> EnumLayerType {
-    return EnumLayerType::App;
+    return EnumLayerType::Editor;
   }
   
-  fn on_submit(&mut self) -> Result<(), EnumEngineError> {
-    let window = Engine::get_active_window();
-    let renderer = Engine::get_active_renderer();
+  fn on_apply(&mut self) -> Result<(), EnumEngineError> {
+    let aspect_ratio: f32 = self.m_engine.get_window_mut().get_aspect_ratio();
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
     let vertex_shader = shader::ShaderStage::default(shader::EnumShaderStage::Vertex);
     let fragment_shader = shader::ShaderStage::default(shader::EnumShaderStage::Fragment);
+    let geometry_shader = shader::ShaderStage::default(shader::EnumShaderStage::Geometry);
     
-    let shader = shader::Shader::new(vec![vertex_shader, fragment_shader])?;
-    self.m_shaders.push(shader);
+    let mut shader = shader::Shader::new(vec![vertex_shader, fragment_shader, geometry_shader])?;
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending shaders to GPU...");
     
     // Sourcing and compilation.
-    self.m_shaders[0].submit()?;
+    shader.apply()?;
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Shaders sent to GPU successfully");
-    let aspect_ratio: f32 = window.get_aspect_ratio();
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending asset 'awp.obj' to GPU...");
+    
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
     
     let asset = Box::new(Mesh::new(asset_loader::AssetLoader::new("awp.obj")?));
+    let mut awp = REntity::new(asset, EnumPrimitiveType::Mesh(false));
     
-    self.m_renderable_assets.push(REntity::new(asset, EnumPrimitiveType::Mesh(false)));
-    self.m_renderable_assets[0].translate(math::Vec3::new(&[10.0, -10.0, 50.0]));
-    self.m_renderable_assets[0].rotate(math::Vec3::new(&[90.0, -90.0, 0.0]));
-    self.m_renderable_assets[0].submit(&mut self.m_shaders[0])?;
+    awp.translate(math::Vec3::new(&[10.0, -10.0, 50.0]));
+    awp.rotate(math::Vec3::new(&[90.0, -90.0, 0.0]));
+    awp.apply(&mut shader)?;
+    
+    let asset = Box::new(Mesh::new(asset_loader::AssetLoader::new("sphere.obj")?));
+    let mut sphere = REntity::new(asset, EnumPrimitiveType::Mesh(false));
+    
+    sphere.translate(math::Vec3::new(&[0.0, 0.0, 5.0]));
+    sphere.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
+    sphere.apply(&mut shader)?;
+    
+    self.m_renderable_assets.push((shader, vec![awp, sphere]));
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
-    self.m_cameras.push(camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
-    renderer.submit_camera(&self.m_cameras[0])?;
     
-    // #[cfg(feature = "imgui")]
-    // {
-    //   let mut imgui_layer: Layer = Layer::new("Imgui", ImguiLayer::new(Imgui::new(renderer.m_type, window)));
-    //   imgui_layer.enable_async_polling_for(EnumEventMask::c_input | EnumEventMask::c_window);
-    //   Engine::push_layer(imgui_layer)?;
-    // }
+    self.m_cameras.push(camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
+    
+    let renderer = self.m_engine.get_renderer_mut();
+    renderer.apply_camera(&self.m_cameras[0])?;
+    
+    
+    // let mut imgui_layer: Layer = Layer::new("Imgui",
+    //   ImguiLayer::new(Imgui::new(self.m_engine.get_renderer_mut().m_type, self.m_engine.get_window_mut())));
+    // imgui_layer.enable_async_polling_for(EnumEventMask::Input | EnumEventMask::Window);
+    // self.m_engine.push_layer(imgui_layer, true)?;
     
     // Show our window when we are ready to present.
+    let window = self.m_engine.get_window_mut();
     window.show();
     return Ok(());
   }
   
   fn on_sync_event(&mut self) -> Result<(), EnumEngineError> {
     // Process synchronous events.
-    let time_step = Engine::get_time_step();
+    let time_step = self.m_engine.get_time_step();
     
-    if Engine::is_key(input::EnumKey::W, input::EnumAction::Held) {
-      self.m_renderable_assets[0].translate(math::Vec3::new(&[0.0, 10.0 * time_step as f32, 0.0]));
+    if Engine::is_key_from(input::EnumKey::W, input::EnumAction::Held) {
+      self.m_renderable_assets[0].1[0].translate(math::Vec3::new(&[0.0, 10.0 * time_step as f32, 0.0]));
     }
-    if Engine::is_key(input::EnumKey::A, input::EnumAction::Held) {
-      self.m_renderable_assets[0].translate(math::Vec3::new(&[-10.0 * time_step as f32, 0.0, 0.0]));
+    if Engine::is_key_from(input::EnumKey::A, input::EnumAction::Held) {
+      self.m_renderable_assets[0].1[0].translate(math::Vec3::new(&[-10.0 * time_step as f32, 0.0, 0.0]));
     }
-    if Engine::is_key(input::EnumKey::S, input::EnumAction::Held) {
-      self.m_renderable_assets[0].translate(math::Vec3::new(&[0.0, -10.0 * time_step as f32, 0.0]));
+    if Engine::is_key_from(input::EnumKey::S, input::EnumAction::Held) {
+      self.m_renderable_assets[0].1[0].translate(math::Vec3::new(&[0.0, -10.0 * time_step as f32, 0.0]));
     }
-    if Engine::is_key(input::EnumKey::D, input::EnumAction::Held) {
-      self.m_renderable_assets[0].translate(math::Vec3::new(&[10.0 * time_step as f32, 0.0, 0.0]));
+    if Engine::is_key_from(input::EnumKey::D, input::EnumAction::Held) {
+      self.m_renderable_assets[0].1[0].translate(math::Vec3::new(&[10.0 * time_step as f32, 0.0, 0.0]));
     }
-    if Engine::is_key(input::EnumKey::Up, input::EnumAction::Held) {
-      self.m_renderable_assets[0].rotate(math::Vec3::new(&[0.0, 25.0 * time_step as f32, 0.0]));
+    if Engine::is_key_from(input::EnumKey::Up, input::EnumAction::Held) {
+      self.m_renderable_assets[0].1[0].rotate(math::Vec3::new(&[0.0, 25.0 * time_step as f32, 0.0]));
     }
-    if Engine::is_key(input::EnumKey::Left, input::EnumAction::Held) {
-      self.m_renderable_assets[0].rotate(math::Vec3::new(&[-25.0 * time_step as f32, 0.0, 0.0]));
+    if Engine::is_key_from(input::EnumKey::Left, input::EnumAction::Held) {
+      self.m_renderable_assets[0].1[0].rotate(math::Vec3::new(&[-25.0 * time_step as f32, 0.0, 0.0]));
     }
-    if Engine::is_key(input::EnumKey::Down, input::EnumAction::Held) {
-      self.m_renderable_assets[0].rotate(math::Vec3::new(&[0.0, -25.0 * time_step as f32, 0.0]));
+    if Engine::is_key_from(input::EnumKey::Down, input::EnumAction::Held) {
+      self.m_renderable_assets[0].1[0].rotate(math::Vec3::new(&[0.0, -25.0 * time_step as f32, 0.0]));
     }
-    if Engine::is_key(input::EnumKey::Right, input::EnumAction::Held) {
-      self.m_renderable_assets[0].rotate(math::Vec3::new(&[25.0 * time_step as f32, 0.0, 0.0]));
+    if Engine::is_key_from(input::EnumKey::Right, input::EnumAction::Held) {
+      self.m_renderable_assets[0].1[0].rotate(math::Vec3::new(&[25.0 * time_step as f32, 0.0, 0.0]));
     }
     return Ok(());
   }
   
   
-  fn on_async_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumEngineError> {
+  fn on_async_event(&mut self, event: &EnumEvent) -> Result<bool, EnumEngineError> {
     // Process asynchronous events.
     return match event {
-      events::EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
-        let renderer = Engine::get_active_renderer();
+      EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
+        let renderer = self.m_engine.get_renderer_mut();
         match (key, action, repeat_count, modifiers) {
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
             renderer.toggle(renderer::EnumRendererOption::Wireframe(!self.m_wireframe_on))?;
@@ -150,8 +262,10 @@ impl TraitLayer for Editor {
           }
           (input::EnumKey::Delete, input::EnumAction::Pressed, _, m) => {
             if m.contains(input::EnumModifiers::Shift.intersection(input::EnumModifiers::Alt)) {
-              for r_asset in self.m_renderable_assets.iter() {
-                renderer.dequeue(r_asset.get_uuid())?;
+              for (_, r_assets) in self.m_renderable_assets.iter() {
+                for r_asset in r_assets.iter() {
+                  renderer.dequeue(r_asset.get_uuid())?;
+                }
               }
             }
             return Ok(true);
@@ -159,8 +273,8 @@ impl TraitLayer for Editor {
           _ => Ok(false)
         }
       }
-      events::EnumEvent::WindowCloseEvent(_time) => {
-        self.on_free()?;
+      EnumEvent::WindowCloseEvent(_time) => {
+        self.free()?;
         Ok(true)
       }
       _ => Ok(false)
@@ -168,9 +282,14 @@ impl TraitLayer for Editor {
   }
   
   fn on_update(&mut self, _time_step: f64) -> Result<(), EnumEngineError> {
-    if self.m_renderable_assets[0].has_changed() {
+    for (linked_shader, r_asset) in self.m_renderable_assets.iter_mut() {
       // Update transform Ubo in associated shader.
-      self.m_renderable_assets[0].resend_transform(&mut self.m_shaders[0])?;
+      r_asset.iter_mut().for_each(|asset| {
+        let _ = asset.apply_transform(linked_shader)
+          .map_err(|_| {
+            log!(EnumLogColor::Red, "ERROR", "Error occurred when apply transform in on_update(), Error => {0}", err)
+          });
+      });
     }
     return Ok(());
   }
@@ -179,22 +298,24 @@ impl TraitLayer for Editor {
     return Ok(());
   }
   
-  fn on_free(&mut self) -> Result<(), EnumEngineError> {
+  fn free(&mut self) -> Result<(), EnumEngineError> {
+    for (linked_shader, _) in self.m_renderable_assets.iter_mut() {
+      linked_shader.free()?;
+    }
     return Ok(());
   }
   
   fn to_string(&self) -> String {
     let mut final_str: String;
-    final_str = format!("\n{0:115}Shaders: [{1}]\n{0:115}", "", self.m_shaders.len());
     
-    for (position, shader) in self.m_shaders.iter().enumerate() {
-      final_str += &format!("[{1}]:\n{0:117}{2}", "", position + 1, shader);
-    }
+    final_str = format!("\n{0:115}Assets: [{1}]\n{0:115}", "", self.m_renderable_assets.len());
     
-    final_str += &format!("\n{0:115}Renderable assets: [{1}]\n{0:115}", "", self.m_renderable_assets.len());
-    
-    for (position, r_asset) in self.m_renderable_assets.iter().enumerate() {
-      final_str += &format!("[{1}]:\n{0:117}{2}", "", position + 1, r_asset);
+    for (position, (linked_shader, r_asset_vec)) in self.m_renderable_assets.iter().enumerate() {
+      final_str += &format!("[{1}]:\n{0:117}Associated shader:\n{0:119}{2}\nAssets\n{0:119}", "",
+        position + 1, linked_shader);
+      for r_asset in r_asset_vec.iter() {
+        final_str += &format!("[{1}]:\n{0:119}{2}", "", position + 1, r_asset);
+      }
     }
     
     return final_str;

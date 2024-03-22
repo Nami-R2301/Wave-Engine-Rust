@@ -40,10 +40,10 @@ impl ImguiLayer {
 
 impl TraitLayer for ImguiLayer {
   fn get_type(&self) -> EnumLayerType {
-    return EnumLayerType::Imgui;
+    return EnumLayerType::Overlay;
   }
   
-  fn on_submit(&mut self) -> Result<(), EnumEngineError> {
+  fn on_apply(&mut self) -> Result<(), EnumEngineError> {
     return Ok(());
   }
   
@@ -63,7 +63,7 @@ impl TraitLayer for ImguiLayer {
     return Ok(self.m_ui.on_render());
   }
   
-  fn on_free(&mut self) -> Result<(), EnumEngineError> {
+  fn free(&mut self) -> Result<(), EnumEngineError> {
     return Ok(());
   }
   

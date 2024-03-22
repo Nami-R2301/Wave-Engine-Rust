@@ -27,7 +27,7 @@ use wave_editor::wave_core::graphics::color::Color;
 #[test]
 fn test_color_shifting() {
   let color = Color::default();
-  let new_color = Color::from(0xFFFF00FF);
+  let new_color = Color::from(0xFF00FF00);
   
   assert_eq!(color, new_color);
   

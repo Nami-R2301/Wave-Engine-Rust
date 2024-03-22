@@ -27,9 +27,11 @@
 // Rendering and shader compilation.
 #[cfg(feature = "vulkan")]
 pub extern crate ash;
+#[cfg(feature = "vulkan")]
+pub extern crate shaderc;
+
 pub extern crate gl;
 pub extern crate gl46;
-pub extern crate shaderc;
 
 // Windowing and UI.
 pub extern crate glfw;

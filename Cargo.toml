@@ -5,7 +5,8 @@ edition = "2021"
 authors = ["Nami Reghbati"]
 
 [dependencies]
-wave-editor = {path = "src/wave_editor", features = ["debug", "imgui", "vulkan"]}
+wave-core = {path = "src/wave_core", features = ["debug"]}
+wave-editor = {path = "src/wave_editor"}
 
 [[bin]]
 name = "wave-engine"

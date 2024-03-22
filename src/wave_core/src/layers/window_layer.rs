@@ -46,10 +46,10 @@ impl TraitLayer for WindowLayer {
     return EnumLayerType::Window;
   }
   
-  fn on_submit(&mut self) -> Result<(), EnumEngineError> {
+  fn on_apply(&mut self) -> Result<(), EnumEngineError> {
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Creating window...");
     unsafe {
-      (*self.m_context).submit()?
+      (*self.m_context).apply()?
     };
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Created window successfully");
     return Ok(());
@@ -76,7 +76,7 @@ impl TraitLayer for WindowLayer {
     return Ok(());
   }
   
-  fn on_free(&mut self) -> Result<(), EnumEngineError> {
+  fn free(&mut self) -> Result<(), EnumEngineError> {
     return unsafe {
       (*self.m_context).free().map_err(|err| EnumEngineError::from(err))
     };

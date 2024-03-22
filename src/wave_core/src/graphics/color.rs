@@ -41,7 +41,7 @@ impl Debug for Color {
 impl Color {
   pub fn default() -> Self {
     return Color {
-      m_rgba: 0xFFFF00FF  // Magenta.
+      m_rgba: 0xFF00FF00  // Green.
     }
   }
   

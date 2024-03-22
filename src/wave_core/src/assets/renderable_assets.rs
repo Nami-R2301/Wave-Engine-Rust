@@ -183,17 +183,18 @@ impl Mesh {
       m_submeshes: vec![],
     };
     
+    let mut new_id = rand::random::<u32>();
+    unsafe {
+      while S_ENTITIES_ID_CACHE.contains(&new_id) {
+        new_id = rand::random();
+      }
+    }
+    
     for (position, mesh) in data.mesh_iter().enumerate() {
       let mut vertices: Vec<Vertex> = Vec::new();
       vertices.resize(mesh.num_vertices as usize, Vertex::default());
       
       for (position, vertex) in mesh.vertex_iter().enumerate() {
-        let mut new_id = rand::random::<u32>();
-        unsafe {
-          while S_ENTITIES_ID_CACHE.contains(&new_id) {
-            new_id = rand::random();
-          }
-        }
         vertices[position].m_id = new_id;
         vertices[position].m_position = Vec3::new(&[vertex.x, vertex.y, vertex.z]);
       }
@@ -371,7 +372,7 @@ impl REntity {
     self.m_changed = true;
   }
   
-  pub fn resend_transform(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
+  pub fn apply_transform(&mut self, shader_associated: &Shader) -> Result<(), renderer::EnumRendererError> {
     if !self.m_sent {
       log!(EnumLogColor::Red, "ERROR", "[RAssets] -->\t Cannot update shader ({0}) of entity, entity not sent previously!",
         shader_associated.get_id());
@@ -387,7 +388,7 @@ impl REntity {
     return Ok(());
   }
   
-  pub fn submit(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
+  pub fn apply(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
     let renderer = Engine::get_active_renderer();
     
     return match renderer.enqueue(self, shader_associated) {
@@ -408,17 +409,20 @@ impl REntity {
     todo!()
   }
   
-  pub fn free(&mut self, _shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
-    let renderer = Engine::get_active_renderer();
-    
-    return match renderer.dequeue(self.m_renderer_id) {
-      Ok(_) => {
-        self.m_sent = false;
-        self.m_changed = false;
-        Ok(())
-      }
-      Err(err) => Err(err)
-    };
+  pub fn free(&mut self) -> Result<(), renderer::EnumRendererError> {
+    if self.m_sent {
+      let renderer = Engine::get_active_renderer();
+      
+      return match renderer.dequeue(self.m_renderer_id) {
+        Ok(_) => {
+          self.m_sent = false;
+          self.m_changed = false;
+          Ok(())
+        }
+        Err(err) => Err(err)
+      };
+    }
+    return Ok(());
   }
   
   pub fn is_sent(&self) -> bool {

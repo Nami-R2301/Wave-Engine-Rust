@@ -23,7 +23,7 @@
 */
 
 use wave_editor::wave_core::{EmptyApp, Engine, EnumEngineError};
-use wave_editor::wave_core::graphics::renderer::{EnumApi, Renderer};
+use wave_editor::wave_core::graphics::renderer::{EnumRendererApi, Renderer};
 use wave_editor::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStage, Shader, ShaderStage};
 use wave_editor::wave_core::layers::Layer;
 
@@ -35,9 +35,9 @@ use wave_editor::wave_core::window::Window;
 fn test_shader_send() -> Result<(), EnumEngineError> {
   let layer = Layer::new("Shader send", EmptyApp::default());
   let window = Window::new()?;
-  let renderer = Renderer::new(EnumApi::OpenGL)?;
-  let mut engine = Engine::new(window, renderer, layer)?;
-  engine.submit()?;
+  let renderer = Renderer::new(EnumRendererApi::OpenGL)?;
+  let mut engine = Engine::new(window, renderer, vec![layer])?;
+  engine.apply()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
     EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
@@ -47,7 +47,7 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
   let mut result = Shader::new(vec![vertex_shader, fragment_shader])?;
   
   // Sourcing and compilation.
-  return match result.submit() {
+  return match result.apply() {
     Ok(_) => { Ok(()) }
     Err(err) => { Err(EnumEngineError::from(err)) }
   };
@@ -58,9 +58,9 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
 fn test_load_uniforms() -> Result<(), EnumEngineError> {
   let layer = Layer::new("Shader load", EmptyApp::default());
   let window = Window::new()?;
-  let renderer = Renderer::new(EnumApi::OpenGL)?;
-  let mut engine = Engine::new(window, renderer, layer)?;
-  engine.submit()?;
+  let renderer = Renderer::new(EnumRendererApi::OpenGL)?;
+  let mut engine = Engine::new(window, renderer, vec![layer])?;
+  engine.apply()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
     EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
@@ -70,7 +70,7 @@ fn test_load_uniforms() -> Result<(), EnumEngineError> {
   let mut new_shader = Shader::new(vec![vertex_shader, fragment_shader])?;
   
   // Sourcing and compilation.
-  new_shader.submit()?;
+  new_shader.apply()?;
   
   // Load uniforms.
   return match  new_shader.upload_data("u_model_matrix",

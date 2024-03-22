@@ -22,7 +22,9 @@
  SOFTWARE.
 */
 
+#[cfg(feature = "debug")]
 use wave_editor::wave_core::Engine;
+#[cfg(feature = "debug")]
 use wave_editor::wave_core::dependencies::chrono;
 use wave_editor::wave_core::utils::macros::logger::{*};
 

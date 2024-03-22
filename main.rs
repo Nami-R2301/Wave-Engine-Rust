@@ -25,7 +25,6 @@
 // Wave core.
 use wave_editor::wave_core::*;
 use wave_editor::wave_core::layers::*;
-use wave_editor::wave_core::events::*;
 use wave_editor::wave_core::graphics::renderer::{self};
 use wave_editor::wave_core::window::{self};
 
@@ -34,31 +33,28 @@ use wave_editor::Editor;
 
 fn main() -> Result<(), EnumEngineError> {
   
-  // Instantiate an app layer containing our app and essentially making the layer own it.
-  let mut my_app: Layer = Layer::new("Wave Engine Editor", Editor::default());
-  // Making editor poll input events during async call.
-  my_app.enable_async_polling_for(EnumEventMask::Input | EnumEventMask::WindowClose);
-  // Make editor synchronously poll on each frame interval (after async), for movement and spontaneous event handling.
-  my_app.enable_sync_polling();
-  my_app.set_sync_interval(EnumSyncInterval::Every(10))?;
-  
   let mut window = window::Window::new()?;
-  window.window_hint(window::EnumWindowOption::RendererApi(renderer::EnumApi::OpenGL));
+  window.window_hint(window::EnumWindowOption::RendererApi(renderer::EnumRendererApi::OpenGL));
   window.window_hint(window::EnumWindowOption::WindowMode(window::EnumWindowMode::Windowed));
   window.window_hint(window::EnumWindowOption::Resizable(true));
   window.window_hint(window::EnumWindowOption::DebugApi(true));
   window.window_hint(window::EnumWindowOption::Maximized(true));
   
-  let mut renderer = renderer::Renderer::new(renderer::EnumApi::OpenGL)?;
-  renderer.renderer_hint(renderer::EnumRendererOption::ApiCallChecking(renderer::EnumCallCheckingType::Async));
+  let mut renderer = renderer::Renderer::new(renderer::EnumRendererApi::OpenGL)?;
+  renderer.renderer_hint(renderer::EnumRendererOption::ApiCallChecking(renderer::EnumCallCheckingType::SyncAndAsync));
   renderer.renderer_hint(renderer::EnumRendererOption::SRGB(true));
+  renderer.renderer_hint(renderer::EnumRendererOption::DepthTest(true));
+  renderer.renderer_hint(renderer::EnumRendererOption::Blending(true, None));
   renderer.renderer_hint(renderer::EnumRendererOption::Wireframe(true));
   
-  // Supply it to our engine. Engine will NOT construct app and will only init the engine
-  // with the supplied GPU API of choice as its renderer. Note that passing None will default to Vulkan if
-  // supported, otherwise falling back to OpenGL.
-  let mut engine: Engine = Engine::new(window, renderer, my_app)?;
+  let main_app_layer: Layer = Layer::new("My App", EmptyApp::default());
   
-  // Init and execute the app in game loop and return if there's a close event or if an error occurred.
-  return engine.run();
+  // Supply all app layers to our editor. This will NOT 'apply()' editor nor engine, only filling in the structs.
+  // Note that calling 'default()' will default to Vulkan for the windowing and rendering context if supported,
+  // otherwise falling back to OpenGL.
+  let mut editor: Editor = Editor::new(window, renderer, vec![main_app_layer])?;
+  
+  // Applying and executing the editor in game loop. Returning upon a close event or if an error occurred.
+  return editor.run();
+  // Dropping all layers (including editor), followed by all engine components.
 }

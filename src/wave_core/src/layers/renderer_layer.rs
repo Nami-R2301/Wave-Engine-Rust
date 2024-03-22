@@ -44,13 +44,13 @@ impl TraitLayer for RendererLayer {
     return EnumLayerType::Renderer;
   }
   
-  fn on_submit(&mut self) -> Result<(), EnumEngineError> {
+  fn on_apply(&mut self) -> Result<(), EnumEngineError> {
     log!(EnumLogColor::Purple, "INFO", "[Engine] -->\t Setting up renderer...");
     
     // Enable features BEFORE finalizing context.
     unsafe {
       // Finalize graphics context with all hinted features to prepare for frame presentation.
-      (*self.m_context).submit(Engine::get_active_window())?;
+      (*self.m_context).apply(Engine::get_active_window())?;
       
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Setup renderer successfully");
     }
@@ -87,7 +87,7 @@ impl TraitLayer for RendererLayer {
     }
   }
   
-  fn on_free(&mut self) -> Result<(), EnumEngineError> {
+  fn free(&mut self) -> Result<(), EnumEngineError> {
     return unsafe {
       (*self.m_context).free().map_err(|err| EnumEngineError::from(err))
     }

@@ -22,12 +22,19 @@
  SOFTWARE.
 */
 
+#[cfg(feature = "vulkan")]
 use crate::dependencies::ash::vk;
 
+#[cfg(feature = "vulkan")]
 use crate::utils::macros::logger::*;
+
+#[cfg(feature = "vulkan")]
 use crate::{Engine};
+
+#[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::renderer::VkContext;
 
+#[cfg(feature = "vulkan")]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 enum EnumState {
   NotCreated,
@@ -35,8 +42,9 @@ enum EnumState {
   Deleted,
 }
 
+#[cfg(feature = "vulkan")]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub enum EnumError {
+pub enum EnumVulkanBufferError {
   InvalidApi,
   InvalidVertexAttributeLocation,
   InvalidVertexBinding,
@@ -49,10 +57,12 @@ pub enum EnumError {
 }
 
 #[allow(unused)]
+#[cfg(feature = "vulkan")]
 pub(crate) struct VkVertexAttribute {
   pub(crate) m_attr_desc: vk::VertexInputAttributeDescription,
 }
 
+#[cfg(feature = "vulkan")]
 impl VkVertexAttribute {
   #[allow(unused)]
   pub(crate) fn default() -> Self {
@@ -62,7 +72,7 @@ impl VkVertexAttribute {
   }
   
   #[allow(unused)]
-  pub(crate) fn new(binding: u32, location: u32, format: vk::Format, offset: u32) -> Result<Self, EnumError> {
+  pub(crate) fn new(binding: u32, location: u32, format: vk::Format, offset: u32) -> Result<Self, EnumVulkanBufferError> {
     let vk_renderer = Engine::get_active_renderer()
       .get_api_handle()
       .downcast_mut::<VkContext>()
@@ -73,19 +83,19 @@ impl VkVertexAttribute {
     if location > physical_device_limits.max_vertex_input_attributes {
       log!(EnumLogColor::Red, "ERROR", "[VkBuffer] -->\t Cannot create VkVertexAttribute : Location \
       specified {0} exceeds the maximum physically supported on this device!", location);
-      return Err(EnumError::InvalidVertexAttributeLocation);
+      return Err(EnumVulkanBufferError::InvalidVertexAttributeLocation);
     }
     
     if binding > physical_device_limits.max_vertex_input_bindings {
       log!(EnumLogColor::Red, "ERROR", "[VkBuffer] -->\t Cannot create VkVertexAttribute : Binding \
       specified {0} exceeds the maximum physically supported on this device!", binding);
-      return Err(EnumError::InvalidVertexBinding);
+      return Err(EnumVulkanBufferError::InvalidVertexBinding);
     }
     
     if offset > physical_device_limits.max_vertex_input_attribute_offset {
       log!(EnumLogColor::Red, "ERROR", "[VkBuffer] -->\t Cannot create VkVertexAttribute : Offset \
       specified {0} exceeds the maximum physically supported on this device!", offset);
-      return Err(EnumError::InvalidVertexAttributeOffset);
+      return Err(EnumVulkanBufferError::InvalidVertexAttributeOffset);
     }
     
     return Ok(Self {
@@ -99,6 +109,7 @@ impl VkVertexAttribute {
   }
 }
 
+#[cfg(feature = "vulkan")]
 #[allow(unused)]
 pub(crate) struct VkVbo {
   m_state: EnumState,
@@ -108,6 +119,7 @@ pub(crate) struct VkVbo {
   m_buffer_info: vk::BufferCreateInfo,
 }
 
+#[cfg(feature = "vulkan")]
 impl VkVbo {
   #[allow(unused)]
   pub(crate) fn default() -> Self {
@@ -122,7 +134,7 @@ impl VkVbo {
   
   #[allow(unused)]
   pub(crate) fn new(alloc_size: usize, binding: u32, stride: u32, input_rate: vk::VertexInputRate,
-                    device: &mut ash::Device, concurrent_queues: Option<&[u32]>) -> Result<Self, EnumError> {
+                    device: &mut ash::Device, concurrent_queues: Option<&[u32]>) -> Result<Self, EnumVulkanBufferError> {
     let vk_renderer =  Engine::get_active_renderer()
       .get_api_handle()
       .downcast_mut::<VkContext>()
@@ -133,19 +145,19 @@ impl VkVbo {
     if binding > physical_device_limits.max_vertex_input_bindings {
       log!(EnumLogColor::Red, "ERROR", "[VkBuffer] -->\t Cannot create VkVbo : Binding \
       specified {0} exceeds the maximum physically supported on this device!", binding);
-      return Err(EnumError::InvalidVertexBinding);
+      return Err(EnumVulkanBufferError::InvalidVertexBinding);
     }
     
     if stride > physical_device_limits.max_vertex_input_binding_stride {
       log!(EnumLogColor::Red, "ERROR", "[VkBuffer] -->\t Cannot create VkVbo : Stride \
       specified {0} exceeds the maximum physically supported on this device!", stride);
-      return Err(EnumError::InvalidVertexStride);
+      return Err(EnumVulkanBufferError::InvalidVertexStride);
     }
     
     if alloc_size == 0 {
       log!(EnumLogColor::Red, "ERROR", "[VkBuffer] -->\t Cannot create VkVbo : Size \
       specified {0} must be greater than 0!", stride);
-      return Err(EnumError::InvalidVertexBufferSize);
+      return Err(EnumVulkanBufferError::InvalidVertexBufferSize);
     }
     
     let mut vbo_info = vk::BufferCreateInfo::default();
@@ -177,23 +189,23 @@ impl VkVbo {
         Err(err) => {
           log!(EnumLogColor::Red, "ERROR", "[VkBuffer] -->\t Cannot create Vulkan vertex buffer : \
           Vulkan returned with error => {err:?}");
-          Err(EnumError::VertexBufferCreationError)
+          Err(EnumVulkanBufferError::VertexBufferCreationError)
         }
       };
     }
   }
   
   #[allow(unused)]
-  pub(crate) fn bind(&mut self) -> Result<(), EnumError> {
+  pub(crate) fn bind(&mut self) -> Result<(), EnumVulkanBufferError> {
     todo!()
   }
   
   #[allow(unused)]
-  pub(crate) fn unbind(&mut self) -> Result<(), EnumError> {
+  pub(crate) fn unbind(&mut self) -> Result<(), EnumVulkanBufferError> {
     todo!()
   }
   
-  pub(crate) fn free(&mut self) -> Result<(), EnumError> {
+  pub(crate) fn free(&mut self) -> Result<(), EnumVulkanBufferError> {
     if self.m_state == EnumState::Deleted || self.m_state == EnumState::NotCreated {
       log!(EnumLogColor::Yellow, "WARN", "[VkBuffer] -->\t Cannot delete VkVbo : Already deleted \
       or not created in the first place!");
@@ -207,12 +219,14 @@ impl VkVbo {
   }
 }
 
+#[cfg(feature = "vulkan")]
 #[allow(unused)]
 pub(crate) struct VkVao {
   m_vbo_info: vk::PipelineVertexInputStateCreateInfo,
   m_attr_desc_array: Vec<VkVertexAttribute>,
 }
 
+#[cfg(feature = "vulkan")]
 impl VkVao {
   #[allow(unused)]
   pub(crate) fn default() -> Self {
@@ -223,10 +237,10 @@ impl VkVao {
   }
   
   #[allow(unused)]
-  pub(crate) fn new(attributes: Vec<VkVertexAttribute>, vbo_array: &[VkVbo]) -> Result<Self, EnumError> {
+  pub(crate) fn new(attributes: Vec<VkVertexAttribute>, vbo_array: &[VkVbo]) -> Result<Self, EnumVulkanBufferError> {
     for vbo in vbo_array {
       if !attributes.iter().all(|&ref element| element.m_attr_desc.binding == vbo.m_input_desc.binding) {
-        return Err(EnumError::InvalidVertexBinding);
+        return Err(EnumVulkanBufferError::InvalidVertexBinding);
       }
     }
     

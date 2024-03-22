@@ -58,9 +58,8 @@ pub mod ui_imgui {
   
   #[allow(unused)]
   use crate::log;
-  use crate::Engine;
   use crate::events::EnumEvent;
-  use crate::graphics::renderer::EnumApi;
+  use crate::graphics::renderer::EnumRendererApi;
   use crate::input::{EnumAction, EnumModifiers, EnumMouseButton};
   use crate::ui::EnumUIError;
   use crate::utils::Time;
@@ -95,12 +94,12 @@ pub mod ui_imgui {
   }
   
   impl Imgui {
-    pub fn new(api_choice: EnumApi, window: &mut Window) -> Self {
+    pub fn new(api_choice: EnumRendererApi, window: &mut Window) -> Self {
       return match api_choice {
-        EnumApi::OpenGL => Imgui {
+        EnumRendererApi::OpenGL => Imgui {
           m_api: Box::new(GlImgui::new(window))
         },
-        EnumApi::Vulkan => {
+        EnumRendererApi::Vulkan => {
           todo!()
         }
       };
@@ -180,6 +179,10 @@ pub mod ui_imgui {
           self.m_imgui_handle.io_mut().keys_down[*key as usize] = action == &EnumAction::Pressed;
           false
         }
+        EnumEvent::FramebufferEvent(x_size, y_size) => {
+          self.m_imgui_handle.io_mut().display_size = [*x_size as f32, *y_size as f32];
+          true
+        }
         _ => false
       };
     }
@@ -192,22 +195,19 @@ pub mod ui_imgui {
       self.m_last_frame = now;
       io.delta_time = delta.to_secs() as f32;
       
-      let window_size = Engine::get_active_window().m_window_resolution;
-      io.display_size = [window_size.unwrap().0 as f32, window_size.unwrap().1 as f32];
-      
       self.m_ui_handle = self.m_imgui_handle.new_frame();
       
-      unsafe {
-        (*self.m_ui_handle).dockspace_over_main_viewport();
-      }
+      // unsafe {
+      //   (*self.m_ui_handle).dockspace_over_main_viewport();
+      // }
       
       unsafe {
         (*self.m_ui_handle).window("Example Ui")
-          .bg_alpha(1.0)
+          .bg_alpha(0.0)
           .menu_bar(true)
           .resizable(true)
           .mouse_inputs(true)
-          .size([window_size.unwrap().0 as f32, window_size.unwrap().1 as f32], Condition::FirstUseEver)
+          .size(self.m_imgui_handle.io_mut().display_size, Condition::FirstUseEver)
           .position([(*self.m_window_handle).m_window_pos.unwrap_or((0, 0)).0 as f32,
             (*self.m_window_handle).m_window_pos.unwrap_or((0, 0)).1 as f32], Condition::FirstUseEver)
           .build(|| {

@@ -27,17 +27,16 @@ use std::collections::HashMap;
 
 use gl::types::{GLenum, GLsizei};
 
-use crate::{check_gl_call};
-use crate::utils::macros::logger::*;
-use crate::graphics::open_gl::buffer::{GLboolean, GLchar, GLfloat, GLint, GLuint};
-use crate::graphics::open_gl::renderer::S_GL_4_6;
-use crate::graphics::renderer::{EnumApi, Renderer};
-use crate::graphics::shader::{self, EnumShaderSource, EnumShaderStage, ShaderStage, TraitShader};
-use crate::math::Mat4;
-use crate::{S_ENGINE};
+use crate::check_gl_call;
 #[cfg(feature = "debug")]
 use crate::Engine;
-
+use crate::graphics::open_gl::buffer::{GLboolean, GLchar, GLfloat, GLint, GLuint};
+use crate::graphics::open_gl::renderer::S_GL_4_6;
+use crate::graphics::renderer::{EnumRendererApi, Renderer};
+use crate::graphics::shader::{self, EnumShaderSource, EnumShaderStage, ShaderStage, TraitShader};
+use crate::math::Mat4;
+use crate::S_ENGINE;
+use crate::utils::macros::logger::*;
 
 /*
 ///////////////////////////////////   OpenGL shader    ///////////////////////////////////
@@ -94,8 +93,8 @@ impl TraitShader for GlShader {
     todo!()
   }
   
-  fn get_name(&self) -> EnumApi {
-    return EnumApi::OpenGL;
+  fn get_name(&self) -> EnumRendererApi {
+    return EnumRendererApi::OpenGL;
   }
   
   fn source(&mut self) -> Result<(), shader::EnumShaderError> {
@@ -167,6 +166,9 @@ impl TraitShader for GlShader {
           EnumShaderStage::Fragment => {
             _shader_type_str = "fragment shader".to_string();
           }
+          EnumShaderStage::Geometry => {
+            _shader_type_str = "geometry shader".to_string();
+          }
           EnumShaderStage::Compute => {
             _shader_type_str = "compute shader".to_string();
           }
@@ -199,7 +201,7 @@ impl TraitShader for GlShader {
     return Ok(());
   }
   
-  fn submit(&mut self) -> Result<(), shader::EnumShaderError> {
+  fn apply(&mut self) -> Result<(), shader::EnumShaderError> {
     if self.m_shader_stages.is_empty() {
       log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Cannot send shader : No shader stages \
       provided!");
@@ -231,7 +233,7 @@ impl TraitShader for GlShader {
       }
       log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Error linking program {0}! Error => {1}",
           self.m_program_id, unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()).to_str()
-          .expect("[GlShader] -->\t Cannot convert shader info log to Rust str in submit!")
+          .expect("[GlShader] -->\t Cannot convert shader info log to Rust str in apply!")
         });
       return Err(shader::EnumShaderError::from(EnumError::ProgramCreationError));
     }
@@ -294,6 +296,9 @@ impl TraitShader for GlShader {
         let value_ptr = uniform.downcast_ref::<Mat4>().unwrap();
         check_gl_call!("GlShader", gl::UniformMatrix4fv(*self.m_uniform_cache.get(uniform_name).unwrap(),
           1, gl::FALSE, (value_ptr.as_array().as_ptr()) as *const GLfloat));
+      } else if uniform.is::<bool>() {
+        let value_ptr = uniform.downcast_ref::<bool>().unwrap();
+        check_gl_call!("GlShader", gl::Uniform1i(*self.m_uniform_cache.get(uniform_name).unwrap(), *value_ptr as i32));
       } else {
         log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Type of uniform '{0}' is unsupported for glsl!",
           uniform_name);
@@ -313,14 +318,14 @@ impl TraitShader for GlShader {
   
   fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumShaderError> {
     unsafe {
-      if (*active_renderer).m_type != EnumApi::OpenGL {
+      if (*active_renderer).m_type != EnumRendererApi::OpenGL {
         log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Cannot delete shader : Renderer is not OpenGL!");
         return Err(shader::EnumShaderError::InvalidApi);
       }
-      
-      gl::UseProgram(0);
-      gl::DeleteProgram(self.m_program_id);
     }
+    
+    check_gl_call!("GlShader", gl::UseProgram(0));
+    check_gl_call!("GlShader", gl::DeleteProgram(self.m_program_id));
     return Ok(());
   }
 }

@@ -27,17 +27,17 @@ use std::collections::{HashMap, HashSet};
 
 use gl46::GlFns;
 
-use crate::utils::macros::logger::*;
+use crate::{Engine, S_ENGINE};
 use crate::assets::renderable_assets::{EnumPrimitiveType, EnumVertexMemberOffset, REntity};
 use crate::camera::Camera;
 use crate::events::EnumEvent;
 use crate::graphics::{open_gl, renderer};
 use crate::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar, GLenum, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute, GLvoid};
-use crate::graphics::renderer::{EnumCallCheckingType, EnumRendererOption, EnumState, TraitContext};
+use crate::graphics::renderer::{EnumCallCheckingType, EnumRendererOption, EnumRendererState, TraitContext};
 use crate::graphics::shader::{EnumShaderLanguageType, Shader};
-use crate::math::{Mat4};
+use crate::math::Mat4;
+use crate::utils::macros::logger::*;
 use crate::window::Window;
-use crate::{Engine, S_ENGINE};
 
 /*
 ///////////////////////////////////   OpenGL renderer   ///////////////////////////////////
@@ -63,7 +63,7 @@ macro_rules! check_gl_call {
           if error != gl::NO_ERROR {
             log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
             Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
-            return Err(crate::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
+            return Err(crate::graphics::open_gl::renderer::EnumOpenGLError::InvalidOperation(error).into());
           }
         } else {
           unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
@@ -72,7 +72,7 @@ macro_rules! check_gl_call {
           if error != gl::NO_ERROR {
             log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
             Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
-            return Err(crate::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
+            return Err(crate::graphics::open_gl::renderer::EnumOpenGLError::InvalidOperation(error).into());
           }
         }
     };
@@ -90,7 +90,7 @@ macro_rules! check_gl_call {
           if error != gl::NO_ERROR {
             log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
             Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
-            return Err(crate::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
+            return Err(crate::graphics::open_gl::renderer::EnumOpenGLError::InvalidOperation(error).into());
           }
         } else {
         unsafe { while gl::GetError() != gl::NO_ERROR {} };  // Clear previous errors.
@@ -99,7 +99,7 @@ macro_rules! check_gl_call {
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
             Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
-          return Err(crate::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
+          return Err(crate::graphics::open_gl::renderer::EnumOpenGLError::InvalidOperation(error).into());
         }
       }
     };
@@ -117,7 +117,7 @@ macro_rules! check_gl_call {
           if error != gl::NO_ERROR {
             log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
             Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
-            return Err(crate::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
+            return Err(crate::graphics::open_gl::renderer::EnumOpenGLError::InvalidOperation(error).into());
           }
         } else {
         unsafe { while gl::GetError() != gl::NO_ERROR {} };
@@ -126,14 +126,14 @@ macro_rules! check_gl_call {
         if error != gl::NO_ERROR {
           log!(EnumLogColor::Red, "ERROR", "[{0}] -->\t OpenGL call error :\nCall =>\t\t {1:?}\n\
             Code =>\t\t 0x{2:x}\nWhere =>\t {3}", $name, stringify!($gl_function), error, trace!());
-          return Err(crate::graphics::open_gl::renderer::EnumError::InvalidOperation(error).into());
+          return Err(crate::graphics::open_gl::renderer::EnumOpenGLError::InvalidOperation(error).into());
         }
       }
     };
 }
 
 #[derive(Debug, Clone, Ord, Eq, PartialOrd, PartialEq, Hash)]
-pub enum EnumError {
+pub enum EnumOpenGLError {
   CStringError,
   ApiFunctionLoadingError,
   UnsupportedApiFunction,
@@ -146,15 +146,15 @@ pub enum EnumError {
   InvalidShaderOperation(open_gl::shader::EnumError),
 }
 
-impl From<open_gl::buffer::EnumError> for EnumError {
+impl From<open_gl::buffer::EnumError> for EnumOpenGLError {
   fn from(value: open_gl::buffer::EnumError) -> Self {
-    return EnumError::InvalidBufferOperation(value);
+    return EnumOpenGLError::InvalidBufferOperation(value);
   }
 }
 
-impl From<open_gl::shader::EnumError> for EnumError {
+impl From<open_gl::shader::EnumError> for EnumOpenGLError {
   fn from(value: open_gl::shader::EnumError) -> Self {
-    return EnumError::InvalidShaderOperation(value);
+    return EnumOpenGLError::InvalidShaderOperation(value);
   }
 }
 
@@ -164,7 +164,8 @@ struct GlPrimitiveInfo {
   m_vao_index: usize,
   m_vbo_index: usize,
   m_vbo_offset: usize,
-  m_vbo_size: usize, // Size per vertex for the primitive in vbo.
+  m_vbo_size: usize,
+  // Size per vertex for the primitive in vbo.
   m_vbo_count: usize, // Vertex count for the primitive in vbo.
 }
 
@@ -189,18 +190,20 @@ impl GlBatchPrimitives {
 
 pub struct GlContext {
   pub(crate) m_ext: HashMap<String, ()>,
-  pub(crate) m_state: EnumState,
+  pub(crate) m_state: EnumRendererState,
   m_batch: GlBatchPrimitives,
   m_debug_callback: gl::types::GLDEBUGPROC,
+  m_wireframe_enabled: bool,
 }
 
 impl TraitContext for GlContext {
   fn default() -> Self {
     return Self {
-      m_state: EnumState::NotCreated,
+      m_state: EnumRendererState::NotCreated,
       m_ext: HashMap::new(),
       m_batch: GlBatchPrimitives::new(),
       m_debug_callback: Some(gl_error_callback),
+      m_wireframe_enabled: false,
     };
   }
   
@@ -219,7 +222,7 @@ impl TraitContext for GlContext {
         Err(_err) => {
           log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot load one or more OpenGL API \
           functions! Error => {_err}");
-          return Err(renderer::EnumRendererError::from(EnumError::ApiFunctionLoadingError));
+          return Err(renderer::EnumRendererError::from(EnumOpenGLError::ApiFunctionLoadingError));
         }
       }
     }
@@ -231,9 +234,10 @@ impl TraitContext for GlContext {
     
     return Ok(GlContext {
       m_ext: hash_map,
-      m_state: EnumState::Created,
+      m_state: EnumRendererState::Created,
       m_batch: GlBatchPrimitives::new(),
       m_debug_callback: Some(gl_error_callback),
+      m_wireframe_enabled: false,
     });
   }
   
@@ -282,17 +286,20 @@ impl TraitContext for GlContext {
   }
   
   fn on_render(&mut self) -> Result<(), renderer::EnumRendererError> {
-    check_gl_call!("Renderer", gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
-    for primitive in self.m_batch.m_primitives.iter() {
-      check_gl_call!("Renderer", gl::UseProgram((*primitive.m_linked_shader).get_id()));
-      self.m_batch.m_vao_buffers[primitive.m_vao_index].bind()?;
-      // self.m_batch.m_ibo_buffers[primitive.m_ibo_index].bind()?;
-      check_gl_call!("Renderer", gl::DrawArrays(gl::TRIANGLES, primitive.m_vbo_offset as i32, primitive.m_vbo_count as GLsizei));
+    if self.m_state == EnumRendererState::Submitted {
+      check_gl_call!("GlContext", gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT));
+      for primitive in self.m_batch.m_primitives.iter() {
+        check_gl_call!("GlContext", gl::UseProgram((*primitive.m_linked_shader).get_id()));
+        self.m_batch.m_vao_buffers[primitive.m_vao_index].bind()?;
+        // self.m_batch.m_ibo_buffers[primitive.m_ibo_index].bind()?;
+        
+        check_gl_call!("GlContext", gl::DrawArrays(gl::TRIANGLES, primitive.m_vbo_offset as i32, primitive.m_vbo_count as GLsizei));
+      }
     }
     return Ok(());
   }
   
-  fn submit(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumRendererError> {
+  fn apply(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumRendererError> {
     // Enable or disable features AFTER context creation since we need a context to load our openGL
     // functions.
     for feature in features {
@@ -300,10 +307,11 @@ impl TraitContext for GlContext {
     }
     
     let window_framebuffer_size = window.get_framebuffer_size();
-    check_gl_call!("Renderer", gl::Viewport(0, 0, window_framebuffer_size.0 as i32, window_framebuffer_size.1 as i32));
-    check_gl_call!("Renderer", gl::ClearColor(0.05, 0.05, 0.05, 1.0));
+    check_gl_call!("GlContext", gl::Viewport(0, 0, window_framebuffer_size.0 as i32, window_framebuffer_size.1 as i32));
+    check_gl_call!("GlContext", gl::ClearColor(0.05, 0.05, 0.05, 1.0));
+    check_gl_call!("GLContext", gl::FrontFace(gl::CW));
     
-    check_gl_call!("Renderer", gl::FrontFace(gl::CW));
+    self.m_state = EnumRendererState::Submitted;
     return Ok(());
   }
   
@@ -377,9 +385,9 @@ impl TraitContext for GlContext {
       }
       EnumRendererOption::DepthTest(enabled) => {
         if enabled {
-          check_gl_call!("Renderer", gl::Enable(gl::DEPTH_TEST));
+          check_gl_call!("GlContext", gl::Enable(gl::DEPTH_TEST));
         } else {
-          check_gl_call!("Renderer", gl::Disable(gl::DEPTH_TEST));
+          check_gl_call!("GlContext", gl::Disable(gl::DEPTH_TEST));
         }
         log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Depth test {0}",
           enabled.then(|| return "enabled").unwrap_or("disabled"));
@@ -391,45 +399,46 @@ impl TraitContext for GlContext {
           max_sample_count = self.get_max_msaa_count()?;
           if max_sample_count < 2 {
             log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot enable MSAA!");
-            return Err(renderer::EnumRendererError::from(EnumError::MSAAError));
+            return Err(renderer::EnumRendererError::from(EnumOpenGLError::MSAAError));
           } else if sample_count.unwrap() > max_sample_count {
             log!(EnumLogColor::Yellow, "WARN", "[GlContext] -->\t Cannot enable MSAA with X{0}! \
               Defaulting to {1}...", sample_count.unwrap(), max_sample_count);
           }
-          check_gl_call!("Renderer", gl::Enable(gl::MULTISAMPLE));
+          check_gl_call!("GlContext", gl::Enable(gl::MULTISAMPLE));
         } else {
-          check_gl_call!("Renderer", gl::Disable(gl::MULTISAMPLE));
+          check_gl_call!("GlContext", gl::Disable(gl::MULTISAMPLE));
         }
         log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t MSAA {0}",
           sample_count.is_some().then(|| return format!("enabled (X{0})", max_sample_count))
           .unwrap_or("disabled".to_string()));
       }
-      EnumRendererOption::Blending(enabled, s_factor, d_factor) => {
+      EnumRendererOption::Blending(enabled, opt_factors) => {
         if enabled {
-          check_gl_call!("Renderer", gl::Enable(gl::BLEND));
-          check_gl_call!("Renderer", gl::BlendFunc(s_factor as GLenum, d_factor as GLenum));
+          check_gl_call!("GlContext", gl::Enable(gl::BLEND));
         } else {
-          check_gl_call!("Renderer", gl::Disable(gl::BLEND));
+          check_gl_call!("GlContext", gl::Disable(gl::BLEND));
         }
+        
+        if opt_factors.is_some() {
+          check_gl_call!("GlContext", gl::BlendFunc(opt_factors.unwrap().0 as GLenum, opt_factors.unwrap().1 as GLenum));
+        }
+        
         log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Blending {0}", enabled
           .then(|| return "enabled")
           .unwrap_or("disabled"));
       }
       EnumRendererOption::Wireframe(enabled) => {
-        if enabled {
-          check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE));
-        } else {
-          check_gl_call!("Renderer", gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL));
-        }
+        self.m_wireframe_enabled = enabled;
+        self.toggle_wireframe_ubo(enabled)?;
         log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Wireframe mode {0}", enabled
           .then(|| return "enabled")
           .unwrap_or("disabled"));
       }
       EnumRendererOption::SRGB(enabled) => {
         if enabled {
-          check_gl_call!("Renderer", gl::Enable(gl::FRAMEBUFFER_SRGB));
+          check_gl_call!("GlContext", gl::Enable(gl::FRAMEBUFFER_SRGB));
         } else {
-          check_gl_call!("Renderer", gl::Disable(gl::FRAMEBUFFER_SRGB));
+          check_gl_call!("GlContext", gl::Disable(gl::FRAMEBUFFER_SRGB));
         }
         log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t SRGB framebuffer {0}", enabled
           .then(|| return "enabled")
@@ -437,10 +446,10 @@ impl TraitContext for GlContext {
       }
       EnumRendererOption::CullFacing(face) => {
         if face.is_some() {
-          check_gl_call!("Renderer", gl::Enable(gl::CULL_FACE));
-          check_gl_call!("Renderer", gl::CullFace(face.unwrap() as GLenum));
+          check_gl_call!("GlContext", gl::Enable(gl::CULL_FACE));
+          check_gl_call!("GlContext", gl::CullFace(face.unwrap() as GLenum));
         } else {
-          check_gl_call!("Renderer", gl::Disable(gl::CULL_FACE));
+          check_gl_call!("GlContext", gl::Disable(gl::CULL_FACE));
         }
         log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Cull facing {0}", face.is_some()
           .then(|| return "enabled")
@@ -450,22 +459,23 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn setup_camera(&mut self, camera: &Camera) -> Result<(), renderer::EnumRendererError> {
+  fn setup_camera_ubo(&mut self, camera: &Camera) -> Result<(), renderer::EnumRendererError> {
     // Setup view-projection ubo.
-    let mut ubo = GlUbo::new(EnumUboTypeSize::ViewProjection, Some("ubo_camera"), 0)?;
+    let mut camera_ubo = GlUbo::new(EnumUboTypeSize::ViewProjection, Some("ubo_camera"), 0)?;
     
     // Apply to all shaders.
     for primitive in self.m_batch.m_primitives.iter() {
       unsafe {
         // If glsl version is lower than 420, then we cannot bind blocks in shaders and have to encode them here instead.
         if (*primitive.m_linked_shader).get_version() < 420 && (*primitive.m_linked_shader).get_lang() == EnumShaderLanguageType::Glsl {
-          ubo.bind_block((*primitive.m_linked_shader).get_id(), 0)?;
+          camera_ubo.bind_block((*primitive.m_linked_shader).get_id(), 0)?;
         }
       }
     }
     
-    ubo.set_data(EnumUboType::ViewProjection(camera.get_view_matrix(), camera.get_projection_matrix()))?;
-    self.m_batch.m_ubo_buffers.push(ubo);
+    camera_ubo.set_data(EnumUboType::ViewProjection(camera.get_view_matrix(), camera.get_projection_matrix()))?;
+    
+    self.m_batch.m_ubo_buffers.push(camera_ubo);
     return Ok(());
   }
   
@@ -507,7 +517,7 @@ impl TraitContext for GlContext {
       let mut vbo = GlVbo::new(sendable_entity.size(), sendable_entity.total_vertex_count())?;
       let mut vao = GlVao::new()?;
       
-      log!("INFO", "[GlContext] -->\t Submitting primitive {0}...", sendable_entity.m_data.get_name());
+      log!("INFO", "[GlContext] -->\t Enqueuing primitive {0}...", sendable_entity.m_data.get_name());
       let vertices = sendable_entity.m_data.get_vertices();
       
       let new_primitive: GlPrimitiveInfo = GlPrimitiveInfo {
@@ -561,11 +571,14 @@ impl TraitContext for GlContext {
   }
   
   fn dequeue(&mut self, uuid: u64) -> Result<(), renderer::EnumRendererError> {
+    if self.m_state != EnumRendererState::Submitted {
+      return Ok(());
+    }
     for index in 0..self.m_batch.m_primitives.len() {
       if self.m_batch.m_primitives[index].m_uuid == uuid {
         self.m_batch.m_vao_buffers[self.m_batch.m_primitives[index].m_vao_index].bind()?;
         
-        if !self.m_batch.m_vbo_buffers[self.m_batch.m_primitives[index].m_vbo_index].is_empty() {
+        if !self.m_batch.m_vbo_buffers.is_empty() && !self.m_batch.m_vbo_buffers[self.m_batch.m_primitives[index].m_vbo_index].is_empty() {
           // Free up space without reallocating buffer to save time and allow quick re enqueuing of the same entity.
           self.m_batch.m_vbo_buffers[self.m_batch.m_primitives[index].m_vbo_index]
             .strip(self.m_batch.m_primitives[index].m_vbo_offset, self.m_batch.m_primitives[index].m_vbo_size,
@@ -574,10 +587,10 @@ impl TraitContext for GlContext {
         return Ok(());
       }
     }
-    return Err(renderer::EnumRendererError::from(EnumError::EntityUUIDNotFound));
+    return Err(renderer::EnumRendererError::from(EnumOpenGLError::EntityUUIDNotFound));
   }
   
-  fn update(&mut self, shader_associated: &mut Shader, transform: Mat4) -> Result<(), renderer::EnumRendererError> {
+  fn update(&mut self, shader_associated: &Shader, transform: Mat4) -> Result<(), renderer::EnumRendererError> {
     let shader_found = self.m_batch.m_primitives.iter_mut()
       .find(|primitive| shader_associated.get_id() == unsafe { (*primitive.m_linked_shader).get_id() });
     
@@ -602,16 +615,16 @@ impl TraitContext for GlContext {
   }
   
   fn free(&mut self) -> Result<(), renderer::EnumRendererError> {
-    if self.m_state == EnumState::NotCreated {
+    if self.m_state == EnumRendererState::NotCreated {
       log!(EnumLogColor::Yellow, "WARN", "[GlContext] -->\t Cannot free resources : OpenGL renderer \
       has not been created!");
-      return Err(renderer::EnumRendererError::from(EnumError::InvalidContext));
+      return Err(renderer::EnumRendererError::from(EnumOpenGLError::InvalidContext));
     }
     
-    if self.m_state == EnumState::Deleted {
+    if self.m_state == EnumRendererState::Deleted {
       log!(EnumLogColor::Yellow, "WARN", "[GlContext] -->\t Cannot free resources : OpenGL renderer \
       has already been deleted!");
-      return Err(renderer::EnumRendererError::from(EnumError::InvalidContext));
+      return Err(renderer::EnumRendererError::from(EnumOpenGLError::InvalidContext));
     }
     
     log!(EnumLogColor::Purple, "INFO", "[GlContext] -->\t Freeing buffers...");
@@ -631,13 +644,13 @@ impl TraitContext for GlContext {
     };
     log!(EnumLogColor::Green, "INFO", "[GlContext] -->\t Freed buffers successfully");
     
-    self.m_state = EnumState::Deleted;
+    self.m_state = EnumRendererState::Deleted;
     return Ok(());
   }
 }
 
 impl GlContext {
-  fn load_extensions() -> Result<Vec<String>, EnumError> {
+  fn load_extensions() -> Result<Vec<String>, EnumOpenGLError> {
     let mut ext_count = 0;
     unsafe { gl::GetIntegerv(gl::NUM_EXTENSIONS, &mut ext_count) };
     let mut gl_extensions_available: Vec<String> = Vec::with_capacity(ext_count as usize);
@@ -651,14 +664,43 @@ impl GlContext {
         Err(_err) => {
           log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot convert OpenGL extension name \
           pointer to Rust str! Error => {_err:?}");
-          return Err(EnumError::CStringError);
+          return Err(EnumOpenGLError::CStringError);
         }
       }
     }
     return Ok(gl_extensions_available);
   }
   
-  fn set_attributes(&mut self, entity: &REntity, vao: &mut GlVao) -> Result<(), EnumError> {
+  fn toggle_wireframe_ubo(&mut self, value: bool) -> Result<(), renderer::EnumRendererError> {
+    // Find ubo.
+    let result = self.m_batch.m_ubo_buffers.iter_mut().find(|ubo| ubo.get_name() == Some("ubo_wireframe"));
+    
+    if result.is_none() {
+      // Setup wireframe ubo.
+      let mut wireframe_ubo = GlUbo::new(EnumUboTypeSize::Bool, Some("ubo_wireframe"), 3)?;
+      for matched in self.m_batch.m_primitives.iter_mut()
+        .filter(|matched| unsafe { (*matched.m_linked_shader).get_version() < 420 }) {
+        unsafe {
+          wireframe_ubo.bind_block((*matched.m_linked_shader).get_id(), 3)?
+        }
+      }
+      
+      let c_void;
+      if !value {
+        c_void = std::ptr::null();
+      } else {
+        c_void = &value as *const _ as *const std::ffi::c_void;
+      }
+      wireframe_ubo.set_data(EnumUboType::Custom(c_void))?;
+      return Ok(());
+    }
+    
+    let c_void = &value as *const _ as *const std::ffi::c_void;
+    result.unwrap().set_data(EnumUboType::Custom(c_void))?;
+    return Ok(());
+  }
+  
+  fn set_attributes(&mut self, entity: &REntity, vao: &mut GlVao) -> Result<(), EnumOpenGLError> {
     return match entity.m_type {
       EnumPrimitiveType::Mesh(is_flat_shaded) => {
         // Establish vao attributes.

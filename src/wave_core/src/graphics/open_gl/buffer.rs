@@ -90,14 +90,14 @@ pub(crate) struct GlVertexAttribute {
 }
 
 impl GlVertexAttribute {
-  pub(crate) fn new(gl_type: EnumAttributeType, should_normalize: bool, vbo_offset: usize, attribute_divisor: u8) -> Result<Self, open_gl::renderer::EnumError> {
+  pub(crate) fn new(gl_type: EnumAttributeType, should_normalize: bool, vbo_offset: usize, attribute_divisor: u8) -> Result<Self, open_gl::renderer::EnumOpenGLError> {
     let mut max_attrib_div: i32 = 0;
     check_gl_call!("GlVertexAttr", gl::GetIntegerv(gl::MAX_VERTEX_ATTRIBS, &mut max_attrib_div));
     
     if attribute_divisor > max_attrib_div as u8 {
       log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot assign attribute divisor of {0} to \
       vertex attribute, since it exceeds the maximum vertex attributes available!", attribute_divisor);
-      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidAttributeDivisor));
+      return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidAttributeDivisor));
     }
     
     return Ok(match gl_type {
@@ -212,7 +212,7 @@ pub(crate) struct GlVao {
 }
 
 impl GlVao {
-  pub(crate) fn new() -> Result<Self, open_gl::renderer::EnumError> {
+  pub(crate) fn new() -> Result<Self, open_gl::renderer::EnumOpenGLError> {
     let mut new_vao: GLuint = 0;
     check_gl_call!("GlVao", gl::CreateVertexArrays(1, &mut new_vao));
     return Ok(GlVao {
@@ -221,7 +221,7 @@ impl GlVao {
     });
   }
   
-  pub(crate) fn bind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn bind(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if self.m_state == EnumState::Created || self.m_state == EnumState::Unbound {
       check_gl_call!("GlVao", gl::BindVertexArray(self.m_renderer_id));
     }
@@ -229,9 +229,9 @@ impl GlVao {
     return Ok(());
   }
   
-  pub(crate) fn enable_attributes(&mut self, attributes: Vec<GlVertexAttribute>) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn enable_attributes(&mut self, attributes: Vec<GlVertexAttribute>) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if attributes.is_empty() {
-      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidVertexAttribute));
+      return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidVertexAttribute));
     }
     
     let mut max_attrib_div: i32 = 0;
@@ -244,7 +244,7 @@ impl GlVao {
       if index > max_attrib_div as usize {
         log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Vertex attribute index exceeds maximum \
         vertex attributes supported!");
-        return Err(open_gl::renderer::EnumError::from(EnumError::InvalidVertexAttribute));
+        return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidVertexAttribute));
       }
       
       if attribute.m_gl_type == gl::UNSIGNED_INT || attribute.m_gl_type == gl::INT {
@@ -260,7 +260,7 @@ impl GlVao {
     return Ok(());
   }
   
-  pub(crate) fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if self.m_state == EnumState::Bound {
       check_gl_call!("GlVao", gl::BindVertexArray(0));
     }
@@ -268,7 +268,7 @@ impl GlVao {
     return Ok(());
   }
   
-  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     self.unbind()?;
     
     if self.m_state == EnumState::Deleted || self.m_state == EnumState::NotCreated {
@@ -277,9 +277,11 @@ impl GlVao {
       return Ok(());
     }
     
-    log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVao...");
-    check_gl_call!("GlVao", gl::DeleteVertexArrays(1, &self.m_renderer_id));
-    log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlVao successfully");
+    if gl::DeleteVertexArrays::is_loaded() {
+      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVao...");
+      check_gl_call!("GlVao", gl::DeleteVertexArrays(1, &self.m_renderer_id));
+      log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlVao successfully");
+    }
     
     self.m_state = EnumState::Deleted;
     return Ok(());
@@ -296,7 +298,7 @@ pub(crate) struct GlVbo {
 }
 
 impl GlVbo {
-  pub(crate) fn new(size_per_vertex: usize, vertex_count: usize) -> Result<Self, open_gl::renderer::EnumError> {
+  pub(crate) fn new(size_per_vertex: usize, vertex_count: usize) -> Result<Self, open_gl::renderer::EnumOpenGLError> {
     let mut new_vbo: GLuint = 0;
     check_gl_call!("GlVbo", gl::CreateBuffers(1, &mut new_vbo));
     check_gl_call!("GlVbo", gl::BindBuffer(gl::ARRAY_BUFFER, new_vbo));
@@ -312,7 +314,7 @@ impl GlVbo {
     });
   }
   
-  pub(crate) fn bind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn bind(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if self.m_state == EnumState::Created || self.m_state == EnumState::Unbound {
       check_gl_call!("GlVbo", gl::BindBuffer(gl::ARRAY_BUFFER, self.m_renderer_id));
     }
@@ -320,7 +322,7 @@ impl GlVbo {
     return Ok(());
   }
   
-  pub(crate) fn set_data(&mut self, data: *const GLvoid, alloc_size: usize, byte_offset: usize) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn set_data(&mut self, data: *const GLvoid, alloc_size: usize, byte_offset: usize) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     self.bind()?;
     check_gl_call!("GlVbo", gl::BufferSubData(gl::ARRAY_BUFFER, byte_offset as GLsizeiptr,
       alloc_size as GLsizeiptr, data));
@@ -329,9 +331,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub(crate) fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if vertex_size == 0 || vertex_count == 0 {
-      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+      return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidBufferSize));
     }
     let old_size: usize = self.m_size;
     
@@ -346,9 +348,9 @@ impl GlVbo {
     return Ok(());
   }
   
-  pub(crate) fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if vertex_size * vertex_count == 0 || vertex_size * vertex_count > self.m_size {
-      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+      return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidBufferSize));
     }
     self.bind()?;
     if vertex_size * vertex_count == self.m_size {
@@ -368,9 +370,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if alloc_size == 0 {
-      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+      return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidBufferSize));
     }
     
     self.bind()?;
@@ -395,9 +397,9 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub(crate) fn shrink(&mut self, dealloc_size: usize) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn shrink(&mut self, dealloc_size: usize) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if dealloc_size == 0 {
-      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+      return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidBufferSize));
     }
     
     self.bind()?;
@@ -421,7 +423,7 @@ impl GlVbo {
     return Ok(());
   }
   
-  pub(crate) fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if self.m_state == EnumState::Bound {
       check_gl_call!("GlVbo", gl::BindBuffer(gl::ARRAY_BUFFER, 0));
     }
@@ -433,7 +435,7 @@ impl GlVbo {
     return self.m_size == 0 || self.m_count == 0;
   }
   
-  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     self.unbind()?;
     
     if self.m_state == EnumState::Deleted || self.m_state == EnumState::NotCreated {
@@ -442,9 +444,11 @@ impl GlVbo {
       return Ok(());
     }
     
-    log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVbo...");
-    check_gl_call!("GlVbo", gl::DeleteBuffers(1, &self.m_renderer_id));
-    log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlVbo successfully");
+    if gl::DeleteBuffers::is_loaded() {
+      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVbo...");
+      check_gl_call!("GlVbo", gl::DeleteBuffers(1, &self.m_renderer_id));
+      log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlVbo successfully");
+    }
     
     self.m_state = EnumState::Deleted;
     return Ok(());
@@ -462,7 +466,7 @@ pub(crate) struct GlIbo {
 
 #[allow(unused)]
 impl GlIbo {
-  pub(crate) fn new(size_per_index: usize, index_count: usize) -> Result<Self, open_gl::renderer::EnumError> {
+  pub(crate) fn new(size_per_index: usize, index_count: usize) -> Result<Self, open_gl::renderer::EnumOpenGLError> {
     let mut new_ibo: GLuint = 0;
     check_gl_call!("GlIbo", gl::CreateBuffers(1, &mut new_ibo));
     check_gl_call!("GlIbo", gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, new_ibo));
@@ -478,7 +482,7 @@ impl GlIbo {
     });
   }
   
-  pub(crate) fn bind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn bind(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if self.m_state == EnumState::Created || self.m_state == EnumState::Unbound {
       check_gl_call!("GlIbo", gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.m_renderer_id));
     }
@@ -486,7 +490,7 @@ impl GlIbo {
     return Ok(());
   }
   
-  pub(crate) fn set_data(&mut self, data: *const GLvoid, alloc_size: usize, byte_offset: usize) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn set_data(&mut self, data: *const GLvoid, alloc_size: usize, byte_offset: usize) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     self.bind()?;
     check_gl_call!("GlIbo", gl::BufferSubData(gl::ELEMENT_ARRAY_BUFFER, byte_offset as GLsizeiptr,
       alloc_size as GLsizeiptr, data));
@@ -495,9 +499,9 @@ impl GlIbo {
   }
   
   #[allow(unused)]
-  pub(crate) fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn append(&mut self, data: *const GLvoid, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if vertex_size == 0 || vertex_count == 0 {
-      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+      return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidBufferSize));
     }
     let old_size: usize = self.m_size;
     
@@ -512,9 +516,9 @@ impl GlIbo {
     return Ok(());
   }
   
-  pub(crate) fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn strip(&mut self, buffer_offset: usize, vertex_size: usize, vertex_count: usize) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if vertex_size * vertex_count == 0 || vertex_size * vertex_count > self.m_size {
-      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+      return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidBufferSize));
     }
     self.bind()?;
     if vertex_size * vertex_count == self.m_size {
@@ -534,9 +538,9 @@ impl GlIbo {
   }
   
   #[allow(unused)]
-  pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if alloc_size == 0 {
-      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+      return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidBufferSize));
     }
     
     self.bind()?;
@@ -561,9 +565,9 @@ impl GlIbo {
   }
   
   #[allow(unused)]
-  pub(crate) fn shrink(&mut self, dealloc_size: usize) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn shrink(&mut self, dealloc_size: usize) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if dealloc_size == 0 {
-      return Err(open_gl::renderer::EnumError::from(EnumError::InvalidBufferSize));
+      return Err(open_gl::renderer::EnumOpenGLError::from(EnumError::InvalidBufferSize));
     }
     
     self.bind()?;
@@ -587,7 +591,7 @@ impl GlIbo {
     return Ok(());
   }
   
-  pub(crate) fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if self.m_state == EnumState::Bound {
       check_gl_call!("GlIbo", gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0));
     }
@@ -599,7 +603,7 @@ impl GlIbo {
     return self.m_size == 0 || self.m_count == 0;
   }
   
-  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     self.unbind()?;
     
     if self.m_state == EnumState::Deleted || self.m_state == EnumState::NotCreated {
@@ -608,9 +612,11 @@ impl GlIbo {
       return Ok(());
     }
     
-    log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVbo...");
-    check_gl_call!("GlIbo", gl::DeleteBuffers(1, &self.m_renderer_id));
-    log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlVbo successfully");
+    if gl::DeleteBuffers::is_loaded() {
+      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVbo...");
+      check_gl_call!("GlIbo", gl::DeleteBuffers(1, &self.m_renderer_id));
+      log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlVbo successfully");
+    }
     
     self.m_state = EnumState::Deleted;
     return Ok(());
@@ -623,6 +629,7 @@ pub(crate) enum EnumUboType {
   Transform(Mat4),
   ViewProjection(Mat4, Mat4),
   MVP(Mat4, Mat4, Mat4),
+  Custom(*const std::ffi::c_void),
 }
 
 #[allow(unused)]
@@ -632,6 +639,7 @@ pub(crate) enum EnumUboTypeSize {
   Transform = Mat4::get_size(),
   ViewProjection = Mat4::get_size() * 2,
   MVP = Mat4::get_size() * 3,
+  Bool = 4  // GLSL's min size of alignment is 4 bytes.
 }
 
 #[allow(unused)]
@@ -644,7 +652,7 @@ pub(crate) struct GlUbo {
 }
 
 impl GlUbo {
-  pub(crate) fn new(size: EnumUboTypeSize, block_name: Option<&'static str>, binding: u32) -> Result<Self, open_gl::renderer::EnumError> {
+  pub(crate) fn new(size: EnumUboTypeSize, block_name: Option<&'static str>, binding: u32) -> Result<Self, open_gl::renderer::EnumOpenGLError> {
     let mut buffer_id = 0;
     
     check_gl_call!("GlUbo", gl::CreateBuffers(1, &mut buffer_id));
@@ -670,15 +678,15 @@ impl GlUbo {
     return self.m_name;
   }
   
-  pub(crate) fn bind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn bind(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     check_gl_call!("GlUbo", gl::BindBuffer(gl::UNIFORM_BUFFER, self.m_buffer_id));
     return Ok(());
   }
   
-  pub(crate) fn bind_block(&mut self, shader_id: u32, binding: u32) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn bind_block(&mut self, shader_id: u32, binding: u32) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if self.m_name.is_none() {
       log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot bind block for ubo, no block name associated with ubo {0}!", self.m_buffer_id);
-      return Err(open_gl::renderer::EnumError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
+      return Err(open_gl::renderer::EnumOpenGLError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
     }
     
     if self.m_state == EnumState::Created || self.m_state == EnumState::Unbound {
@@ -688,7 +696,7 @@ impl GlUbo {
       if result < binding as i32 {
         log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot bind Ubo, binding {0} exceeds max supported block bindings!",
           binding);
-        return Err(open_gl::renderer::EnumError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
+        return Err(open_gl::renderer::EnumOpenGLError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
       }
       
       let mut num_blocks: i32 = 0;
@@ -697,7 +705,7 @@ impl GlUbo {
       if binding > num_blocks as u32 {
         log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot bind Ubo, Block index {0} exceeds block count {1} in shader {2}!",
           binding, num_blocks, shader_id);
-        return Err(open_gl::renderer::EnumError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
+        return Err(open_gl::renderer::EnumOpenGLError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
       }
       
       let c_string = std::ffi::CString::new(self.m_name.unwrap()).expect("Cannot transform block name to C str!");
@@ -706,7 +714,7 @@ impl GlUbo {
       check_gl_call!("GlUbo", u_block = gl::GetUniformBlockIndex(shader_id, c_string.as_ptr()));
       if u_block == gl::INVALID_INDEX {
         log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot bind Ubo, 'block name' {0} not found in shader!", self.m_name.unwrap());
-        return Err(open_gl::renderer::EnumError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
+        return Err(open_gl::renderer::EnumOpenGLError::InvalidBufferOperation(EnumError::InvalidBlockBinding));
       }
       check_gl_call!("GlUbo", gl::UniformBlockBinding(shader_id, u_block, binding));
     }
@@ -715,7 +723,7 @@ impl GlUbo {
     return Ok(());
   }
   
-  pub(crate) fn set_data(&mut self, ubo_type: EnumUboType) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn set_data(&mut self, ubo_type: EnumUboType) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     match ubo_type {
       EnumUboType::Transform(transform) => {
         // Set transform matrix.
@@ -744,11 +752,14 @@ impl GlUbo {
         check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, (Mat4::get_size() * 2) as GLintptr,
           Mat4::get_size() as GLsizeiptr, projection.transpose().as_array().as_ptr() as *const std::ffi::c_void));
       }
+      EnumUboType::Custom(value) => {
+        check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0 as GLintptr, self.m_size as GLsizeiptr, value));
+      }
     }
     return Ok(());
   }
   
-  pub(crate) fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn unbind(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     if self.m_state == EnumState::Bound {
       check_gl_call!("GlUbo", gl::BindBuffer(gl::UNIFORM_BUFFER, 0));
     }
@@ -756,7 +767,7 @@ impl GlUbo {
     return Ok(());
   }
   
-  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumError> {
+  pub(crate) fn free(&mut self) -> Result<(), open_gl::renderer::EnumOpenGLError> {
     self.unbind()?;
     
     if self.m_state == EnumState::Deleted || self.m_state == EnumState::NotCreated {
@@ -765,9 +776,11 @@ impl GlUbo {
       return Ok(());
     }
     
-    log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlUbo...");
-    check_gl_call!("GlUbo", gl::DeleteBuffers(1, &self.m_buffer_id));
-    log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlUbo successfully");
+    if gl::DeleteBuffers::is_loaded() {
+      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlUbo...");
+      check_gl_call!("GlUbo", gl::DeleteBuffers(1, &self.m_buffer_id));
+      log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlUbo successfully");
+    }
     
     self.m_state = EnumState::Deleted;
     return Ok(());
