@@ -58,18 +58,9 @@ pub enum EnumPrimitiveType {
 }
 
 pub trait TraitPrimitive {
-  fn total_vertex_count(&self) -> usize;
-  fn total_index_count(&self) -> usize;
   fn get_name(&self) -> &str;
   fn get_vertices(&self) -> &Vec<Vertex>;
   fn get_indices(&self) -> &Vec<u32>;
-  // For glDrawElements 3rd parameter to be gl::UNSIGNED_INT (> 65635 vertices indexed).
-  fn has_sub_primitives(&self) -> bool;
-  fn get_sub_meshes_ref(&self) -> Option<&Vec<Mesh>>;
-  fn get_sub_meshes_mut(&mut self) -> Option<&mut Vec<Mesh>>;
-  fn get_size(&self) -> usize  where Self: Sized {
-    return size_of::<Self>();
-  }
   fn get_entity_id(&self) -> u32;
   fn is_empty(&self) -> bool;
 }
@@ -119,46 +110,7 @@ pub struct Sprite {
   m_indices: Vec<u32>,
 }
 
-impl Sprite {
-  pub fn new(data: assimp::Mesh) -> Self {
-    let mut vertices: Vec<Vertex> = Vec::new();
-    vertices.resize(data.num_vertices as usize, Vertex::default());
-    let mut indices: Vec<u32> = Vec::with_capacity(data.num_faces as usize);
-    
-    for face in data.face_iter() {
-      for index in 0..face.num_indices {
-        indices.push(face[index as isize]);
-      }
-    }
-    
-    for (position, vertex) in data.vertex_iter().enumerate() {
-      vertices[position].m_position = Vec3::new(&[vertex.x, vertex.y, 0.0]);
-      vertices[position].m_entity_id = unsafe { S_ENTITY_ID_COUNTER }
-    }
-    
-    for (position, texture_coord) in data.texture_coords_iter(0).enumerate() {
-      vertices[position].m_texture_coords = Vec2::new(&[texture_coord.x, texture_coord.y]);
-    }
-    
-    unsafe { S_ENTITY_ID_COUNTER += 1 }
-    
-    return Self {
-      m_vertices: vertices,
-      m_indices: indices,
-      m_name: String::from(data.name.as_ref()),
-    };
-  }
-}
-
 impl TraitPrimitive for Sprite {
-  fn total_vertex_count(&self) -> usize {
-    return self.m_vertices.len();
-  }
-  
-  fn total_index_count(&self) -> usize {
-    return self.m_indices.len();
-  }
-  
   fn get_name(&self) -> &str {
     return &self.m_name;
   }
@@ -169,18 +121,6 @@ impl TraitPrimitive for Sprite {
   
   fn get_indices(&self) -> &Vec<u32> {
     return &self.m_indices;
-  }
-  
-  fn has_sub_primitives(&self) -> bool {
-    return false;
-  }
-  
-  fn get_sub_meshes_ref(&self) -> Option<&Vec<Mesh>> {
-    return None;
-  }
-  
-  fn get_sub_meshes_mut(&mut self) -> Option<&mut Vec<Mesh>> {
-    return None;
   }
   
   fn get_entity_id(&self) -> u32 {
@@ -198,19 +138,65 @@ pub struct Mesh {
   m_name: String,
   m_vertices: Vec<Vertex>,
   m_indices: Vec<u32>,
-  m_sub_meshes: Vec<Self>,
 }
 
-impl Mesh {
-  pub fn new(data: assimp::Scene) -> Self {
-    let mut result = Self {
-      m_name: "Empty".to_string(),
-      m_vertices: vec![],
-      m_indices: vec![],
-      m_sub_meshes: Vec::new(),
+impl TraitPrimitive for Mesh {
+  fn get_name(&self) -> &str {
+    return &self.m_name;
+  }
+  
+  fn get_vertices(&self) -> &Vec<Vertex> {
+    return &self.m_vertices;
+  }
+  
+  fn get_indices(&self) -> &Vec<u32> {
+    return &self.m_indices;
+  }
+  
+  fn get_entity_id(&self) -> u32 {
+    return (!self.m_vertices.is_empty()).then(|| self.m_vertices[0].m_entity_id)
+      .unwrap_or(0);
+  }
+  
+  fn is_empty(&self) -> bool {
+    return self.m_vertices.is_empty();
+  }
+}
+
+pub struct REntity {
+  pub(crate) m_renderer_id: u64,
+  pub(crate) m_sub_meshes: Vec<Box<dyn TraitPrimitive>>,
+  pub(crate) m_type: EnumPrimitiveType,
+  // Transformations applied to the entity, to be eventually applied to the model matrix.
+  m_transform: [Vec3<f32>; 3],
+  m_sent: bool,
+  m_changed: bool,
+  m_flat_shaded: bool,
+}
+
+impl REntity {
+  pub fn default() -> Result<Self, renderer::EnumRendererError> {
+    let mut new_entity: REntity = REntity {
+      m_sub_meshes: vec![Box::new(Sprite {
+        m_name: "".to_string(),
+        m_vertices: vec![],
+        m_indices: vec![],
+      })],
+      m_renderer_id: u64::MAX,
+      m_type: EnumPrimitiveType::Sprite,
+      m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
+      m_sent: false,
+      m_changed: false,
+      m_flat_shaded: false,
     };
     
-    for (position, mesh) in data.mesh_iter().enumerate() {
+    new_entity.translate(Vec3::new(&[0.0, 0.0, 10.0]));
+    return Ok(new_entity);
+  }
+  pub fn new(scene: assimp::Scene, data_type: EnumPrimitiveType) -> Self {
+    let mut data: Vec<Box<dyn TraitPrimitive>> = Vec::with_capacity(scene.num_meshes as usize);
+    
+    for mesh in scene.mesh_iter() {
       let mut vertices: Vec<Vertex> = Vec::with_capacity(mesh.num_vertices as usize);
       vertices.resize(mesh.num_vertices as usize, Vertex::default());
       let mut indices: Vec<u32> = Vec::with_capacity((mesh.num_faces * 3) as usize);
@@ -236,117 +222,32 @@ impl Mesh {
       
       unsafe { S_ENTITY_ID_COUNTER += 1 };
       
-      if position == 0 {
-        result.m_name = String::from(mesh.name.as_ref());
-        result.m_vertices = vertices;
-        result.m_indices = indices;
-        continue;
+      match data_type {
+        EnumPrimitiveType::Sprite => {
+          data.push(Box::new(Sprite {
+            m_name: String::from(mesh.name.as_ref()),
+            m_vertices: vertices,
+            m_indices: indices,
+          }));
+        }
+        EnumPrimitiveType::Mesh(_) => {
+          data.push(Box::new(Sprite {
+            m_name: String::from(mesh.name.as_ref()),
+            m_vertices: vertices,
+            m_indices: indices,
+          }));
+        }
+        _ => todo!()
       }
-      result.m_sub_meshes.push(Self {
-        m_name: String::from(mesh.name.as_ref()),
-        m_vertices: vertices,
-        m_indices: indices,
-        m_sub_meshes: Vec::new(),
-      });
     }
     
-    return result;
-  }
-}
-
-impl TraitPrimitive for Mesh {
-  fn total_vertex_count(&self) -> usize {
-    return self.m_vertices.len() + (!self.m_sub_meshes.is_empty()).then(|| {
-      let mut count = 0;
-      for sub in self.m_sub_meshes.iter() {
-        count += sub.total_vertex_count();
-      }
-      return count;
-    }).unwrap_or(0);
-  }
-  
-  fn total_index_count(&self) -> usize {
-    return self.m_indices.len() + (!self.m_sub_meshes.is_empty()).then(|| {
-      let mut count = 0;
-      for sub in self.m_sub_meshes.iter() {
-        count += sub.total_index_count();
-      }
-      return count;
-    }).unwrap_or(0);
-  }
-  
-  fn get_name(&self) -> &str {
-    return &self.m_name;
-  }
-  
-  fn get_vertices(&self) -> &Vec<Vertex> {
-    return &self.m_vertices;
-  }
-  
-  fn get_indices(&self) -> &Vec<u32> {
-    return &self.m_indices;
-  }
-  
-  fn has_sub_primitives(&self) -> bool {
-    return !self.m_sub_meshes.is_empty();
-  }
-  
-  fn get_sub_meshes_ref(&self) -> Option<&Vec<Mesh>> {
-    return Some(&self.m_sub_meshes);
-  }
-  
-  fn get_sub_meshes_mut(&mut self) -> Option<&mut Vec<Mesh>> {
-    return Some(&mut self.m_sub_meshes);
-  }
-  
-  fn get_entity_id(&self) -> u32 {
-    return (!self.m_vertices.is_empty()).then(|| self.m_vertices[0].m_entity_id)
-      .unwrap_or(0);
-  }
-  
-  fn is_empty(&self) -> bool {
-    return self.m_vertices.is_empty();
-  }
-}
-
-pub struct REntity {
-  pub(crate) m_renderer_id: u64,
-  pub(crate) m_data: Box<dyn TraitPrimitive>,
-  pub(crate) m_type: EnumPrimitiveType,
-  // Transformations applied to the entity, to be eventually applied to the model matrix.
-  m_transform: [Vec3<f32>; 3],
-  m_sent: bool,
-  m_changed: bool,
-  m_flat_shaded: bool,
-}
-
-impl REntity {
-  pub fn default() -> Result<Self, renderer::EnumRendererError> {
-    let mut new_entity: REntity = REntity {
-      m_data: Box::new(Sprite {
-        m_name: "".to_string(),
-        m_vertices: vec![],
-        m_indices: vec![],
-      }),
-      m_renderer_id: u64::MAX,
-      m_type: EnumPrimitiveType::Sprite,
-      m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
-      m_sent: false,
-      m_changed: false,
-      m_flat_shaded: false,
-    };
-    
-    new_entity.translate(Vec3::new(&[0.0, 0.0, 10.0]));
-    return Ok(new_entity);
-  }
-  pub fn new(data: Box<dyn TraitPrimitive>, data_type: EnumPrimitiveType) -> Self {
     let new_entity: REntity;
     
     match data_type {
       EnumPrimitiveType::Sprite => {
         new_entity = REntity {
           m_renderer_id: u64::MAX,
-          m_data: data,
+          m_sub_meshes: data,
           m_type: EnumPrimitiveType::Sprite,
           m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
           m_sent: false,
@@ -357,7 +258,7 @@ impl REntity {
       EnumPrimitiveType::Mesh(is_flat_shaded) => {
         new_entity = REntity {
           m_renderer_id: u64::MAX,
-          m_data: data,
+          m_sub_meshes: data,
           m_type: EnumPrimitiveType::Mesh(is_flat_shaded),
           m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
           m_sent: false,
@@ -391,15 +292,23 @@ impl REntity {
   }
   
   pub fn total_vertex_count(&self) -> usize {
-    return self.m_data.total_vertex_count();
+    let mut count = 0;
+    for sub_mesh in self.m_sub_meshes.iter() {
+      count += sub_mesh.get_vertices().len()
+    }
+    return count;
   }
   
   pub fn total_index_count(&self) -> usize {
-    return self.m_data.total_index_count();
+    let mut count = 0;
+    for sub_mesh in self.m_sub_meshes.iter() {
+      count += sub_mesh.get_indices().len()
+    }
+    return count;
   }
   
   pub fn is_empty(&self) -> bool {
-    return self.m_data.is_empty();
+    return self.m_sub_meshes.is_empty();
   }
   
   pub fn is_flat_shaded(&self) -> bool {
@@ -475,14 +384,6 @@ impl REntity {
     return self.m_changed;
   }
   
-  pub fn get_sub_meshes_ref(&self) -> Option<&Vec<Mesh>> {
-    return self.m_data.get_sub_meshes_ref();
-  }
-  
-  pub fn get_sub_meshes_mut(&mut self) -> Option<&mut Vec<Mesh>> {
-    return self.m_data.get_sub_meshes_mut();
-  }
-  
   pub fn get_uuid(&self) -> u64 {
     return self.m_renderer_id;
   }
@@ -499,30 +400,20 @@ impl REntity {
 
 ///////////////////////////////////   DISPLAY  ///////////////////////////////////
 
-impl Display for Mesh {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "Vertices:\t{1}\n{0:115}Indices:\t{2}", "", self.total_vertex_count(), self.total_index_count())?;
-    return Ok(());
-  }
-}
-
 impl Display for dyn TraitPrimitive {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "Vertices:\t{1}\n{0:115}Indices:\t{2}", "", self.get_vertices().len(), self.get_indices().len())?;
-    
-    if let Some(sub_primitives) = self.get_sub_meshes_ref() {
-      for (position, sub_primitive) in sub_primitives.iter().enumerate() {
-        write!(f, "\n{1:115}Sub mesh [{0}]:\n{1:117}Vertices:\t{2}\n{1:117}Indices:\t{3}",
-          position + 1, "", sub_primitive.m_vertices.len(), sub_primitive.m_indices.len())?;
-      }
-    }
-    return Ok(());
+    write!(f, "Vertices:\t{1}\n{0:115}Indices:\t{2}", "", self.get_vertices().len(), self.get_indices().len())
   }
 }
 
 impl Display for REntity {
   fn fmt(&self, format: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(format, "Type: {0:?}\n{2:115}Sent?: {1}\n{2:115}Data:\n{2:117}{3}", self.m_type, self.m_sent, "", self.m_data)
+    write!(format, "Type: {0:?}\n{2:115}Sent?: {1}\n{2:115}Data:", self.m_type, self.m_sent, "")?;
+    
+    for (sub_mesh_index, sub_mesh) in self.m_sub_meshes.iter().enumerate() {
+      write!(format, "\n{0:117}[{1}]:\n{0:119}{2}", "", sub_mesh_index + 1, sub_mesh)?;
+    }
+    return Ok(());
   }
 }
 
@@ -531,10 +422,10 @@ impl Display for REntity {
 impl PartialEq for REntity {
   fn eq(&self, other: &Self) -> bool {
     if self.is_empty() {
-      return self.m_type == other.m_type && self.m_data.total_vertex_count() == other.m_data.total_vertex_count()
-        && self.m_data.total_index_count() == other.total_index_count();
+      return self.m_type == other.m_type && self.total_vertex_count() == other.total_vertex_count()
+        && self.total_index_count() == other.total_index_count();
     }
-    return self.m_type == other.m_type && self.m_data.get_vertices()[0].get_id() == other.m_data.get_vertices()[0].get_id();
+    return self.m_type == other.m_type && self.m_sub_meshes[0].get_vertices()[0].get_id() == other.m_sub_meshes[0].get_vertices()[0].get_id();
   }
   
   fn ne(&self, other: &Self) -> bool {

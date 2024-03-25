@@ -397,6 +397,8 @@ impl GlVbo {
     let old_size: usize = self.m_length;
     
     if self.m_length + vec_size > self.m_capacity {
+      log!(EnumLogColor::Yellow, "WARN", "[GlVbo] -->\t Cannot append additional data in current vbo {0}, Vbo full, \
+      expanding it...", self.m_buffer_id);
       self.expand(vec_size)?;
     }
     self.m_length += vec_size;
@@ -616,6 +618,8 @@ impl GlIbo {
     let old_size: usize = self.m_length;
     
     if self.m_length + vec_size > self.m_capacity {
+      log!(EnumLogColor::Yellow, "WARN", "[GlIbo] -->\t Cannot append additional data in current ibo {0}, Vbo full, \
+      expanding it...", self.m_buffer_id);
       self.expand(vec_size)?;
     }
     self.m_length += vec_size;

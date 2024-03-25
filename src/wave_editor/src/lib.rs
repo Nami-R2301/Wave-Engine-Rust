@@ -26,8 +26,8 @@ pub extern crate wave_core;
 
 use std::collections::HashMap;
 use wave_core::{camera, Engine, EnumEngineError, input, math};
-use wave_core::assets::asset_loader;
-use wave_core::assets::renderable_assets::{EnumPrimitiveType, Mesh, REntity};
+use wave_core::assets::asset_loader::AssetLoader;
+use wave_core::assets::renderable_assets::{EnumPrimitiveType, REntity};
 #[allow(unused)]
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
@@ -182,21 +182,27 @@ impl TraitLayer for Editor {
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
     
-    let asset = Box::new(Mesh::new(asset_loader::AssetLoader::new("awp.obj")?));
-    let mut awp = REntity::new(asset, EnumPrimitiveType::Mesh(false));
+    let mut awp = REntity::new(AssetLoader::new("awp.obj")?, EnumPrimitiveType::Mesh(false));
     
     awp.translate(math::Vec3::new(&[10.0, -10.0, 50.0]));
     awp.rotate(math::Vec3::new(&[90.0, -90.0, 0.0]));
     awp.apply(&mut shader)?;
+    awp.show(None);
     
-    let asset = Box::new(Mesh::new(asset_loader::AssetLoader::new("sphere.obj")?));
-    let mut sphere = REntity::new(asset, EnumPrimitiveType::Mesh(false));
+    let mut mario = REntity::new(AssetLoader::new("mario-obj/Mario.obj")?, EnumPrimitiveType::Mesh(false));
+    
+    mario.translate(math::Vec3::new(&[-5.0, -10.0, 20.0]));
+    mario.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
+    mario.apply(&mut shader)?;
+    mario.show(None);
+    
+    let mut sphere = REntity::new(AssetLoader::new("sphere.obj")?, EnumPrimitiveType::Mesh(false));
     
     sphere.translate(math::Vec3::new(&[0.0, 0.0, 5.0]));
     sphere.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
     sphere.apply(&mut shader)?;
     
-    self.m_renderable_assets.insert("Smooth objects", (shader, vec![awp, sphere]));
+    self.m_renderable_assets.insert("Smooth objects", (shader, vec![awp, sphere, mario]));
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
     

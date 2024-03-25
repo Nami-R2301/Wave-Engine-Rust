@@ -168,8 +168,7 @@ pub(crate) trait TraitContext {
   fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumRendererError>;
   fn on_render(&mut self) -> Result<(), EnumRendererError>;
   fn apply(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), EnumRendererError>;
-  fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>);
-  fn show(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>);
+  fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, visible: bool);
   fn get_max_msaa_count(&self) -> Result<u8, EnumRendererError>;
   fn to_string(&self) -> String;
   fn toggle(&mut self, option: EnumRendererOption) -> Result<(), EnumRendererError>;
@@ -228,11 +227,11 @@ impl<'a> Renderer {
   }
   
   pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) {
-    return self.m_api.hide(entity_uuid, sub_primitive_offset);
+    return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, false);
   }
   
   pub fn show(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) {
-    return self.m_api.show(entity_uuid, sub_primitive_offset);
+    return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, true);
   }
   
   pub fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError> {
