@@ -36,7 +36,7 @@ use crate::utils::macros::logger::*;
 #[cfg(feature = "vulkan")]
 use crate::Engine;
 #[cfg(feature = "vulkan")]
-use crate::graphics::renderer::{EnumRendererApi, Renderer};
+use crate::graphics::renderer::{EnumRendererApi};
 #[cfg(feature = "vulkan")]
 use crate::graphics::shader::{self, EnumShaderSource, EnumShaderStage, Shader, ShaderStage, TraitShader};
 #[cfg(feature = "vulkan")]
@@ -199,10 +199,10 @@ impl TraitShader for VkShader {
     return self;
   }
   
-  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumShaderError> {
+  fn free(&mut self) -> Result<(), shader::EnumShaderError> {
     unsafe {
       let vk_context =
-        (*active_renderer).get_api_handle()
+        Engine::get_active_renderer().get_api_handle()
           .downcast_mut::<VkContext>()
           .expect("[VkShader] -->\t Cannot retrieve Vulkan instance : Renderer not Vulkan!");
       for shader_module in self.m_vk_shader_modules.iter() {

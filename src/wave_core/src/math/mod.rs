@@ -274,7 +274,7 @@ impl Mat4 {
     ];
   }
   
-  pub fn translate_model(translation_vec: &Vec3<f32>) -> Self {
+  pub fn translation_matrix(translation_vec: &Vec3<f32>) -> Self {
     let mut result = Mat4::default();
     result[0][3] = translation_vec.x;
     result[1][3] = translation_vec.y;
@@ -282,7 +282,7 @@ impl Mat4 {
     return result;
   }
   
-  pub fn rotate_model(rotation_vec: &Vec3<f32>) -> Self {
+  pub fn rotation_matrix(rotation_vec: &Vec3<f32>) -> Self {
     let mut rotation_x: Mat4 = Mat4::default();
     let mut rotation_y: Mat4 = Mat4::default();
     let mut rotation_z: Mat4 = Mat4::default();
@@ -313,7 +313,7 @@ impl Mat4 {
     return rotation_z * (rotation_y * rotation_x);
   }
   
-  pub fn scale_model(scale_vec: &Vec3<f32>) -> Self {
+  pub fn scale_matrix(scale_vec: &Vec3<f32>) -> Self {
     let mut result = Mat4::new(0.0);
     result[0][0] = scale_vec.x;
     result[1][1] = scale_vec.y;
@@ -322,10 +322,10 @@ impl Mat4 {
     return result;
   }
   
-  pub fn apply_model(translation_vec: &Vec3<f32>, rotation_vec: &Vec3<f32>, scale_vec: &Vec3<f32>) -> Self {
-    let translation_mat = Mat4::translate_model(translation_vec);
-    let rotation_mat = Mat4::rotate_model(rotation_vec);
-    let scale_mat = Mat4::scale_model(scale_vec);
+  pub fn apply_transformations(translation_vec: &Vec3<f32>, rotation_vec: &Vec3<f32>, scale_vec: &Vec3<f32>) -> Self {
+    let translation_mat = Mat4::translation_matrix(translation_vec);
+    let rotation_mat = Mat4::rotation_matrix(rotation_vec);
+    let scale_mat = Mat4::scale_matrix(scale_vec);
     
     return translation_mat * (rotation_mat * scale_mat);
   }

@@ -46,7 +46,7 @@ pub enum EnumShaderState {
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub enum EnumShaderLanguageType {
+pub enum EnumShaderLanguage {
   Glsl,
   GlslSpirV,
   SpirV,
@@ -164,7 +164,7 @@ pub trait TraitShader {
   fn upload_data(&mut self, uniform_name: &'static str, uniform: &dyn std::any::Any) -> Result<(), EnumShaderError>;
   fn get_id(&self) -> u32;
   fn get_api_handle(&self) -> &dyn std::any::Any;
-  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), EnumShaderError>;
+  fn free(&mut self) -> Result<(), EnumShaderError>;
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -229,7 +229,7 @@ impl Eq for ShaderStage {}
 pub struct Shader {
   m_state: EnumShaderState,
   m_version: u16,
-  m_shader_lang: EnumShaderLanguageType,
+  m_shader_lang: EnumShaderLanguage,
   m_api_data: Box<dyn TraitShader>,
 }
 
@@ -238,7 +238,7 @@ impl Shader {
     return Self {
       m_state: EnumShaderState::NotCreated,
       m_version: 420,
-      m_shader_lang: EnumShaderLanguageType::Glsl,
+      m_shader_lang: EnumShaderLanguage::Glsl,
       m_api_data: Box::new(GlShader::default()),
     };
   }
@@ -454,10 +454,10 @@ impl Shader {
         }
         
         if file_path.extension().unwrap() == "bin" {
-          self.m_shader_lang = EnumShaderLanguageType::Binary;
+          self.m_shader_lang = EnumShaderLanguage::Binary;
           return Ok(());
         } else if file_path.extension().unwrap() == "spv" {
-          self.m_shader_lang = EnumShaderLanguageType::SpirV;
+          self.m_shader_lang = EnumShaderLanguage::SpirV;
           return Ok(());
         }
         
@@ -471,11 +471,11 @@ impl Shader {
     // If we have a GLSL shader with preprocessor instructions compatible with SPIR-V.
     if source.contains("GL_SPIRV") || source.contains("Vulkan") {
       // Compatible GLSL-SPIR-V shader found, setting the appropriate language.
-      self.m_shader_lang = EnumShaderLanguageType::GlslSpirV;
+      self.m_shader_lang = EnumShaderLanguage::GlslSpirV;
       return Ok(());
     }
     
-    self.m_shader_lang = EnumShaderLanguageType::Glsl;
+    self.m_shader_lang = EnumShaderLanguage::Glsl;
     return Ok(());
   }
   
@@ -494,7 +494,7 @@ impl Shader {
     return self.m_api_data.get_id();
   }
   
-  pub fn get_lang(&self) -> EnumShaderLanguageType {
+  pub fn get_lang(&self) -> EnumShaderLanguage {
     return self.m_shader_lang;
   }
   
@@ -510,7 +510,7 @@ impl Shader {
     
     let renderer: &mut Renderer = Engine::get_active_renderer();
     if renderer.m_state != EnumRendererState::Deleted || renderer.m_state != EnumRendererState::NotCreated {
-      self.m_api_data.free(renderer)?;
+      self.m_api_data.free()?;
     }
     self.m_state = EnumShaderState::Deleted;
     return Ok(());

@@ -18,7 +18,7 @@ layout (std140, binding = 0) uniform ubo_camera
 
 layout (std140, binding = 1) uniform ubo_model
 {
-    mat4 m_matrix;
+    mat4 m_matrix[255];  // Minimum array count for uniforms (taking into account vec4s).
 } Ubo_model;
 
 layout (location = 0) in uint in_entity_ID;
@@ -31,7 +31,17 @@ layout (location = 0) flat out uint vout_entity_ID;
 layout (location = 1) out Frag_data_s vout_vertex_data;
 
 void main() {
-    gl_Position = Ubo_camera.m_projection * Ubo_camera.m_view * (Ubo_model.m_matrix * vec4(in_position, 1.0));
+    if (in_entity_ID > 255) {
+        // Signal error.
+        gl_Position = Ubo_camera.m_projection * Ubo_camera.m_view * (Ubo_model.m_matrix[in_entity_ID] * vec4(in_position, 1.0));
+        vout_entity_ID = -1;
+        vout_vertex_data.vout_normal = in_normal;
+        // TODO Custom texture to signal error.
+        vout_vertex_data.vout_tex_coords = in_tex_coords;
+        vout_vertex_data.vout_frag_color = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    gl_Position = Ubo_camera.m_projection * Ubo_camera.m_view * (Ubo_model.m_matrix[in_entity_ID] * vec4(in_position, 1.0));
     vout_entity_ID = in_entity_ID;
     vout_vertex_data.vout_normal = in_normal;
     vout_vertex_data.vout_tex_coords = in_tex_coords;

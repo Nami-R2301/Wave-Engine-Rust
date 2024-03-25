@@ -25,13 +25,13 @@
 use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
+use once_cell::sync::Lazy;
 
 #[cfg(feature = "debug")]
 use crate::Engine;
 use crate::utils::macros::logger::*;
 use crate::assets::asset_loader;
 use crate::assets::renderable_assets::{REntity};
-use crate::camera::{Camera};
 use crate::events;
 use crate::graphics::{open_gl};
 use crate::graphics::open_gl::renderer::GlContext;
@@ -42,6 +42,8 @@ use crate::graphics::vulkan;
 use crate::graphics::vulkan::renderer::VkContext;
 use crate::math::{Mat4};
 use crate::window::Window;
+
+static mut S_ENTITIES_ID_CACHE: Lazy<HashSet<u64>> = Lazy::new(|| HashSet::new());
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub enum EnumCallCheckingType {
@@ -94,7 +96,7 @@ pub enum EnumRendererError {
   #[cfg(feature = "vulkan")]
   VulkanError(vulkan::renderer::EnumVkContextError),
   OpenGLError(open_gl::renderer::EnumOpenGLError),
-  OpenGLInvalidBufferOperation(open_gl::buffer::EnumError),
+  OpenGLInvalidBufferOperation(open_gl::buffer::EnumGlBufferError),
   #[cfg(feature = "vulkan")]
   VulkanInvalidBufferOperation(vulkan::buffer::EnumVulkanBufferError),
 }
@@ -166,14 +168,16 @@ pub(crate) trait TraitContext {
   fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumRendererError>;
   fn on_render(&mut self) -> Result<(), EnumRendererError>;
   fn apply(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), EnumRendererError>;
+  fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>);
+  fn show(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>);
   fn get_max_msaa_count(&self) -> Result<u8, EnumRendererError>;
   fn to_string(&self) -> String;
   fn toggle(&mut self, option: EnumRendererOption) -> Result<(), EnumRendererError>;
-  fn setup_camera_ubo(&mut self, camera: &Camera) -> Result<(), EnumRendererError>;
   fn flush(&mut self) -> Result<(), EnumRendererError>;
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError>;
   fn dequeue(&mut self, id: u64) -> Result<(), EnumRendererError>;
-  fn update(&mut self, shader_associated: &Shader, transform: Mat4) -> Result<(), EnumRendererError>;
+  fn update_ubo_camera(&mut self, view: Mat4, projection: Mat4) -> Result<(), EnumRendererError>;
+  fn update_ubo_model(&mut self, model_transform: Mat4, instance_offset: usize) -> Result<(), EnumRendererError>;
   fn free(&mut self) -> Result<(), EnumRendererError>;
 }
 
@@ -223,8 +227,12 @@ impl<'a> Renderer {
     self.m_options = features_desired;
   }
   
-  pub fn apply_camera(&mut self, camera: &Camera) -> Result<(), EnumRendererError> {
-    return self.m_api.setup_camera_ubo(camera);
+  pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) {
+    return self.m_api.hide(entity_uuid, sub_primitive_offset);
+  }
+  
+  pub fn show(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) {
+    return self.m_api.show(entity_uuid, sub_primitive_offset);
   }
   
   pub fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError> {
@@ -294,18 +302,27 @@ impl<'a> Renderer {
     return Ok(());
   }
   
-  pub fn enqueue(&mut self, r_entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
-    log!("INFO", "[Renderer] -->\t Enqueuing entity : {0}, associated with shader : {1}", r_entity.get_uuid(), shader_associated.get_id());
+  pub fn enqueue(&mut self, r_entity: &mut REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
+    let mut new_id = rand::random::<u64>();
+    unsafe {
+      while S_ENTITIES_ID_CACHE.contains(&new_id) {
+        new_id = rand::random();
+      }
+    }
+    r_entity.set_uuid(new_id);
     return self.m_api.enqueue(r_entity, shader_associated);
   }
   
-  pub fn dequeue(&mut self, id: u64) -> Result<(), EnumRendererError> {
-    log!("INFO", "[Renderer] -->\t De-queuing entity : {0}", id);
+  pub fn dequeue(&mut self, id: u64, _primitive_index_selected: Option<usize>) -> Result<(), EnumRendererError> {
     return self.m_api.dequeue(id);
   }
   
-  pub fn update(&mut self, shader_associated: &Shader, transform: Mat4) -> Result<(), EnumRendererError> {
-    return self.m_api.update(shader_associated, transform);
+  pub fn update_ubo_camera(&mut self, view: Mat4, projection: Mat4) -> Result<(), EnumRendererError> {
+    return self.m_api.update_ubo_camera(view, projection);
+  }
+  
+  pub fn update_ubo_model(&mut self, model_transform: Mat4, instance_offset: usize) -> Result<(), EnumRendererError> {
+    return self.m_api.update_ubo_model(model_transform, instance_offset);
   }
   
   pub fn get_version(&self) -> f32 {

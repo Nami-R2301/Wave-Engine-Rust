@@ -32,7 +32,7 @@ use crate::check_gl_call;
 use crate::Engine;
 use crate::graphics::open_gl::buffer::{GLboolean, GLchar, GLfloat, GLint, GLuint};
 use crate::graphics::open_gl::renderer::S_GL_4_6;
-use crate::graphics::renderer::{EnumRendererApi, Renderer};
+use crate::graphics::renderer::{EnumRendererApi};
 use crate::graphics::shader::{self, EnumShaderSource, EnumShaderStage, ShaderStage, TraitShader};
 use crate::math::Mat4;
 use crate::S_ENGINE;
@@ -316,14 +316,7 @@ impl TraitShader for GlShader {
     return self;
   }
   
-  fn free(&mut self, active_renderer: *mut Renderer) -> Result<(), shader::EnumShaderError> {
-    unsafe {
-      if (*active_renderer).m_type != EnumRendererApi::OpenGL {
-        log!(EnumLogColor::Red, "ERROR", "[GlShader] -->\t Cannot delete shader : Renderer is not OpenGL!");
-        return Err(shader::EnumShaderError::InvalidApi);
-      }
-    }
-    
+  fn free(&mut self) -> Result<(), shader::EnumShaderError> {
     check_gl_call!("GlShader", gl::UseProgram(0));
     check_gl_call!("GlShader", gl::DeleteProgram(self.m_program_id));
     return Ok(());

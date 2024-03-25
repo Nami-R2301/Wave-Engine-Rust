@@ -104,6 +104,7 @@ impl AssetLoader {
       Some(_) => {
         let mut importer = assimp::import::Importer::new();
         importer.triangulate(true);
+        importer.join_identical_vertices(true);
         importer.sort_by_primitive_type(|sort_type| {
           sort_type.enable = true;
           sort_type.remove = vec![PrimitiveType::Line, PrimitiveType::Point];
@@ -122,12 +123,12 @@ impl AssetLoader {
         importer.split_large_meshes(|split_large| split_large.enable = true);
         importer.measure_time(true);
         
-        #[cfg(feature = "debug")]
-        {
-          assimp::log::LogStream::set_verbose_logging(true);
-          let mut logger = assimp::log::LogStream::stdout();
-          logger.attach();
-        }
+        // #[cfg(feature = "debug")]
+        // {
+        //   assimp::log::LogStream::set_verbose_logging(true);
+        //   let mut logger = assimp::log::LogStream::stdout();
+        //   logger.attach();
+        // }
         
         let scene = importer.read_file(asset_path);
         

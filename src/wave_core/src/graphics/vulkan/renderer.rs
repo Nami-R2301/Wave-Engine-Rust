@@ -34,7 +34,7 @@ use std::fmt::{Formatter};
 #[cfg(feature = "vulkan")]
 use std::mem::size_of;
 #[cfg(feature = "vulkan")]
-use std::ops::{BitAnd, BitOr};
+use std::ops::{BitAnd};
 
 #[cfg(feature = "vulkan")]
 use ash::extensions::{ext, khr};
@@ -1196,7 +1196,7 @@ impl TraitContext for VkContext {
     todo!()
   }
   
-  fn update(&mut self, _shader_associated: &mut Shader, _transform: Mat4) -> Result<(), renderer::EnumRendererError> {
+  fn update_ubo_camera(&mut self, _shader_associated: &Shader, _transform: Mat4) -> Result<(), renderer::EnumRendererError> {
     todo!()
   }
   

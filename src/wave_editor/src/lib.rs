@@ -24,6 +24,7 @@
 
 pub extern crate wave_core;
 
+use std::collections::HashMap;
 use wave_core::{camera, Engine, EnumEngineError, input, math};
 use wave_core::assets::asset_loader;
 use wave_core::assets::renderable_assets::{EnumPrimitiveType, Mesh, REntity};
@@ -91,7 +92,7 @@ impl TraitLayer for EditorLayer {
 
 pub struct Editor {
   m_engine: Engine,
-  m_renderable_assets: Vec<(shader::Shader, Vec<REntity>)>,
+  m_renderable_assets: HashMap<&'static str, (shader::Shader, Vec<REntity>)>,
   m_cameras: Vec<camera::Camera>,
   m_wireframe_on: bool,
 }
@@ -119,7 +120,7 @@ impl Editor {
       
       return Ok(Editor {
         m_engine: Engine::new(window, renderer, vec![])?,
-        m_renderable_assets: Vec::new(),
+        m_renderable_assets: HashMap::with_capacity(10),
         m_cameras: Vec::new(),
         m_wireframe_on: true,
       });
@@ -129,7 +130,7 @@ impl Editor {
   pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Result<Self, EnumEngineError> {
     return Ok(Editor {
       m_engine: Engine::new(window, renderer, app_layers)?,
-      m_renderable_assets: Vec::new(),
+      m_renderable_assets: HashMap::with_capacity(10),
       m_cameras: Vec::new(),
       m_wireframe_on: true,
     });
@@ -158,7 +159,8 @@ impl TraitLayer for Editor {
   }
   
   fn on_apply(&mut self) -> Result<(), EnumEngineError> {
-    let aspect_ratio: f32 = self.m_engine.get_window_mut().get_aspect_ratio();
+    let window = self.m_engine.get_window_mut();
+    let aspect_ratio: f32 = window.get_aspect_ratio();
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
@@ -176,6 +178,8 @@ impl TraitLayer for Editor {
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Shaders sent to GPU successfully");
     
+    self.m_cameras.push(camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
+    
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
     
     let asset = Box::new(Mesh::new(asset_loader::AssetLoader::new("awp.obj")?));
@@ -192,15 +196,12 @@ impl TraitLayer for Editor {
     sphere.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
     sphere.apply(&mut shader)?;
     
-    self.m_renderable_assets.push((shader, vec![awp, sphere]));
+    self.m_renderable_assets.insert("Smooth objects", (shader, vec![awp, sphere]));
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
     
-    self.m_cameras.push(camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
-    
     let renderer = self.m_engine.get_renderer_mut();
-    renderer.apply_camera(&self.m_cameras[0])?;
-    
+    renderer.update_ubo_camera(self.m_cameras[0].get_view_matrix(), self.m_cameras[0].get_projection_matrix())?;
     
     // let mut imgui_layer: Layer = Layer::new("Imgui",
     //   ImguiLayer::new(Imgui::new(self.m_engine.get_renderer_mut().m_type, self.m_engine.get_window_mut())));
@@ -217,29 +218,29 @@ impl TraitLayer for Editor {
     // Process synchronous events.
     let time_step = self.m_engine.get_time_step();
     
-    if Engine::is_key_from(input::EnumKey::W, input::EnumAction::Held) {
-      self.m_renderable_assets[0].1[0].translate(math::Vec3::new(&[0.0, 10.0 * time_step as f32, 0.0]));
+    if Engine::is_key(input::EnumKey::W, input::EnumAction::Held) {
+      self.m_cameras[0].translate(math::Vec3::new(&[0.0, 10.0 * time_step as f32, 0.0]));
     }
-    if Engine::is_key_from(input::EnumKey::A, input::EnumAction::Held) {
-      self.m_renderable_assets[0].1[0].translate(math::Vec3::new(&[-10.0 * time_step as f32, 0.0, 0.0]));
+    if Engine::is_key(input::EnumKey::A, input::EnumAction::Held) {
+      self.m_cameras[0].translate(math::Vec3::new(&[-10.0 * time_step as f32, 0.0, 0.0]));
     }
-    if Engine::is_key_from(input::EnumKey::S, input::EnumAction::Held) {
-      self.m_renderable_assets[0].1[0].translate(math::Vec3::new(&[0.0, -10.0 * time_step as f32, 0.0]));
+    if Engine::is_key(input::EnumKey::S, input::EnumAction::Held) {
+      self.m_cameras[0].translate(math::Vec3::new(&[0.0, -10.0 * time_step as f32, 0.0]));
     }
-    if Engine::is_key_from(input::EnumKey::D, input::EnumAction::Held) {
-      self.m_renderable_assets[0].1[0].translate(math::Vec3::new(&[10.0 * time_step as f32, 0.0, 0.0]));
+    if Engine::is_key(input::EnumKey::D, input::EnumAction::Held) {
+      self.m_cameras[0].translate(math::Vec3::new(&[10.0 * time_step as f32, 0.0, 0.0]));
     }
-    if Engine::is_key_from(input::EnumKey::Up, input::EnumAction::Held) {
-      self.m_renderable_assets[0].1[0].rotate(math::Vec3::new(&[0.0, 25.0 * time_step as f32, 0.0]));
+    if Engine::is_key(input::EnumKey::Up, input::EnumAction::Held) {
+      self.m_cameras[0].rotate(math::Vec3::new(&[0.0, 25.0 * time_step as f32, 0.0]));
     }
-    if Engine::is_key_from(input::EnumKey::Left, input::EnumAction::Held) {
-      self.m_renderable_assets[0].1[0].rotate(math::Vec3::new(&[-25.0 * time_step as f32, 0.0, 0.0]));
+    if Engine::is_key(input::EnumKey::Left, input::EnumAction::Held) {
+      self.m_cameras[0].rotate(math::Vec3::new(&[-25.0 * time_step as f32, 0.0, 0.0]));
     }
-    if Engine::is_key_from(input::EnumKey::Down, input::EnumAction::Held) {
-      self.m_renderable_assets[0].1[0].rotate(math::Vec3::new(&[0.0, -25.0 * time_step as f32, 0.0]));
+    if Engine::is_key(input::EnumKey::Down, input::EnumAction::Held) {
+      self.m_cameras[0].rotate(math::Vec3::new(&[0.0, -25.0 * time_step as f32, 0.0]));
     }
-    if Engine::is_key_from(input::EnumKey::Right, input::EnumAction::Held) {
-      self.m_renderable_assets[0].1[0].rotate(math::Vec3::new(&[25.0 * time_step as f32, 0.0, 0.0]));
+    if Engine::is_key(input::EnumKey::Right, input::EnumAction::Held) {
+      self.m_cameras[0].rotate(math::Vec3::new(&[25.0 * time_step as f32, 0.0, 0.0]));
     }
     return Ok(());
   }
@@ -251,9 +252,25 @@ impl TraitLayer for Editor {
       EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
         let renderer = self.m_engine.get_renderer_mut();
         match (key, action, repeat_count, modifiers) {
-          (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
+          (input::EnumKey::Minus, input::EnumAction::Pressed, _, _) => {
             renderer.toggle(renderer::EnumRendererOption::Wireframe(!self.m_wireframe_on))?;
             self.m_wireframe_on = !self.m_wireframe_on;
+            Ok(true)
+          }
+          (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
+            self.m_renderable_assets.get_mut(&"Smooth objects").unwrap().1[0].hide(Some(0));
+            Ok(true)
+          }
+          (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
+            self.m_renderable_assets.get_mut(&"Smooth objects").unwrap().1[0].show(Some(0));
+            Ok(true)
+          }
+          (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
+            self.m_renderable_assets.get_mut(&"Smooth objects").unwrap().1[1].hide(None);
+            Ok(true)
+          }
+          (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
+            self.m_renderable_assets.get_mut(&"Smooth objects").unwrap().1[1].show(None);
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
@@ -261,10 +278,10 @@ impl TraitLayer for Editor {
             Ok(true)
           }
           (input::EnumKey::Delete, input::EnumAction::Pressed, _, m) => {
-            if m.contains(input::EnumModifiers::Shift.intersection(input::EnumModifiers::Alt)) {
-              for (_, r_assets) in self.m_renderable_assets.iter() {
+            if m.contains(input::EnumModifiers::Control) {
+              for (_, r_assets) in self.m_renderable_assets.values() {
                 for r_asset in r_assets.iter() {
-                  renderer.dequeue(r_asset.get_uuid())?;
+                  renderer.dequeue(r_asset.get_uuid(), None)?;
                 }
               }
             }
@@ -281,16 +298,13 @@ impl TraitLayer for Editor {
     };
   }
   
-  fn on_update(&mut self, _time_step: f64) -> Result<(), EnumEngineError> {
-    for (linked_shader, r_asset) in self.m_renderable_assets.iter_mut() {
-      // Update transform Ubo in associated shader.
-      r_asset.iter_mut().for_each(|asset| {
-        let _ = asset.apply_transform(linked_shader)
-          .map_err(|_| {
-            log!(EnumLogColor::Red, "ERROR", "Error occurred when apply transform in on_update(), Error => {0}", err)
-          });
-      });
+  fn on_update(&mut self, time_step: f64) -> Result<(), EnumEngineError> {
+    if self.m_cameras[0].has_changed() {
+      let new_camera_view = self.m_cameras[0].get_view_matrix();
+      let new_camera_projection = self.m_cameras[0].get_projection_matrix();
+      self.m_engine.get_renderer_mut().update_ubo_camera(new_camera_view, new_camera_projection)?;
     }
+    self.m_cameras[0].on_update(time_step);
     return Ok(());
   }
   
@@ -299,7 +313,7 @@ impl TraitLayer for Editor {
   }
   
   fn free(&mut self) -> Result<(), EnumEngineError> {
-    for (linked_shader, _) in self.m_renderable_assets.iter_mut() {
+    for (linked_shader, _) in self.m_renderable_assets.values_mut() {
       linked_shader.free()?;
     }
     return Ok(());
@@ -310,8 +324,8 @@ impl TraitLayer for Editor {
     
     final_str = format!("\n{0:115}Assets: [{1}]\n{0:115}", "", self.m_renderable_assets.len());
     
-    for (position, (linked_shader, r_asset_vec)) in self.m_renderable_assets.iter().enumerate() {
-      final_str += &format!("[{1}]:\n{0:117}Associated shader:\n{0:119}{2}\nAssets\n{0:119}", "",
+    for (position, (linked_shader, r_asset_vec)) in self.m_renderable_assets.values().enumerate() {
+      final_str += &format!("[{1}]:\n{0:117}Associated shader:\n{0:119}{2}\n{0:119}Assets\n{0:121}", "",
         position + 1, linked_shader);
       for r_asset in r_asset_vec.iter() {
         final_str += &format!("[{1}]:\n{0:119}{2}", "", position + 1, r_asset);

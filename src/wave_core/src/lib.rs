@@ -354,7 +354,7 @@ impl<'a> Engine {
     return self.m_time_step;
   }
   
-  pub fn is_key_from(key: EnumKey, state: EnumAction) -> bool {
+  pub fn is_key(key: EnumKey, state: EnumAction) -> bool {
     let engine = unsafe { &mut *S_ENGINE.expect("Cannot retrieve active engine!") };
     return Input::get_key_state(&engine.m_window, key, state);
   }
