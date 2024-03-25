@@ -711,8 +711,11 @@ impl TraitContext for GlContext {
     // Set ubo data for the next primitive.
     ubo.push(EnumUboType::Transform(sendable_entity.get_matrix(), sendable_entity.m_data.get_entity_id() as usize))?;
     
-    total_vertices_added += vertices.len();
-    total_indices_added += indices.len();
+    #[cfg(feature = "debug")]
+    {
+      total_vertices_added += vertices.len();
+      total_indices_added += indices.len();
+    }
     
     if let Some(sub_meshes) = sendable_entity.get_sub_meshes_ref() {
       for sub_mesh in sub_meshes {
