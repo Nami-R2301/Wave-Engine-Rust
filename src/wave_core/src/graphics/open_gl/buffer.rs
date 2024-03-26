@@ -55,6 +55,7 @@ enum EnumBufferState {
 pub enum EnumGlBufferError {
   InvalidApi,
   InvalidBufferSize,
+  InvalidCapacitySize,
   InvalidBufferOffset,
   InvalidReadBuffer,
   InvalidWriteBuffer,
@@ -428,10 +429,21 @@ impl GlVbo {
     return Ok(());
   }
   
-  pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), EnumOpenGLError> {
-    if alloc_size == 0 {
-      return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidBufferSize));
+  pub(crate) fn add_capacity(&mut self, added_capacity: usize) -> Result<(), EnumOpenGLError> {
+    if added_capacity + self.m_capacity > C_VBO_SIZE_LIMIT {
+      return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidCapacitySize));
     }
+    self.m_capacity += added_capacity;
+    return Ok(());
+  }
+  
+  pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), EnumOpenGLError> {
+    if alloc_size == 0 || alloc_size + self.m_capacity > C_VBO_SIZE_LIMIT {
+      return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidCapacitySize));
+    }
+    
+    log!(EnumLogColor::Yellow, "WARN", "[GlVbo] -->\t Expanding Vbo {0} from {1} bytes to {2} bytes...",
+      self.m_buffer_id, self.m_capacity, alloc_size + self.m_capacity);
     
     check_gl_call!("GlVbo", gl::BindBuffer(gl::COPY_READ_BUFFER, self.m_buffer_id));
     
@@ -618,7 +630,7 @@ impl GlIbo {
     let old_size: usize = self.m_length;
     
     if self.m_length + vec_size > self.m_capacity {
-      log!(EnumLogColor::Yellow, "WARN", "[GlIbo] -->\t Cannot append additional data in current ibo {0}, Vbo full, \
+      log!(EnumLogColor::Yellow, "WARN", "[GlIbo] -->\t Cannot append additional data in current ibo {0}, Ibo full, \
       expanding it...", self.m_buffer_id);
       self.expand(vec_size)?;
     }
@@ -653,9 +665,12 @@ impl GlIbo {
   }
   
   pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), EnumOpenGLError> {
-    if alloc_size == 0 {
-      return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidBufferSize));
+    if alloc_size == 0 || alloc_size + self.m_capacity > C_IBO_SIZE_LIMIT {
+      return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidCapacitySize));
     }
+    
+    log!(EnumLogColor::Yellow, "WARN", "[GlIbo] -->\t Expanding Ibo {0} from {1} bytes to {2} bytes...",
+      self.m_buffer_id, self.m_capacity, alloc_size + self.m_capacity);
     
     check_gl_call!("GlIbo", gl::BindBuffer(gl::COPY_READ_BUFFER, self.m_buffer_id));
     

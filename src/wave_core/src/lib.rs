@@ -300,7 +300,6 @@ impl<'a> Engine {
     
     // Free all layers in reverse.
     for layer in self.m_layers.iter_mut().rev() {
-      log!("INFO", "[Engine] -->\t Deleting layer: {0}", layer);
       layer.free()?;
     }
     

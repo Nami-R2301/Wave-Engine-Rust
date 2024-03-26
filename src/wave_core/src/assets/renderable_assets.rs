@@ -171,7 +171,6 @@ pub struct REntity {
   m_transform: [Vec3<f32>; 3],
   m_sent: bool,
   m_changed: bool,
-  m_flat_shaded: bool,
 }
 
 impl REntity {
@@ -187,14 +186,18 @@ impl REntity {
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
       m_changed: false,
-      m_flat_shaded: false,
     };
     
     new_entity.translate(Vec3::new(&[0.0, 0.0, 10.0]));
     return Ok(new_entity);
   }
+  
   pub fn new(scene: assimp::Scene, data_type: EnumPrimitiveType) -> Self {
     let mut data: Vec<Box<dyn TraitPrimitive>> = Vec::with_capacity(scene.num_meshes as usize);
+    
+    // Offset of indices to shift to the next sub-mesh indices, in order to synchronize indices between sub-meshes
+    // and join all sub-mesh indices together all referencing that same primitive to avoid drawing every sub-mesh separately.
+    let mut base_index: usize = 0;
     
     for mesh in scene.mesh_iter() {
       let mut vertices: Vec<Vertex> = Vec::with_capacity(mesh.num_vertices as usize);
@@ -202,10 +205,11 @@ impl REntity {
       let mut indices: Vec<u32> = Vec::with_capacity((mesh.num_faces * 3) as usize);
       
       for face in mesh.face_iter() {
-        indices.push(*face.index(0));
-        indices.push(*face.index(1));
-        indices.push(*face.index(2));
+        indices.push(*face.index(0) + base_index as u32);
+        indices.push(*face.index(1) + base_index as u32);
+        indices.push(*face.index(2) + base_index as u32);
       }
+      base_index += vertices.len();
       
       for (position, vertex) in mesh.vertex_iter().enumerate() {
         vertices[position].m_position = Vec3::new(&[vertex.x, vertex.y, vertex.z]);
@@ -252,7 +256,6 @@ impl REntity {
           m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
           m_sent: false,
           m_changed: false,
-          m_flat_shaded: false,
         };
       }
       EnumPrimitiveType::Mesh(is_flat_shaded) => {
@@ -262,8 +265,7 @@ impl REntity {
           m_type: EnumPrimitiveType::Mesh(is_flat_shaded),
           m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
           m_sent: false,
-          m_changed: false,
-          m_flat_shaded: is_flat_shaded,
+          m_changed: false
         };
       }
       EnumPrimitiveType::Quad => todo!()
@@ -272,7 +274,7 @@ impl REntity {
     return new_entity;
   }
   
-  pub fn size(&self) -> usize {
+  pub fn get_size(&self) -> usize {
     return match self.m_type {
       EnumPrimitiveType::Sprite => {
         size_of::<u32>() + (size_of::<f32>() * 3) + (size_of::<f32>() * 3) + size_of::<Color>() +
@@ -291,7 +293,7 @@ impl REntity {
     };
   }
   
-  pub fn total_vertex_count(&self) -> usize {
+  pub fn get_total_vertex_count(&self) -> usize {
     let mut count = 0;
     for sub_mesh in self.m_sub_meshes.iter() {
       count += sub_mesh.get_vertices().len()
@@ -299,7 +301,7 @@ impl REntity {
     return count;
   }
   
-  pub fn total_index_count(&self) -> usize {
+  pub fn get_total_index_count(&self) -> usize {
     let mut count = 0;
     for sub_mesh in self.m_sub_meshes.iter() {
       count += sub_mesh.get_indices().len()
@@ -309,10 +311,6 @@ impl REntity {
   
   pub fn is_empty(&self) -> bool {
     return self.m_sub_meshes.is_empty();
-  }
-  
-  pub fn is_flat_shaded(&self) -> bool {
-    return self.m_flat_shaded;
   }
   
   pub fn translate(&mut self, amount: Vec3<f32>) {
@@ -422,8 +420,8 @@ impl Display for REntity {
 impl PartialEq for REntity {
   fn eq(&self, other: &Self) -> bool {
     if self.is_empty() {
-      return self.m_type == other.m_type && self.total_vertex_count() == other.total_vertex_count()
-        && self.total_index_count() == other.total_index_count();
+      return self.m_type == other.m_type && self.get_total_vertex_count() == other.get_total_vertex_count()
+        && self.get_total_index_count() == other.get_total_index_count();
     }
     return self.m_type == other.m_type && self.m_sub_meshes[0].get_vertices()[0].get_id() == other.m_sub_meshes[0].get_vertices()[0].get_id();
   }

@@ -215,6 +215,7 @@ impl TraitCamera for PerspectiveCamera {
     let matrix = Mat4::apply_transformations(&self.m_transforms[0],
       &self.m_transforms[1], &self.m_transforms[2]);
     
+    
     return Mat4::from(
       [
         [right.x, right.y, right.z, matrix[0][3]],

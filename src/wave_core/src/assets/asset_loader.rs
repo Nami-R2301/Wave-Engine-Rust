@@ -104,6 +104,7 @@ impl AssetLoader {
       Some(_) => {
         let mut importer = assimp::import::Importer::new();
         importer.triangulate(true);
+        // Toggle vertex indexing.
         importer.join_identical_vertices(true);
         importer.sort_by_primitive_type(|sort_type| {
           sort_type.enable = true;

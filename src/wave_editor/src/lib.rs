@@ -191,16 +191,17 @@ impl TraitLayer for Editor {
     
     let mut mario = REntity::new(AssetLoader::new("mario-obj/Mario.obj")?, EnumPrimitiveType::Mesh(false));
     
-    mario.translate(math::Vec3::new(&[-5.0, -10.0, 20.0]));
+    mario.translate(math::Vec3::new(&[-5.0, -5.0, 15.0]));
     mario.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
     mario.apply(&mut shader)?;
     mario.show(None);
     
     let mut sphere = REntity::new(AssetLoader::new("sphere.obj")?, EnumPrimitiveType::Mesh(false));
     
-    sphere.translate(math::Vec3::new(&[0.0, 0.0, 5.0]));
+    sphere.translate(math::Vec3::new(&[5.0, 0.0, 20.0]));
     sphere.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
     sphere.apply(&mut shader)?;
+    sphere.show(None);
     
     self.m_renderable_assets.insert("Smooth objects", (shader, vec![awp, sphere, mario]));
     
