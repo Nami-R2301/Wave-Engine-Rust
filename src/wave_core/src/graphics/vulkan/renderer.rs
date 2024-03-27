@@ -46,13 +46,12 @@ use crate::utils::macros::logger::*;
 #[cfg(feature = "vulkan")]
 use crate::assets::renderable_assets::{EnumVertexMemberOffset, REntity, Vertex};
 #[cfg(feature = "vulkan")]
-use crate::camera::Camera;
-#[cfg(feature = "vulkan")]
 use crate::{Engine, events};
 #[cfg(feature = "vulkan")]
 use crate::graphics::{renderer, vulkan};
 #[cfg(feature = "vulkan")]
-use crate::graphics::renderer::{EnumCallCheckingType, EnumRendererOption, EnumRendererState, TraitContext};
+use crate::graphics::renderer::{EnumRendererCallCheckingType, EnumRendererOption, EnumRendererState, TraitContext};
+use crate::graphics::renderer::{EnumRendererError, EnumRendererPrimitiveMode};
 #[cfg(feature = "vulkan")]
 use crate::graphics::shader::Shader;
 #[cfg(feature = "vulkan")]
@@ -215,6 +214,7 @@ pub struct VkContext {
   m_dynamic_states: Vec<vk::DynamicState>,
   m_vbo_array: Vec<VkVbo>,
   m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
+  m_features: HashSet<EnumRendererOption>
 }
 
 #[cfg(feature = "vulkan")]
@@ -951,10 +951,23 @@ impl TraitContext for VkContext {
       m_dynamic_states: vec![],
       m_vbo_array: vec![],
       m_debug_report_callback: None,
+      m_features: HashSet::new()
     }
   }
   
-  fn on_new(window: &mut Window) -> Result<Self, renderer::EnumRendererError> {
+  fn toggle_primitive_mode(&mut self, _mode: EnumRendererPrimitiveMode) -> Result<(), EnumRendererError> {
+    return Ok(());
+  }
+  
+  fn toggle_visibility_of(&mut self, _entity_uuid: u64, _sub_primitive_offset: Option<usize>, _visible: bool) {
+  
+  }
+  
+  fn update_ubo_model(&mut self, _model_transform: Mat4, _instance_offset: usize) -> Result<(), EnumRendererError> {
+    return Ok(());
+  }
+  
+  fn on_new(window: &mut Window, features: HashSet<EnumRendererOption>) -> Result<Self, renderer::EnumRendererError> {
     let (ash_entry, ash_instance) =
       VkContext::create_instance(window, None, None)?;
     #[allow(unused)]
@@ -991,6 +1004,7 @@ impl TraitContext for VkContext {
       m_swap_chain_image_views: Default::default(),
       m_dynamic_states: Vec::with_capacity(2),
       m_vbo_array: Default::default(),
+      m_features: HashSet::from(features)
     })
   }
   
@@ -1033,11 +1047,9 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn apply(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), renderer::EnumRendererError> {
+  fn apply(&mut self, window: &mut Window) -> Result<(), renderer::EnumRendererError> {
     // Toggle features.
-    for feature in features {
-      self.toggle(*feature)?;
-    }
+    self.toggle_options()?;
     
     // Create swap chain.
     self.create_swap_chain(window.m_vsync)?;
@@ -1124,59 +1136,59 @@ impl TraitContext for VkContext {
     return info_physical_device + info_logical_device.as_str();
   }
   
-  fn toggle(&mut self, feature: EnumRendererOption) -> Result<(), renderer::EnumRendererError> {
-    match feature {
-      EnumRendererOption::ApiCallChecking(debug_type) => {
-        if debug_type != EnumCallCheckingType::None {
-          // Toggle on debugging.
-          #[cfg(feature = "trace_api")]
-          {
-            let debug_callback = Some(VkContext::set_api_callback(&self.m_entry, &self.m_instance)?);
-            self.m_debug_report_callback = debug_callback;
-          }
-        } else {
-          // Toggle off debugging.
-          unsafe {
-            if let Some((debug_utils, messenger)) = self.m_debug_report_callback.take() {
-              debug_utils.destroy_debug_utils_messenger(messenger, None);
+  fn toggle_options(&mut self) -> Result<(), renderer::EnumRendererError> {
+    for feature in self.m_features.iter() {
+      match feature {
+        EnumRendererOption::ApiCallChecking(debug_type) => {
+          if *debug_type != EnumRendererCallCheckingType::None {
+            // Toggle on debugging.
+            #[cfg(feature = "trace_api")]
+            {
+              let debug_callback = Some(VkContext::set_api_callback(&self.m_entry, &self.m_instance)?);
+              self.m_debug_report_callback = debug_callback;
             }
+          } else {
+            // Toggle off debugging.
+            unsafe {
+              if let Some((debug_utils, messenger)) = self.m_debug_report_callback.take() {
+                debug_utils.destroy_debug_utils_messenger(messenger, None);
+              }
+            }
+            self.m_debug_report_callback = None;
           }
-          self.m_debug_report_callback = None;
-        }
-        log!(EnumLogColor::Blue, "INFO", "[VkContext] -->\t Debug mode {0}",
-          (debug_type != EnumCallCheckingType::None)
+          log!(EnumLogColor::Blue, "INFO", "[VkContext] -->\t Debug mode {0}",
+          (*debug_type != EnumRendererCallCheckingType::None)
           .then(|| return "enabled")
           .unwrap_or("disabled"));
-      }
-      EnumRendererOption::DepthTest(_) => {}
-      EnumRendererOption::CullFacing(_) => {}
-      EnumRendererOption::Wireframe(_) => {}
-      EnumRendererOption::MSAA(sample_count) => {
-        #[allow(unused)]
-          let mut max_sample_count: u8 = 1;
-        if sample_count.is_some() {
-          max_sample_count = self.get_max_msaa_count()?;
-          if sample_count.unwrap() > max_sample_count && sample_count.unwrap() > 2 {
-            log!(EnumLogColor::Yellow, "WARN", "[VkContext] -->\t Cannot enable MSAA with X{0}! \
-              Defaulting to {1}...", sample_count.unwrap(), max_sample_count);
-          } else if max_sample_count == 1 {
-            log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot enable MSAA!");
-            return Err(renderer::EnumRendererError::from(EnumVkContextError::MSAAError));
-          }
-          todo!("Apply the new multisample count to the color and depth attachments.");
         }
-        log!(EnumLogColor::Blue, "INFO", "[VkContext] -->\t MSAA {0}",
+        EnumRendererOption::DepthTest(_) => {}
+        EnumRendererOption::CullFacing(_) => {}
+        EnumRendererOption::PrimitiveMode(_) => {}
+        EnumRendererOption::MSAA(sample_count) => {
+          #[allow(unused)]
+            let mut max_sample_count: u8 = 1;
+          if sample_count.is_some() {
+            max_sample_count = self.get_max_msaa_count()?;
+            if sample_count.unwrap() > max_sample_count && sample_count.unwrap() > 2 {
+              log!(EnumLogColor::Yellow, "WARN", "[VkContext] -->\t Cannot enable MSAA with X{0}! \
+              Defaulting to {1}...", sample_count.unwrap(), max_sample_count);
+            } else if max_sample_count == 1 {
+              log!(EnumLogColor::Red, "ERROR", "[VkContext] -->\t Cannot enable MSAA!");
+              return Err(renderer::EnumRendererError::from(EnumVkContextError::MSAAError));
+            }
+            todo!("Apply the new multisample count to the color and depth attachments.");
+          }
+          log!(EnumLogColor::Blue, "INFO", "[VkContext] -->\t MSAA {0}",
           sample_count.is_some()
           .then(|| return format!("enabled (X{0})", max_sample_count))
           .unwrap_or("disabled".to_string()));
+        }
+        EnumRendererOption::SRGB(_) => {}
+        EnumRendererOption::Blending(_, _) => {}
+        EnumRendererOption::PrimitiveMode(_) => {}
+        EnumRendererOption::BatchSameMaterials(_) => {}
       }
-      EnumRendererOption::SRGB(_) => {}
-      EnumRendererOption::Blending(_, _) => {}
     }
-    return Ok(());
-  }
-  
-  fn setup_camera_ubo(&mut self, _camera: &Camera) -> Result<(), renderer::EnumRendererError> {
     return Ok(());
   }
   
@@ -1196,8 +1208,8 @@ impl TraitContext for VkContext {
     todo!()
   }
   
-  fn update_ubo_camera(&mut self, _shader_associated: &Shader, _transform: Mat4) -> Result<(), renderer::EnumRendererError> {
-    todo!()
+  fn update_ubo_camera(&mut self, _view: Mat4, _projection: Mat4) -> Result<(), renderer::EnumRendererError> {
+    return Ok(());
   }
   
   fn free(&mut self) -> Result<(), renderer::EnumRendererError> {

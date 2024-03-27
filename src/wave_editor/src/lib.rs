@@ -32,7 +32,7 @@ use wave_core::assets::renderable_assets::{EnumPrimitiveType, REntity};
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
 use wave_core::graphics::renderer;
-use wave_core::graphics::renderer::Renderer;
+use wave_core::graphics::renderer::{EnumRendererPrimitiveMode, Renderer};
 use wave_core::graphics::shader;
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 #[allow(unused)]
@@ -260,7 +260,9 @@ impl TraitLayer for Editor {
         let renderer = self.m_engine.get_renderer_mut();
         match (key, action, repeat_count, modifiers) {
           (input::EnumKey::Minus, input::EnumAction::Pressed, _, _) => {
-            renderer.toggle(renderer::EnumRendererOption::Wireframe(!self.m_wireframe_on))?;
+            let primitive_mode: EnumRendererPrimitiveMode = self.m_wireframe_on.then(|| EnumRendererPrimitiveMode::Wireframe)
+              .unwrap_or(EnumRendererPrimitiveMode::SolidWireframe);
+            renderer.toggle_primitive_mode(primitive_mode)?;
             self.m_wireframe_on = !self.m_wireframe_on;
             Ok(true)
           }
@@ -281,7 +283,7 @@ impl TraitLayer for Editor {
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
-            renderer.toggle(renderer::EnumRendererOption::MSAA(Some(4)))?;
+            // renderer.toggle(renderer::EnumRendererOption::MSAA(Some(4)))?;
             Ok(true)
           }
           (input::EnumKey::Delete, input::EnumAction::Pressed, _, m) => {

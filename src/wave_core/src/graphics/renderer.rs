@@ -46,7 +46,7 @@ use crate::window::Window;
 static mut S_ENTITIES_ID_CACHE: Lazy<HashSet<u64>> = Lazy::new(|| HashSet::new());
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub enum EnumCallCheckingType {
+pub enum EnumRendererCallCheckingType {
   None,
   Async,
   Sync,
@@ -68,11 +68,129 @@ pub enum EnumRendererApi {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum EnumRendererMode {
+  Runtime,
+  Editor,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum EnumRendererCullingMode {
+  Front,
+  Back,
+  FrontAndBack,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum EnumRendererPrimitiveMode {
+  Point,
+  Filled,
+  Wireframe,
+  SolidWireframe
+}
+
+impl Display for EnumRendererCullingMode {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    return match self {
+      EnumRendererCullingMode::Front => write!(f, "Front face culling"),
+      EnumRendererCullingMode::Back => write!(f, "Back face culling"),
+      EnumRendererCullingMode::FrontAndBack => write!(f, "Front and back face culling")
+    }
+  }
+}
+
+impl Display for EnumRendererPrimitiveMode {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    return match self {
+      EnumRendererPrimitiveMode::Filled => write!(f, "Solid"),
+      EnumRendererPrimitiveMode::Point => write!(f, "Point"),
+      EnumRendererPrimitiveMode::Wireframe => write!(f, "Wireframe"),
+      EnumRendererPrimitiveMode::SolidWireframe => write!(f, "Solid wireframe")
+    }
+  }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumRendererOption {
-  ApiCallChecking(EnumCallCheckingType),
+  /// Combine primitives with the same material type into a single buffer if possible, both for the vbo and ibo.
+  /// ### Argument:
+  /// - *true*: Enables the batching of similar materials from the same shader by appending their vertices in the same vbo,
+  /// as well as appending the indices in the same ibo and joining the indices for all the those same matched primitives by
+  /// offsetting the indices of each primitive in the buffer by the base one (Similar to how OpenGL's **glDrawElementsBaseVertex(...)**
+  /// does it). Effectively, reducing the number of draw commands sent to the renderer, folding it into one per shader.
+  ///
+  ///   - This is useful in a runtime environment where performance is key, and you would want to cut back on as many draw calls
+  /// as possible in an environment where there is no need to keep track of sub-meshes and to uniquely identify primitives.
+  ///
+  /// - *false*: Disables the batching of similar materials and sends a different draw command to the renderer for every primitive
+  /// (or sub-primitive).
+  ///
+  ///   - This comes in handy when rendering for editor environments where every primitive and sub-primitive needs to be uniquely
+  /// identified through ray-casting for example or when wanting to take apart a primitive by hiding or showing selected sub_primitives.
+  BatchSameMaterials(bool),
+  
+  /// Track internal api calls for potential errors and warnings when making api calls in the renderer.
+  /// ### Argument:
+  /// Four possible values can be provided:
+  /// - [EnumRendererCallCheckingType::None]: Disable api call checking altogether.
+  ///
+  ///   - Note that this setting is most likely what you
+  /// would want in a performance-hungry build as it doesn't waste resources for logging states in between api calls. However, you
+  /// run the risk of ignoring potential errors and warnings and/or causing a crash down the line if fatal errors do occur.
+  ///
+  ///
+  /// - [EnumRendererCallCheckingType::Sync]: Make synchronous checks in between every call to monitor internal state for warnings and errors.
+  ///
+  ///   - This setting is what you would want ideally in a debug build as the error and warning reports are instantaneous, ideal for logging.
+  /// However, performance-wise, it is the slowest. Also, the error codes are not as descriptive, since it only reports the
+  /// error code and the call itself. For more descriptive and clear error handling, see [EnumRendererCallCheckingType::Async] or
+  /// [EnumRendererCallCheckingType::SyncAndAsync].
+  ///
+  ///
+  /// - [EnumRendererCallCheckingType::Async]: Let the api asynchronously deal with its own warning and error reporting.
+  ///
+  ///   - This option is a nice
+  /// balance between performance and verbosity and thus is the *default* option if this option isn't toggled manually. However,
+  /// the only downside of this approach is that the origin of the error reported might be difficult to track down, due to its async
+  /// nature. If this is an issue, try [EnumRendererCallCheckingType::Sync] or [EnumRendererCallCheckingType::SyncAndAsync] for better error messages
+  /// while tracking down the errors.
+  ///
+  ///
+  /// - [EnumRendererCallCheckingType::SyncAndAsync]: This setting combines both the synchronous and the asynchronous natures for error
+  /// checking.
+  ///
+  ///   - This setting should be selected if you are on a dev build and require the utmost verbosity and timing for your api
+  /// error handling in order to prevent error propagation, while having as many details as possible regarding the error.
+  /// Sometimes necessary when dealing with obscure bugs and crashes.
+  ///
+  ApiCallChecking(EnumRendererCallCheckingType),
+  
+  /// Enable depth testing to avoid artefacts or overlapping geometry incorrectly displayed onto the screen.
   DepthTest(bool),
-  CullFacing(Option<i64>),
-  Wireframe(bool),
+  /// Enable culling for a specific face to avoid rendering it when unneeded save on fragment shader calls when rendering.
+  /// ### Argument:
+  /// Four possible values can be provided:
+  /// - [None]: Applies no culling when rendering primitives.
+  ///
+  /// - Some([EnumRendererCullingMode::Back]) **Default**: Cull only back faces of primitives.
+  ///
+  /// - Some([EnumRendererCullingMode::Front]): Cull only front faces of primitives. Note that if the winding order is clock-wise,
+  /// this essentially is equivalent to [EnumRendererCullingMode::Back] with counter clock-wise winding order.
+  ///
+  /// - Some([EnumRendererCullingMode::FrontAndBack]): Cull both front and back faces of primitives.
+  CullFacing(Option<EnumRendererCullingMode>),
+  
+  /// Change how the rasterizer processes meshes or sprites when rendered on screen.
+  /// ### Argument:
+  /// Three possible values can be provided:
+  /// - [EnumRendererPrimitiveMode::Filled] **Default**: Show primitives' surfaces as filled triangles.
+  /// - [EnumRendererPrimitiveMode::Point]: Show primitives' surface as points instead of filled triangles.
+  /// - [EnumRendererPrimitiveMode::Wireframe]: Show the contour of primitives only without filling in the surface area in triangles.
+  /// - [EnumRendererPrimitiveMode::SolidWireframe]: Similar to [EnumRendererPrimitiveMode::Wireframe], but the wireframe is displayed
+  /// as an additional layer on top of the primitive's solid surface filled in, to better display the depth of each underlying part of the
+  /// primitive's polygons.
+  ///   - Useful when you want to visualize the wireframe of a 3D model, but there are overlapping vertices due to different layers of depth,
+  /// which makes visualizing the line layouts difficult.
+  PrimitiveMode(EnumRendererPrimitiveMode),
   MSAA(Option<u8>),
   SRGB(bool),
   Blending(bool, Option<(i64, i64)>),
@@ -160,18 +278,19 @@ impl Stats {
 
 pub(crate) trait TraitContext {
   fn default() -> Self where Self: Sized;
-  fn on_new(window: &mut Window) -> Result<Self, EnumRendererError> where Self: Sized;
+  fn on_new(window: &mut Window, renderer_options: HashSet<EnumRendererOption>) -> Result<Self, EnumRendererError> where Self: Sized;
   fn get_api_handle(&mut self) -> &mut dyn Any;
   fn get_api_version(&self) -> f32;
   fn get_max_shader_version_available(&self) -> u16;
   fn check_extension(&self, desired_extension: &str) -> bool;
   fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumRendererError>;
   fn on_render(&mut self) -> Result<(), EnumRendererError>;
-  fn apply(&mut self, window: &mut Window, features: &HashSet<EnumRendererOption>) -> Result<(), EnumRendererError>;
+  fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError>;
   fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, visible: bool);
+  fn toggle_primitive_mode(&mut self, mode: EnumRendererPrimitiveMode) -> Result<(), EnumRendererError>;
   fn get_max_msaa_count(&self) -> Result<u8, EnumRendererError>;
   fn to_string(&self) -> String;
-  fn toggle(&mut self, option: EnumRendererOption) -> Result<(), EnumRendererError>;
+  fn toggle_options(&mut self) -> Result<(), EnumRendererError>;
   fn flush(&mut self) -> Result<(), EnumRendererError>;
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError>;
   fn dequeue(&mut self, id: u64) -> Result<(), EnumRendererError>;
@@ -237,8 +356,8 @@ impl<'a> Renderer {
   pub fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError> {
     return match self.m_type {
       EnumRendererApi::OpenGL => {
-        self.m_api = Box::new(GlContext::on_new(window)?);
-        self.m_api.apply(window, &self.m_options)
+        self.m_api = Box::new(GlContext::on_new(window, self.m_options.clone())?);
+        self.m_api.apply(window)
       }
       EnumRendererApi::Vulkan => {
         #[cfg(not(feature = "vulkan"))]
@@ -248,11 +367,15 @@ impl<'a> Renderer {
         }
         #[cfg(feature = "vulkan")]
         {
-          self.m_api = Box::new(VkContext::on_new(window)?);
-          self.m_api.apply(window, &self.m_options)
+          self.m_api = Box::new(VkContext::on_new(window, self.m_options.clone())?);
+          self.m_api.apply(window)
         }
       }
     }
+  }
+  
+  pub fn toggle_primitive_mode(&mut self, mode: EnumRendererPrimitiveMode) -> Result<(), EnumRendererError> {
+    return self.m_api.toggle_primitive_mode(mode);
   }
   
   pub fn check_extension(&self, desired_extension: &str) -> bool {
@@ -280,9 +403,9 @@ impl<'a> Renderer {
     return self.m_api.on_render();
   }
   
-  pub fn toggle(&mut self, feature: EnumRendererOption) -> Result<(), EnumRendererError> {
-    return self.m_api.toggle(feature);
-  }
+  // pub fn enable(&mut self, feature: EnumRendererOption) -> Result<(), EnumRendererError> {
+  //   return self.m_api.enable(feature);
+  // }
   
   pub fn get_api_handle(&mut self) -> &mut dyn Any {
     return self.m_api.get_api_handle();

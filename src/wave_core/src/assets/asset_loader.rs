@@ -121,7 +121,10 @@ impl AssetLoader {
         });
         importer.improve_cache_locality(|impv_cache| impv_cache.enable = true);
         importer.optimize_meshes(true);
-        importer.split_large_meshes(|split_large| split_large.enable = true);
+        importer.split_large_meshes(|split_large| {
+          split_large.enable = true;
+          split_large.vertex_limit = 500_000;
+        });
         importer.measure_time(true);
         
         // #[cfg(feature = "debug")]

@@ -216,6 +216,7 @@ pub(crate) struct GlVao {
 }
 
 impl GlVao {
+  #[allow(unused)]
   pub(crate) fn default() -> Self {
     return GlVao {
       m_state: EnumBufferState::Created,
@@ -363,6 +364,7 @@ impl GlVbo {
     return Ok(());
   }
   
+  #[allow(unused)]
   pub(crate) fn resize(&mut self, to_size: usize) -> Result<(), EnumOpenGLError> {
     if to_size == 0 {
       return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferSize));
@@ -426,14 +428,6 @@ impl GlVbo {
     check_gl_call!("GlVbo", gl::UnmapBuffer(gl::ARRAY_BUFFER));
     
     self.m_length -= size;
-    return Ok(());
-  }
-  
-  pub(crate) fn add_capacity(&mut self, added_capacity: usize) -> Result<(), EnumOpenGLError> {
-    if added_capacity + self.m_capacity > C_VBO_SIZE_LIMIT {
-      return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidCapacitySize));
-    }
-    self.m_capacity += added_capacity;
     return Ok(());
   }
   
@@ -644,6 +638,7 @@ impl GlIbo {
     return Ok(());
   }
   
+  #[allow(unused)]
   pub(crate) fn strip(&mut self, buffer_offset: usize, size: usize) -> Result<(), EnumOpenGLError> {
     if size == 0 || size > self.m_length {
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidBufferSize));
@@ -771,6 +766,7 @@ impl GlIbo {
     return Ok(());
   }
   
+  #[allow(unused)]
   pub fn is_empty(&self) -> bool {
     return self.m_length == 0 || self.m_count == 0;
   }
@@ -829,6 +825,7 @@ pub(crate) struct GlUbo {
 }
 
 impl GlUbo {
+  #[allow(unused)]
   pub(crate) fn new(block_name: Option<&'static str>) -> Self {
     return Self {
       m_buffer_id: 0,
