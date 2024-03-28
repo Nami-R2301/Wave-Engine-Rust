@@ -40,13 +40,13 @@ fn main() -> Result<(), EnumEngineError> {
   window.window_hint(window::EnumWindowOption::Maximized(true));
   
   let mut renderer = renderer::Renderer::new(renderer::EnumRendererApi::OpenGL)?;
-  renderer.renderer_hint(renderer::EnumRendererOption::ApiCallChecking(renderer::EnumRendererCallCheckingType::Async));
+  renderer.renderer_hint(renderer::EnumRendererOption::ApiCallChecking(renderer::EnumRendererCallCheckingMode::Async));
   renderer.renderer_hint(renderer::EnumRendererOption::SRGB(true));
   renderer.renderer_hint(renderer::EnumRendererOption::DepthTest(true));
   renderer.renderer_hint(renderer::EnumRendererOption::Blending(true, None));
-  renderer.renderer_hint(renderer::EnumRendererOption::PrimitiveMode(renderer::EnumRendererPrimitiveMode::SolidWireframe));
+  renderer.renderer_hint(renderer::EnumRendererOption::PrimitiveMode(renderer::EnumRendererRenderPrimitiveAs::SolidWireframe));
   renderer.renderer_hint(renderer::EnumRendererOption::BatchSameMaterials(false));
-  renderer.renderer_hint(renderer::EnumRendererOption::CullFacing(Some(renderer::EnumRendererCullingMode::Back)));
+  renderer.renderer_hint(renderer::EnumRendererOption::CullFacing(Some(renderer::EnumRendererCull::Back)));
   
   let main_app_layer: Layer = Layer::new("My App", EmptyApp::default());
   

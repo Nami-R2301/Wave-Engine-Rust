@@ -46,7 +46,7 @@ pub enum EnumAssetError {
 
 impl Display for EnumAssetError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "[ResLoader] -->\t Error encountered while loading resource : {:?}", self)
+    write!(f, "[AssetLoader] -->\t Error encountered while loading resource : {:?}", self)
   }
 }
 
@@ -97,7 +97,7 @@ impl AssetLoader {
     
     return match path {
       None => {
-        log!(EnumLogColor::Red, "ERROR", "[ResLoader] -->\t Could not find path {0}! Make sure it \
+        log!(EnumLogColor::Red, "ERROR", "[AssetLoader] -->\t Could not find path {0}! Make sure it \
           exists and you have the appropriate permissions to read it.", asset_path);
         Err(EnumAssetError::InvalidPath)
       }
@@ -137,7 +137,7 @@ impl AssetLoader {
         let scene = importer.read_file(asset_path);
         
         if scene.is_err() || scene.as_ref().unwrap().is_incomplete() {
-          log!(EnumLogColor::Red, "Error", "[ResLoader] -->\t Asset file {0} incomplete or corrupted!", asset_path);
+          log!(EnumLogColor::Red, "Error", "[AssetLoader] -->\t Asset file {0} incomplete or corrupted!", asset_path);
           return Err(EnumAssetError::InvalidShapeData);
         }
         

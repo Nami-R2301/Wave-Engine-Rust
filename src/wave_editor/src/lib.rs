@@ -32,7 +32,7 @@ use wave_core::assets::renderable_assets::{EnumPrimitiveType, REntity};
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
 use wave_core::graphics::renderer;
-use wave_core::graphics::renderer::{EnumRendererPrimitiveMode, Renderer};
+use wave_core::graphics::renderer::{EnumRendererRenderPrimitiveAs, Renderer};
 use wave_core::graphics::shader;
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 #[allow(unused)]
@@ -189,7 +189,7 @@ impl TraitLayer for Editor {
     awp.apply(&mut shader)?;
     awp.show(None);
     
-    let mut mario = REntity::new(AssetLoader::new("mario-obj/Mario.obj")?, EnumPrimitiveType::Mesh(false));
+    let mut mario = REntity::new(AssetLoader::new("Mario.obj")?, EnumPrimitiveType::Mesh(false));
     
     mario.translate(math::Vec3::new(&[-5.0, -5.0, 15.0]));
     mario.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
@@ -203,7 +203,7 @@ impl TraitLayer for Editor {
     sphere.apply(&mut shader)?;
     sphere.show(None);
     
-    self.m_renderable_assets.insert("Smooth objects", (shader, vec![awp, sphere, mario]));
+    self.m_renderable_assets.insert("Smooth objects", (shader, vec![awp, sphere]));
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
     
@@ -260,8 +260,8 @@ impl TraitLayer for Editor {
         let renderer = self.m_engine.get_renderer_mut();
         match (key, action, repeat_count, modifiers) {
           (input::EnumKey::Minus, input::EnumAction::Pressed, _, _) => {
-            let primitive_mode: EnumRendererPrimitiveMode = self.m_wireframe_on.then(|| EnumRendererPrimitiveMode::Wireframe)
-              .unwrap_or(EnumRendererPrimitiveMode::SolidWireframe);
+            let primitive_mode: EnumRendererRenderPrimitiveAs = self.m_wireframe_on.then(|| EnumRendererRenderPrimitiveAs::Wireframe)
+              .unwrap_or(EnumRendererRenderPrimitiveAs::SolidWireframe);
             renderer.toggle_primitive_mode(primitive_mode)?;
             self.m_wireframe_on = !self.m_wireframe_on;
             Ok(true)

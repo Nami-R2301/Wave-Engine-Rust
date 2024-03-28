@@ -50,8 +50,8 @@ use crate::{Engine, events};
 #[cfg(feature = "vulkan")]
 use crate::graphics::{renderer, vulkan};
 #[cfg(feature = "vulkan")]
-use crate::graphics::renderer::{EnumRendererCallCheckingType, EnumRendererOption, EnumRendererState, TraitContext};
-use crate::graphics::renderer::{EnumRendererError, EnumRendererPrimitiveMode};
+use crate::graphics::renderer::{EnumRendererCallCheckingMode, EnumRendererOption, EnumRendererState, TraitContext};
+use crate::graphics::renderer::{EnumRendererError, EnumRendererRenderPrimitiveAs};
 #[cfg(feature = "vulkan")]
 use crate::graphics::shader::Shader;
 #[cfg(feature = "vulkan")]
@@ -955,7 +955,7 @@ impl TraitContext for VkContext {
     }
   }
   
-  fn toggle_primitive_mode(&mut self, _mode: EnumRendererPrimitiveMode) -> Result<(), EnumRendererError> {
+  fn toggle_primitive_mode(&mut self, _mode: EnumRendererRenderPrimitiveAs) -> Result<(), EnumRendererError> {
     return Ok(());
   }
   
@@ -1140,7 +1140,7 @@ impl TraitContext for VkContext {
     for feature in self.m_features.iter() {
       match feature {
         EnumRendererOption::ApiCallChecking(debug_type) => {
-          if *debug_type != EnumRendererCallCheckingType::None {
+          if *debug_type != EnumRendererCallCheckingMode::None {
             // Toggle on debugging.
             #[cfg(feature = "trace_api")]
             {
@@ -1157,7 +1157,7 @@ impl TraitContext for VkContext {
             self.m_debug_report_callback = None;
           }
           log!(EnumLogColor::Blue, "INFO", "[VkContext] -->\t Debug mode {0}",
-          (*debug_type != EnumRendererCallCheckingType::None)
+          (*debug_type != EnumRendererCallCheckingMode::None)
           .then(|| return "enabled")
           .unwrap_or("disabled"));
         }
@@ -1185,7 +1185,6 @@ impl TraitContext for VkContext {
         }
         EnumRendererOption::SRGB(_) => {}
         EnumRendererOption::Blending(_, _) => {}
-        EnumRendererOption::PrimitiveMode(_) => {}
         EnumRendererOption::BatchSameMaterials(_) => {}
       }
     }
