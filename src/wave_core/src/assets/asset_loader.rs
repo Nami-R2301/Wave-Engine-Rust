@@ -23,12 +23,13 @@
 */
 
 use std::fmt::{Display, Formatter};
+
 use assimp;
 use assimp::import::structs::PrimitiveType;
 
-use crate::utils::macros::logger::*;
 #[cfg(feature = "debug")]
 use crate::Engine;
+use crate::utils::macros::logger::*;
 
 /*
 ///////////////////////////////////   Asset Loader  ///////////////////////////////////
@@ -50,9 +51,7 @@ impl Display for EnumAssetError {
   }
 }
 
-impl std::error::Error for EnumAssetError {
-
-}
+impl std::error::Error for EnumAssetError {}
 
 #[derive(Debug)]
 pub struct AssetLoader {}
@@ -93,56 +92,53 @@ impl AssetLoader {
   /// ```
   pub fn new(file_name: &str) -> Result<assimp::scene::Scene, EnumAssetError> {
     let asset_path = &("res/assets/".to_string() + file_name);
-    let path = std::path::Path::new(asset_path).extension();
+    let path = std::path::Path::new(asset_path);
     
-    return match path {
-      None => {
-        log!(EnumLogColor::Red, "ERROR", "[AssetLoader] -->\t Could not find path {0}! Make sure it \
+    if !path.exists() {
+      log!(EnumLogColor::Red, "ERROR", "[AssetLoader] -->\t Could not find path {0}! Make sure it \
           exists and you have the appropriate permissions to read it.", asset_path);
-        Err(EnumAssetError::InvalidPath)
-      }
-      Some(_) => {
-        let mut importer = assimp::import::Importer::new();
-        importer.triangulate(true);
-        // Toggle vertex indexing.
-        importer.join_identical_vertices(true);
-        importer.sort_by_primitive_type(|sort_type| {
-          sort_type.enable = true;
-          sort_type.remove = vec![PrimitiveType::Line, PrimitiveType::Point];
-        });
-        importer.find_invalid_data(|invalid_data| invalid_data.enable = true);
-        importer.fix_infacing_normals(true);
-        // Does the index buffer job for us.
-        importer.find_degenerates(|find_degen| find_degen.enable = true);
-        importer.remove_redudant_materials(|rm_red_mat| rm_red_mat.enable = true);
-        importer.generate_normals(|gen_normals| {
-          gen_normals.enable = true;
-          gen_normals.smooth = true;
-        });
-        importer.improve_cache_locality(|impv_cache| impv_cache.enable = true);
-        importer.optimize_meshes(true);
-        importer.split_large_meshes(|split_large| {
-          split_large.enable = true;
-          split_large.vertex_limit = 500_000;
-        });
-        importer.measure_time(true);
-        
-        // #[cfg(feature = "debug")]
-        // {
-        //   assimp::log::LogStream::set_verbose_logging(true);
-        //   let mut logger = assimp::log::LogStream::stdout();
-        //   logger.attach();
-        // }
-        
-        let scene = importer.read_file(asset_path);
-        
-        if scene.is_err() || scene.as_ref().unwrap().is_incomplete() {
-          log!(EnumLogColor::Red, "Error", "[AssetLoader] -->\t Asset file {0} incomplete or corrupted!", asset_path);
-          return Err(EnumAssetError::InvalidShapeData);
-        }
-        
-        return Ok(scene.unwrap());
-      }
-    };
+      return Err(EnumAssetError::InvalidPath);
+    }
+    
+    let mut importer = assimp::import::Importer::new();
+    importer.triangulate(true);
+    // Toggle vertex indexing.
+    importer.join_identical_vertices(true);
+    importer.sort_by_primitive_type(|sort_type| {
+      sort_type.enable = true;
+      sort_type.remove = vec![PrimitiveType::Line, PrimitiveType::Point];
+    });
+    importer.find_invalid_data(|invalid_data| invalid_data.enable = true);
+    importer.fix_infacing_normals(true);
+    // Does the index buffer job for us.
+    importer.find_degenerates(|find_degen| find_degen.enable = true);
+    importer.remove_redudant_materials(|rm_red_mat| rm_red_mat.enable = true);
+    importer.generate_normals(|gen_normals| {
+      gen_normals.enable = true;
+      gen_normals.smooth = true;
+    });
+    importer.improve_cache_locality(|impv_cache| impv_cache.enable = true);
+    importer.optimize_meshes(true);
+    importer.split_large_meshes(|split_large| {
+      split_large.enable = true;
+      split_large.vertex_limit = 500_000;
+    });
+    importer.measure_time(true);
+    
+    // #[cfg(feature = "debug")]
+    // {
+    //   assimp::log::LogStream::set_verbose_logging(true);
+    //   let mut logger = assimp::log::LogStream::stdout();
+    //   logger.attach();
+    // }
+    
+    let scene = importer.read_file(asset_path);
+    
+    if scene.is_err() || scene.as_ref().unwrap().is_incomplete() {
+      log!(EnumLogColor::Red, "Error", "[AssetLoader] -->\t Asset file {0} incomplete or corrupted!", asset_path);
+      return Err(EnumAssetError::InvalidShapeData);
+    }
+    
+    return Ok(scene.unwrap());
   }
 }

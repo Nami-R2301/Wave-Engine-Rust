@@ -341,10 +341,6 @@ impl<'a> Renderer {
     self.m_options.insert(feature_desired);
   }
   
-  pub fn renderer_hints(&mut self, features_desired: HashSet<EnumRendererOption>) {
-    self.m_options = features_desired;
-  }
-  
   pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) {
     return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, false);
   }

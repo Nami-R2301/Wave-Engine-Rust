@@ -1,4 +1,4 @@
-#version 430 core
+#version 460 core
 
 // Outputs.
 struct Frag_data_s

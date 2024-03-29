@@ -34,7 +34,7 @@ use wave_editor::Editor;
 fn main() -> Result<(), EnumEngineError> {
   
   let mut window = window::Window::new()?;
-  window.window_hint(window::EnumWindowOption::RendererApi(renderer::EnumRendererApi::OpenGL));
+  window.window_hint(window::EnumWindowOption::TargetApi(renderer::EnumRendererApi::OpenGL));
   window.window_hint(window::EnumWindowOption::WindowMode(window::EnumWindowMode::Windowed));
   window.window_hint(window::EnumWindowOption::Resizable(true));
   window.window_hint(window::EnumWindowOption::Maximized(true));

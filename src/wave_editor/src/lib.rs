@@ -32,8 +32,9 @@ use wave_core::assets::renderable_assets::{EnumPrimitiveType, REntity};
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
 use wave_core::graphics::renderer;
-use wave_core::graphics::renderer::{EnumRendererRenderPrimitiveAs, Renderer};
+use wave_core::graphics::renderer::{EnumRendererApi, EnumRendererRenderPrimitiveAs, Renderer};
 use wave_core::graphics::shader;
+use wave_core::graphics::shader::EnumShaderHint;
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 #[allow(unused)]
 use wave_core::layers::imgui_layer::ImguiLayer;
@@ -164,11 +165,17 @@ impl TraitLayer for Editor {
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
-    let vertex_shader = shader::ShaderStage::default(shader::EnumShaderStage::Vertex);
-    let fragment_shader = shader::ShaderStage::default(shader::EnumShaderStage::Fragment);
-    let geometry_shader = shader::ShaderStage::default(shader::EnumShaderStage::Geometry);
+    let vertex_shader = shader::ShaderStage::default(shader::EnumShaderStageType::Vertex);
+    let fragment_shader = shader::ShaderStage::default(shader::EnumShaderStageType::Fragment);
+    let geometry_shader = shader::ShaderStage::default(shader::EnumShaderStageType::Geometry);
     
-    let mut shader = shader::Shader::new(vec![vertex_shader, fragment_shader, geometry_shader])?;
+    let mut shader = shader::Shader::new();
+    shader.shader_hint(EnumShaderHint::TargetApi(EnumRendererApi::OpenGL));
+    shader.shader_hint(EnumShaderHint::TargetGlslVersion(420));
+    
+    shader.push_stage(vertex_shader)?;
+    shader.push_stage(fragment_shader)?;
+    shader.push_stage(geometry_shader)?;
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending shaders to GPU...");
@@ -189,7 +196,7 @@ impl TraitLayer for Editor {
     awp.apply(&mut shader)?;
     awp.show(None);
     
-    let mut mario = REntity::new(AssetLoader::new("Mario.obj")?, EnumPrimitiveType::Mesh(false));
+    let mut mario = REntity::new(AssetLoader::new("mario/Mario.obj")?, EnumPrimitiveType::Mesh(false));
     
     mario.translate(math::Vec3::new(&[-5.0, -5.0, 15.0]));
     mario.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));

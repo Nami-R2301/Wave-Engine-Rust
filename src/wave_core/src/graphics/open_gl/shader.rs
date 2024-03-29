@@ -23,7 +23,7 @@
 */
 
 use std::any::Any;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use gl::types::{GLenum, GLsizei};
 
@@ -33,7 +33,7 @@ use crate::Engine;
 use crate::graphics::open_gl::buffer::{GLboolean, GLchar, GLfloat, GLint, GLuint};
 use crate::graphics::open_gl::renderer::S_GL_4_6;
 use crate::graphics::renderer::{EnumRendererApi};
-use crate::graphics::shader::{self, EnumShaderSource, EnumShaderStage, ShaderStage, TraitShader};
+use crate::graphics::shader::{self, EnumShaderSource, EnumShaderStageType, ShaderStage, TraitShader};
 use crate::math::Mat4;
 use crate::S_ENGINE;
 use crate::utils::macros::logger::*;
@@ -65,8 +65,8 @@ pub enum EnumError {
 #[derive(Debug, Clone)]
 pub struct GlShader {
   pub(crate) m_program_id: u32,
-  m_shader_ids: HashMap<EnumShaderStage, GLuint>,
-  m_shader_stages: Vec<ShaderStage>,
+  m_shader_ids: HashMap<EnumShaderStageType, GLuint>,
+  m_shader_stages: HashSet<ShaderStage>,
   m_uniform_cache: HashMap<&'static str, GLint>,
 }
 
@@ -75,7 +75,7 @@ impl TraitShader for GlShader {
     return Self {
       m_program_id: 0,
       m_shader_ids: HashMap::with_capacity(3),
-      m_shader_stages: Vec::with_capacity(3),
+      m_shader_stages: HashSet::with_capacity(3),
       m_uniform_cache: Default::default(),
     };
   }
@@ -84,7 +84,7 @@ impl TraitShader for GlShader {
     return Ok(GlShader {
       m_program_id: 0,
       m_shader_ids: HashMap::with_capacity(shader_stages.len()),
-      m_shader_stages: shader_stages,
+      m_shader_stages: HashSet::from_iter(shader_stages.into_iter()),
       m_uniform_cache: Default::default(),
     });
   }
@@ -138,13 +138,12 @@ impl TraitShader for GlShader {
     for shader_stage in self.m_shader_stages.iter() {
       let shader_id = self.m_shader_ids.get(&shader_stage.m_stage).unwrap();
       if shader_stage.cache_status() {
-        log!(EnumLogColor::Blue, "WARN", "[GlShader] -->\t Cached shader {0} found, \
-            not compiling it.", shader_stage.m_source);
+        log!(EnumLogColor::Blue, "WARN", "[GlShader] -->\t Shader {0} cached, not compiling it...", shader_stage.m_source);
         cached_shader_array.push(shader_stage.clone());
         continue;
       } else {
-        log!(EnumLogColor::Yellow, "WARN", "[GlShader] -->\t Cached shader {0} not found, \
-            compiling it.", shader_stage.m_source);
+        log!(EnumLogColor::Yellow, "WARN", "[GlShader] -->\t Shader {0} not cached or modified, compiling it...",
+          shader_stage.m_source);
         
         // Compile and link.
         check_gl_call!("GlShader", gl::CompileShader(*shader_id));
@@ -160,16 +159,16 @@ impl TraitShader for GlShader {
           let _shader_type_str: String;
         // For debug purposes.
         match shader_stage.m_stage {
-          EnumShaderStage::Vertex => {
+          EnumShaderStageType::Vertex => {
             _shader_type_str = "vertex shader".to_string();
           }
-          EnumShaderStage::Fragment => {
+          EnumShaderStageType::Fragment => {
             _shader_type_str = "fragment shader".to_string();
           }
-          EnumShaderStage::Geometry => {
+          EnumShaderStageType::Geometry => {
             _shader_type_str = "geometry shader".to_string();
           }
-          EnumShaderStage::Compute => {
+          EnumShaderStageType::Compute => {
             _shader_type_str = "compute shader".to_string();
           }
         }

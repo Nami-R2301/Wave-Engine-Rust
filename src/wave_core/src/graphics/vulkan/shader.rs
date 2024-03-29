@@ -38,7 +38,7 @@ use crate::Engine;
 #[cfg(feature = "vulkan")]
 use crate::graphics::renderer::{EnumRendererApi};
 #[cfg(feature = "vulkan")]
-use crate::graphics::shader::{self, EnumShaderSource, EnumShaderStage, Shader, ShaderStage, TraitShader};
+use crate::graphics::shader::{self, EnumShaderSource, EnumShaderStageType, Shader, ShaderStage, TraitShader};
 #[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::renderer::VkContext;
 #[cfg(feature = "vulkan")]
@@ -54,25 +54,25 @@ pub enum EnumSpirVError {
 }
 
 #[cfg(feature = "vulkan")]
-impl From<EnumShaderStage> for shaderc::ShaderKind {
-  fn from(value: EnumShaderStage) -> Self {
+impl From<EnumShaderStageType> for shaderc::ShaderKind {
+  fn from(value: EnumShaderStageType) -> Self {
     return match value {
-      EnumShaderStage::Vertex => shaderc::ShaderKind::Vertex,
-      EnumShaderStage::Fragment => shaderc::ShaderKind::Fragment,
-      EnumShaderStage::Geometry => shaderc::ShaderKind::Geometry,
-      EnumShaderStage::Compute => shaderc::ShaderKind::Compute,
+      EnumShaderStageType::Vertex => shaderc::ShaderKind::Vertex,
+      EnumShaderStageType::Fragment => shaderc::ShaderKind::Fragment,
+      EnumShaderStageType::Geometry => shaderc::ShaderKind::Geometry,
+      EnumShaderStageType::Compute => shaderc::ShaderKind::Compute,
     };
   }
 }
 
 #[cfg(feature = "vulkan")]
-impl From<EnumShaderStage> for vk::ShaderStageFlags {
-  fn from(value: EnumShaderStage) -> Self {
+impl From<EnumShaderStageType> for vk::ShaderStageFlags {
+  fn from(value: EnumShaderStageType) -> Self {
     return match value {
-      EnumShaderStage::Vertex => vk::ShaderStageFlags::VERTEX,
-      EnumShaderStage::Fragment => vk::ShaderStageFlags::FRAGMENT,
-      EnumShaderStage::Geometry => vk::ShaderStageFlags::GEOMETRY,
-      EnumShaderStage::Compute => vk::ShaderStageFlags::COMPUTE,
+      EnumShaderStageType::Vertex => vk::ShaderStageFlags::VERTEX,
+      EnumShaderStageType::Fragment => vk::ShaderStageFlags::FRAGMENT,
+      EnumShaderStageType::Geometry => vk::ShaderStageFlags::GEOMETRY,
+      EnumShaderStageType::Compute => vk::ShaderStageFlags::COMPUTE,
     };
   }
 }

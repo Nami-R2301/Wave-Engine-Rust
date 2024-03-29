@@ -24,7 +24,7 @@
 
 use wave_editor::wave_core::{EmptyApp, Engine, EnumEngineError};
 use wave_editor::wave_core::graphics::renderer::{EnumRendererApi, Renderer};
-use wave_editor::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStage, Shader, ShaderStage};
+use wave_editor::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStageType, Shader, ShaderStage};
 use wave_editor::wave_core::layers::Layer;
 
 use wave_editor::wave_core::math::Mat4;
@@ -39,12 +39,12 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
   let mut engine = Engine::new(window, renderer, vec![layer])?;
   engine.apply()?;
   
-  let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
+  let vertex_shader = ShaderStage::new(EnumShaderStageType::Vertex,
     EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
-  let fragment_shader = ShaderStage::new(EnumShaderStage::Fragment,
+  let fragment_shader = ShaderStage::new(EnumShaderStageType::Fragment,
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
-  let mut result = Shader::new(vec![vertex_shader, fragment_shader])?;
+  let mut result = Shader::from(vec![vertex_shader, fragment_shader])?;
   
   // Sourcing and compilation.
   return match result.apply() {
@@ -62,12 +62,12 @@ fn test_load_uniforms() -> Result<(), EnumEngineError> {
   let mut engine = Engine::new(window, renderer, vec![layer])?;
   engine.apply()?;
   
-  let vertex_shader = ShaderStage::new(EnumShaderStage::Vertex,
+  let vertex_shader = ShaderStage::new(EnumShaderStageType::Vertex,
     EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
-  let fragment_shader = ShaderStage::new(EnumShaderStage::Fragment,
+  let fragment_shader = ShaderStage::new(EnumShaderStageType::Fragment,
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
-  let mut new_shader = Shader::new(vec![vertex_shader, fragment_shader])?;
+  let mut new_shader = Shader::from(vec![vertex_shader, fragment_shader])?;
   
   // Sourcing and compilation.
   new_shader.apply()?;

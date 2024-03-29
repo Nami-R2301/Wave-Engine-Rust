@@ -56,7 +56,7 @@ pub enum EnumWindowOption {
   Resolution(u32, u32),
   Visible(bool),
   Resizable(bool),
-  RendererApi(EnumRendererApi),
+  TargetApi(EnumRendererApi),
   Position(u32, u32),
   Focused(bool),
   Maximized(bool),
@@ -196,7 +196,7 @@ impl<'a> Window {
           (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Resizable(flag));
         }
       }
-      EnumWindowOption::RendererApi(api) => unsafe {
+      EnumWindowOption::TargetApi(api) => unsafe {
         match api {
           EnumRendererApi::OpenGL => {
             // OpenGL hints.
@@ -240,10 +240,6 @@ impl<'a> Window {
     }
   }
   
-  pub fn window_hints(&mut self, options: Vec<EnumWindowOption>) {
-    options.into_iter().for_each(|option| self.window_hint(option));
-  }
-  
   pub fn is_applied(&self) -> bool {
     return self.m_api_window.is_some();
   }
@@ -251,10 +247,10 @@ impl<'a> Window {
   pub fn apply(&mut self) -> Result<(), EnumWindowError> {
     if self.m_render_api.is_none() {
       #[cfg(not(feature = "vulkan"))]
-      self.window_hint(EnumWindowOption::RendererApi(EnumRendererApi::OpenGL));
+      self.window_hint(EnumWindowOption::TargetApi(EnumRendererApi::OpenGL));
       
       #[cfg(feature = "vulkan")]
-      self.window_hint(EnumWindowOption::RendererApi(EnumRendererApi::Vulkan));
+      self.window_hint(EnumWindowOption::TargetApi(EnumRendererApi::Vulkan));
     }
     
     unsafe {
