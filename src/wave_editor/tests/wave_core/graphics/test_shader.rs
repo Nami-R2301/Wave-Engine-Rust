@@ -22,9 +22,11 @@
  SOFTWARE.
 */
 
+use wave_core::graphics::shader;
+use wave_core::graphics::shader::EnumShaderHint;
 use wave_editor::wave_core::{EmptyApp, Engine, EnumEngineError};
 use wave_editor::wave_core::graphics::renderer::{EnumRendererApi, Renderer};
-use wave_editor::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStageType, Shader, ShaderStage};
+use wave_editor::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStageType, ShaderStage};
 use wave_editor::wave_core::layers::Layer;
 
 use wave_editor::wave_core::math::Mat4;
@@ -44,10 +46,17 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
   let fragment_shader = ShaderStage::new(EnumShaderStageType::Fragment,
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
-  let mut result = Shader::from(vec![vertex_shader, fragment_shader])?;
+  let mut shader = shader::Shader::new();
+  shader.shader_hint(EnumShaderHint::TargetApi(EnumRendererApi::OpenGL));
+  shader.shader_hint(EnumShaderHint::TargetGlslVersion(420));
+  
+  shader.push_stage(vertex_shader)?;
+  shader.push_stage(fragment_shader)?;
+  
+  let result = shader.apply();
   
   // Sourcing and compilation.
-  return match result.apply() {
+  return match result {
     Ok(_) => { Ok(()) }
     Err(err) => { Err(EnumEngineError::from(err)) }
   };
@@ -67,13 +76,17 @@ fn test_load_uniforms() -> Result<(), EnumEngineError> {
   let fragment_shader = ShaderStage::new(EnumShaderStageType::Fragment,
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
-  let mut new_shader = Shader::from(vec![vertex_shader, fragment_shader])?;
+  let mut shader = shader::Shader::new();
+  shader.shader_hint(EnumShaderHint::TargetApi(EnumRendererApi::OpenGL));
+  shader.shader_hint(EnumShaderHint::TargetGlslVersion(420));
   
-  // Sourcing and compilation.
-  new_shader.apply()?;
+  shader.push_stage(vertex_shader)?;
+  shader.push_stage(fragment_shader)?;
+  
+  shader.apply()?;
   
   // Load uniforms.
-  return match  new_shader.upload_data("u_model_matrix",
+  return match  shader.upload_data("u_model_matrix",
     &Mat4::new(1.0)) {
     Ok(_) => { Ok(()) }
     Err(err) => { Err(EnumEngineError::from(err)) }

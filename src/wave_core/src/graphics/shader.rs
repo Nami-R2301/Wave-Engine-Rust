@@ -447,8 +447,6 @@ impl Shader {
             return Err(EnumShaderError::FileNotFound);
           }
           
-          // Keep loading from a different source supporting the requested version until we find one, if we can't
-          // simply throw VersionNotFound error.
           let mut file_path_str: String;
           match shader_stage.m_stage {
             EnumShaderStageType::Vertex => {
@@ -470,6 +468,8 @@ impl Shader {
           let version_pattern = format!("#version {0}", version_requested);
           let mut file_contents = std::fs::read_to_string(glsl_other_source);
           
+          // Keep loading from a different source supporting the requested version until we find one, if we can't
+          // simply throw VersionNotFound error.
           while new_version > 330 && (!file_contents.is_ok() || !file_contents?.contains(version_pattern.as_str())) {
             log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t '{0}' not targeting glsl #v{1}, attempting fallbacks...",
               glsl_other_source.to_str().unwrap(), version_requested);
