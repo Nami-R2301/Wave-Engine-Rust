@@ -24,8 +24,6 @@
 
 #[cfg(feature = "vulkan")]
 use std::any::Any;
-#[cfg(feature = "vulkan")]
-use std::collections::HashSet;
 
 #[cfg(feature = "vulkan")]
 use std::fmt::{Display};
@@ -50,8 +48,8 @@ use crate::{Engine, events};
 #[cfg(feature = "vulkan")]
 use crate::graphics::{renderer, vulkan};
 #[cfg(feature = "vulkan")]
-use crate::graphics::renderer::{EnumRendererCallCheckingMode, EnumRendererOption, EnumRendererState, TraitContext};
-use crate::graphics::renderer::{EnumRendererError, EnumRendererRenderPrimitiveAs};
+use crate::graphics::renderer::{EnumRendererCallCheckingMode, EnumRendererHint, EnumRendererState, TraitContext};
+use crate::graphics::renderer::{EnumRendererApi, EnumRendererError, EnumRendererRenderPrimitiveAs};
 #[cfg(feature = "vulkan")]
 use crate::graphics::shader::Shader;
 #[cfg(feature = "vulkan")]
@@ -214,7 +212,7 @@ pub struct VkContext {
   m_dynamic_states: Vec<vk::DynamicState>,
   m_vbo_array: Vec<VkVbo>,
   m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
-  m_features: HashSet<EnumRendererOption>
+  m_features: Vec<EnumRendererHint>
 }
 
 #[cfg(feature = "vulkan")]
@@ -951,7 +949,7 @@ impl TraitContext for VkContext {
       m_dynamic_states: vec![],
       m_vbo_array: vec![],
       m_debug_report_callback: None,
-      m_features: HashSet::new()
+      m_features: Vec::new()
     }
   }
   
@@ -967,7 +965,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn on_new(window: &mut Window, features: HashSet<EnumRendererOption>) -> Result<Self, renderer::EnumRendererError> {
+  fn on_new(window: &mut Window, features: Vec<EnumRendererHint>) -> Result<Self, renderer::EnumRendererError> {
     let (ash_entry, ash_instance) =
       VkContext::create_instance(window, None, None)?;
     #[allow(unused)]
@@ -1004,7 +1002,7 @@ impl TraitContext for VkContext {
       m_swap_chain_image_views: Default::default(),
       m_dynamic_states: Vec::with_capacity(2),
       m_vbo_array: Default::default(),
-      m_features: HashSet::from(features)
+      m_features: Vec::from(features)
     })
   }
   
@@ -1139,7 +1137,12 @@ impl TraitContext for VkContext {
   fn toggle_options(&mut self) -> Result<(), renderer::EnumRendererError> {
     for feature in self.m_features.iter() {
       match feature {
-        EnumRendererOption::ApiCallChecking(debug_type) => {
+        EnumRendererHint::TargetApi(api) => {
+          if *api == EnumRendererApi::OpenGL {
+            todo!()
+          }
+        }
+        EnumRendererHint::ApiCallChecking(debug_type) => {
           if *debug_type != EnumRendererCallCheckingMode::None {
             // Toggle on debugging.
             #[cfg(feature = "trace_api")]
@@ -1161,10 +1164,10 @@ impl TraitContext for VkContext {
           .then(|| return "enabled")
           .unwrap_or("disabled"));
         }
-        EnumRendererOption::DepthTest(_) => {}
-        EnumRendererOption::CullFacing(_) => {}
-        EnumRendererOption::PrimitiveMode(_) => {}
-        EnumRendererOption::MSAA(sample_count) => {
+        EnumRendererHint::DepthTest(_) => {}
+        EnumRendererHint::CullFacing(_) => {}
+        EnumRendererHint::PrimitiveMode(_) => {}
+        EnumRendererHint::MSAA(sample_count) => {
           #[allow(unused)]
             let mut max_sample_count: u8 = 1;
           if sample_count.is_some() {
@@ -1183,9 +1186,9 @@ impl TraitContext for VkContext {
           .then(|| return format!("enabled (X{0})", max_sample_count))
           .unwrap_or("disabled".to_string()));
         }
-        EnumRendererOption::SRGB(_) => {}
-        EnumRendererOption::Blending(_, _) => {}
-        EnumRendererOption::BatchSameMaterials(_) => {}
+        EnumRendererHint::SRGB(_) => {}
+        EnumRendererHint::Blending(_, _) => {}
+        EnumRendererHint::BatchSameMaterials(_) => {}
       }
     }
     return Ok(());

@@ -33,27 +33,21 @@ use wave_editor::Editor;
 
 fn main() -> Result<(), EnumEngineError> {
   
-  let mut window = window::Window::new()?;
-  window.window_hint(window::EnumWindowOption::TargetApi(renderer::EnumRendererApi::OpenGL));
-  window.window_hint(window::EnumWindowOption::WindowMode(window::EnumWindowMode::Windowed));
-  window.window_hint(window::EnumWindowOption::Resizable(true));
-  window.window_hint(window::EnumWindowOption::Maximized(true));
+  // Apply default options.
+  let mut window = window::Window::default();
+  let mut renderer = renderer::Renderer::default();
   
-  let mut renderer = renderer::Renderer::new(renderer::EnumRendererApi::OpenGL)?;
-  renderer.renderer_hint(renderer::EnumRendererOption::ApiCallChecking(renderer::EnumRendererCallCheckingMode::Async));
-  renderer.renderer_hint(renderer::EnumRendererOption::SRGB(true));
-  renderer.renderer_hint(renderer::EnumRendererOption::DepthTest(true));
-  renderer.renderer_hint(renderer::EnumRendererOption::Blending(true, None));
-  renderer.renderer_hint(renderer::EnumRendererOption::PrimitiveMode(renderer::EnumRendererRenderPrimitiveAs::SolidWireframe));
-  renderer.renderer_hint(renderer::EnumRendererOption::BatchSameMaterials(false));
-  renderer.renderer_hint(renderer::EnumRendererOption::CullFacing(Some(renderer::EnumRendererCull::Back)));
+  // Override some options.
+  window.hint(window::EnumWindowHint::TargetApi(renderer::EnumRendererApi::OpenGL));  // Force OpenGL.
+  window.hint(window::EnumWindowHint::WindowMode(window::EnumWindowMode::Windowed));  // Force Windowed.
+  renderer.hint(renderer::EnumRendererHint::TargetApi(renderer::EnumRendererApi::OpenGL));  // Force OpenGL.
   
   let main_app_layer: Layer = Layer::new("My App", EmptyApp::default());
   
   // Supply all app layers to our editor. This will NOT 'apply()' editor nor engine, only filling in the structs.
   // Note that calling 'default()' will default to Vulkan for the windowing and rendering context if supported,
   // otherwise falling back to OpenGL.
-  let mut editor: Editor = Editor::new(window, renderer, vec![main_app_layer])?;
+  let mut editor: Editor = Editor::new(window, renderer, vec![main_app_layer]);
   
   // Applying and executing the editor in game loop. Returning upon a close event or if an error occurred.
   return editor.run();

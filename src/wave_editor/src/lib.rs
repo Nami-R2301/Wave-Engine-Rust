@@ -26,15 +26,15 @@ pub extern crate wave_core;
 
 use std::collections::HashMap;
 use wave_core::{camera, Engine, EnumEngineError, input, math};
-use wave_core::assets::asset_loader::AssetLoader;
+use wave_core::assets::asset_loader::{AssetLoader, EnumAssetHint, EnumAssetPrimitiveMode};
 use wave_core::assets::renderable_assets::{EnumPrimitiveType, REntity};
 #[allow(unused)]
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
-use wave_core::graphics::renderer;
 use wave_core::graphics::renderer::{EnumRendererApi, EnumRendererRenderPrimitiveAs, Renderer};
 use wave_core::graphics::shader;
 use wave_core::graphics::shader::EnumShaderHint;
+use wave_core::graphics::texture::{EnumTextureDataType, EnumTextureFormat, EnumTextureHint, EnumTextureTarget, EnumTextureType, Texture};
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 #[allow(unused)]
 use wave_core::layers::imgui_layer::ImguiLayer;
@@ -99,14 +99,14 @@ pub struct Editor {
 }
 
 impl Editor {
-  pub fn default() -> Result<Self, EnumEngineError> {
+  pub fn default() -> Self {
     #[cfg(feature = "vulkan")]
     {
-      let window = Window::new()?;
-      let renderer = Renderer::new(renderer::EnumRendererApi::Vulkan)?;
+      let window = Window::new();
+      let renderer = Renderer::new(renderer::EnumRendererApi::Vulkan);
       
       return Ok(Editor {
-        m_engine: Engine::new(window, renderer, vec![])?,
+        m_engine: Engine::new(window, renderer, vec![]),
         m_shaders: Vec::new(),
         m_renderable_assets: Vec::new(),
         m_cameras: Vec::new(),
@@ -116,25 +116,25 @@ impl Editor {
     
     #[cfg(not(feature = "vulkan"))]
     {
-      let window = Window::new()?;
-      let renderer = Renderer::new(renderer::EnumRendererApi::OpenGL)?;
+      let window = Window::new();
+      let renderer = Renderer::new();
       
-      return Ok(Editor {
-        m_engine: Engine::new(window, renderer, vec![])?,
+      return Editor {
+        m_engine: Engine::new(window, renderer, vec![]),
         m_renderable_assets: HashMap::with_capacity(10),
         m_cameras: Vec::new(),
         m_wireframe_on: true,
-      });
+      };
     }
   }
   
-  pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Result<Self, EnumEngineError> {
-    return Ok(Editor {
-      m_engine: Engine::new(window, renderer, app_layers)?,
+  pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Self {
+    return Editor {
+      m_engine: Engine::new(window, renderer, app_layers),
       m_renderable_assets: HashMap::with_capacity(10),
       m_cameras: Vec::new(),
       m_wireframe_on: true,
-    });
+    };
   }
   
   pub fn run(&mut self) -> Result<(), EnumEngineError> {
@@ -169,41 +169,47 @@ impl TraitLayer for Editor {
     let fragment_shader = shader::ShaderStage::default(shader::EnumShaderStageType::Fragment);
     let geometry_shader = shader::ShaderStage::default(shader::EnumShaderStageType::Geometry);
     
-    let mut shader = shader::Shader::new();
-    shader.shader_hint(EnumShaderHint::TargetApi(EnumRendererApi::OpenGL));
-    shader.shader_hint(EnumShaderHint::TargetGlslVersion(420));
+    let mut shader = shader::Shader::default();  // Apply default shader hints.
+    shader.shader_hint(EnumShaderHint::TargetApi(EnumRendererApi::OpenGL));  // Force OpenGL.
+    shader.shader_hint(EnumShaderHint::TargetGlslVersion(420));  // Force #version of 420.
     
     shader.push_stage(vertex_shader)?;
     shader.push_stage(fragment_shader)?;
     shader.push_stage(geometry_shader)?;
     
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending shaders to GPU...");
-    
     // Sourcing and compilation.
     shader.apply()?;
     
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Shaders sent to GPU successfully");
-    
-    self.m_cameras.push(camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
-    
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
     
-    let mut awp = REntity::new(AssetLoader::new("awp.obj")?, EnumPrimitiveType::Mesh(false));
+    let mut asset_loader = AssetLoader::new();
+    asset_loader.hint(EnumAssetHint::PrimitiveDataIs(EnumAssetPrimitiveMode::Indexed));
+    asset_loader.hint(EnumAssetHint::GenerateNormals(true));
+    asset_loader.hint(EnumAssetHint::Triangulate(true));
+    asset_loader.hint(EnumAssetHint::SplitLargeMeshes(true, 500_000));
+    asset_loader.hint(EnumAssetHint::ReduceMeshes(true));
+    asset_loader.hint(EnumAssetHint::OnlyTriangles(true));
+    
+    let awp_asset = asset_loader.apply("awp.obj")?;
+    let mario_asset = asset_loader.apply("Mario.obj")?;
+    let sphere_asset = asset_loader.apply("sphere.obj")?;
+    
+    let mut awp = REntity::new(awp_asset, EnumPrimitiveType::Mesh(false));
     
     awp.translate(math::Vec3::new(&[10.0, -10.0, 50.0]));
     awp.rotate(math::Vec3::new(&[90.0, -90.0, 0.0]));
     awp.apply(&mut shader)?;
     awp.show(None);
     
-    let mut mario = REntity::new(AssetLoader::new("mario/Mario.obj")?, EnumPrimitiveType::Mesh(false));
+    let mut mario = REntity::new(mario_asset, EnumPrimitiveType::Mesh(false));
     
     mario.translate(math::Vec3::new(&[-5.0, -5.0, 15.0]));
     mario.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
     mario.apply(&mut shader)?;
     mario.show(None);
     
-    let mut sphere = REntity::new(AssetLoader::new("sphere.obj")?, EnumPrimitiveType::Mesh(false));
+    let mut sphere = REntity::new(sphere_asset, EnumPrimitiveType::Mesh(false));
     
     sphere.translate(math::Vec3::new(&[5.0, 0.0, 20.0]));
     sphere.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
@@ -212,9 +218,18 @@ impl TraitLayer for Editor {
     
     self.m_renderable_assets.insert("Smooth objects", (shader, vec![awp, sphere]));
     
+    let mut texture_preset = Texture::default();
+    
+    texture_preset.hint(EnumTextureHint::TargetApi(EnumRendererApi::OpenGL));  // Force OpenGL, default is Vulkan.
+    texture_preset.hint(EnumTextureHint::ColorChannels(EnumTextureFormat::Rgb));  // Specify to load our png without the alpha channel, default is 4 (RGBA).
+    texture_preset.hint(EnumTextureHint::Multisample(Some(4)));  // Make texture multi-sampled, default is None.
+    
+    texture_preset.apply("res/textures/mario-hat.png")?;
+    
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
     
     let renderer = self.m_engine.get_renderer_mut();
+    self.m_cameras.push(camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
     renderer.update_ubo_camera(self.m_cameras[0].get_view_matrix(), self.m_cameras[0].get_projection_matrix())?;
     
     // let mut imgui_layer: Layer = Layer::new("Imgui",

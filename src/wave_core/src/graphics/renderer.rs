@@ -23,9 +23,7 @@
 */
 
 use std::any::Any;
-use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
-use once_cell::sync::Lazy;
 
 #[cfg(feature = "debug")]
 use crate::Engine;
@@ -33,7 +31,7 @@ use crate::utils::macros::logger::*;
 use crate::assets::asset_loader;
 use crate::assets::renderable_assets::{REntity};
 use crate::events;
-use crate::graphics::{open_gl};
+use crate::graphics::{open_gl, texture};
 use crate::graphics::open_gl::renderer::GlContext;
 use crate::graphics::shader::Shader;
 #[cfg(feature = "vulkan")]
@@ -42,8 +40,6 @@ use crate::graphics::vulkan;
 use crate::graphics::vulkan::renderer::VkContext;
 use crate::math::{Mat4};
 use crate::window::Window;
-
-static mut S_ENTITIES_ID_CACHE: Lazy<HashSet<u64>> = Lazy::new(|| HashSet::new());
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub enum EnumRendererCallCheckingMode {
@@ -85,7 +81,7 @@ pub enum EnumRendererRenderPrimitiveAs {
   Points,
   Filled,
   Wireframe,
-  SolidWireframe
+  SolidWireframe,
 }
 
 impl Display for EnumRendererCull {
@@ -94,7 +90,7 @@ impl Display for EnumRendererCull {
       EnumRendererCull::Front => write!(f, "Front face culling"),
       EnumRendererCull::Back => write!(f, "Back face culling"),
       EnumRendererCull::FrontAndBack => write!(f, "Front and back face culling")
-    }
+    };
   }
 }
 
@@ -105,12 +101,13 @@ impl Display for EnumRendererRenderPrimitiveAs {
       EnumRendererRenderPrimitiveAs::Points => write!(f, "Point"),
       EnumRendererRenderPrimitiveAs::Wireframe => write!(f, "Wireframe"),
       EnumRendererRenderPrimitiveAs::SolidWireframe => write!(f, "Solid wireframe")
-    }
+    };
   }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum EnumRendererOption {
+#[derive(Debug, Copy, Clone, Eq, Hash)]
+pub enum EnumRendererHint {
+  TargetApi(EnumRendererApi),
   /// Combine primitives with the same material type into a single buffer if possible, both for the vbo and ibo.
   /// ### Argument:
   /// - *true*: Enables the batching of similar materials from the same shader by appending their vertices in the same vbo,
@@ -196,6 +193,23 @@ pub enum EnumRendererOption {
   Blending(bool, Option<(i64, i64)>),
 }
 
+impl PartialEq for EnumRendererHint {
+  fn eq(&self, other: &Self) -> bool {
+    return match (self, other) {
+      (EnumRendererHint::TargetApi(_), EnumRendererHint::TargetApi(_)) => true,
+      (EnumRendererHint::BatchSameMaterials(_), EnumRendererHint::BatchSameMaterials(_)) => true,
+      (EnumRendererHint::ApiCallChecking(_), EnumRendererHint::ApiCallChecking(_)) => true,
+      (EnumRendererHint::DepthTest(_), EnumRendererHint::DepthTest(_)) => true,
+      (EnumRendererHint::CullFacing(_), EnumRendererHint::CullFacing(_)) => true,
+      (EnumRendererHint::PrimitiveMode(_), EnumRendererHint::PrimitiveMode(_)) => true,
+      (EnumRendererHint::MSAA(_), EnumRendererHint::MSAA(_)) => true,
+      (EnumRendererHint::SRGB(_), EnumRendererHint::SRGB(_)) => true,
+      (EnumRendererHint::Blending(_, _), EnumRendererHint::Blending(_, _)) => true,
+      _ => false
+    };
+  }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum EnumRendererError {
   Init,
@@ -206,6 +220,7 @@ pub enum EnumRendererError {
   NotImplemented,
   ContextError,
   InvalidAssetSource(asset_loader::EnumAssetError),
+  TextureError(texture::EnumTextureError),
   InvalidEntity,
   EntityNotFound,
   ShaderNotFound,
@@ -222,6 +237,12 @@ pub enum EnumRendererError {
 impl From<asset_loader::EnumAssetError> for EnumRendererError {
   fn from(value: asset_loader::EnumAssetError) -> Self {
     return EnumRendererError::InvalidAssetSource(value);
+  }
+}
+
+impl From<texture::EnumTextureError> for EnumRendererError {
+  fn from(value: texture::EnumTextureError) -> Self {
+    return EnumRendererError::TextureError(value);
   }
 }
 
@@ -278,7 +299,7 @@ impl Stats {
 
 pub(crate) trait TraitContext {
   fn default() -> Self where Self: Sized;
-  fn on_new(window: &mut Window, renderer_options: HashSet<EnumRendererOption>) -> Result<Self, EnumRendererError> where Self: Sized;
+  fn on_new(window: &mut Window, renderer_options: Vec<EnumRendererHint>) -> Result<Self, EnumRendererError> where Self: Sized;
   fn get_api_handle(&mut self) -> &mut dyn Any;
   fn get_api_version(&self) -> f32;
   fn get_max_shader_version_available(&self) -> u16;
@@ -300,45 +321,65 @@ pub(crate) trait TraitContext {
 }
 
 pub struct Renderer {
-  pub m_type: EnumRendererApi,
-  pub m_state: EnumRendererState,
-  pub m_options: HashSet<EnumRendererOption>,
+  pub(crate) m_type: EnumRendererApi,
+  pub(crate) m_state: EnumRendererState,
+  pub(crate) m_hints: Vec<EnumRendererHint>,
+  pub(crate) m_ids: Vec<u64>,
   m_api: Box<dyn TraitContext>,
 }
 
 impl<'a> Renderer {
-  pub fn new(api_preference: EnumRendererApi) -> Result<Self, EnumRendererError> {
-    return match api_preference {
-      EnumRendererApi::OpenGL => {
-        Ok(Renderer {
-          m_type: EnumRendererApi::OpenGL,
-          m_state: EnumRendererState::Created,
-          m_options: HashSet::new(),
-          m_api: Box::new(GlContext::default()),
-        })
-      }
-      EnumRendererApi::Vulkan => {
-        #[cfg(feature = "vulkan")]
-        return Ok(Renderer {
-          m_type: EnumRendererApi::Vulkan,
-          m_state: EnumRendererState::Created,
-          m_options: HashSet::new(),
-          m_api: Box::new(VkContext::default()),
-        });
-        
-        #[cfg(not(feature = "vulkan"))]
-        {
-          log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot create renderer : Vulkan feature \
-            not enabled!\nMake sure to turn on Vulkan rendering by enabling it in the Cargo.toml \
-            file under features!");
-          Err(EnumRendererError::UnsupportedApi)
-        }
-      }
+  pub fn default() -> Self {
+    let mut hints = Vec::with_capacity(8);
+    hints.push(EnumRendererHint::TargetApi(EnumRendererApi::Vulkan));
+    hints.push(EnumRendererHint::ApiCallChecking(EnumRendererCallCheckingMode::Async));
+    hints.push(EnumRendererHint::SRGB(true));
+    hints.push(EnumRendererHint::DepthTest(true));
+    hints.push(EnumRendererHint::Blending(true, None));
+    hints.push(EnumRendererHint::PrimitiveMode(EnumRendererRenderPrimitiveAs::SolidWireframe));
+    hints.push(EnumRendererHint::BatchSameMaterials(false));
+    hints.push(EnumRendererHint::CullFacing(Some(EnumRendererCull::Back)));
+    
+    return Self {
+      m_type: EnumRendererApi::Vulkan,
+      m_state: EnumRendererState::Created,
+      m_hints: hints,
+      m_ids: Vec::with_capacity(10),
+      m_api: Box::new(VkContext::default()),
     };
   }
   
-  pub fn renderer_hint(&mut self, feature_desired: EnumRendererOption) {
-    self.m_options.insert(feature_desired);
+  pub fn new() -> Self {
+    #[cfg(feature = "vulkan")]
+    return Renderer {
+      m_type: EnumRendererApi::Vulkan,
+      m_state: EnumRendererState::Created,
+      m_hints: Vec::with_capacity(8),
+      m_ids: Vec::with_capacity(10),
+      m_api: Box::new(VkContext::default()),
+    };
+    
+    #[cfg(not(feature = "vulkan"))]
+    {
+      Renderer {
+        m_type: EnumRendererApi::OpenGL,
+        m_state: EnumRendererState::Created,
+        m_hints: Vec::with_capacity(8),
+        m_ids: Vec::with_capacity(10),
+        m_api: Box::new(GlContext::default()),
+      }
+    }
+  }
+  
+  pub fn hint(&mut self, feature_desired: EnumRendererHint) {
+    if let Some(position) = self.m_hints.iter().position(|hint| hint == &feature_desired) {
+      self.m_hints.remove(position);
+    }
+    self.m_hints.push(feature_desired);
+  }
+  
+  pub fn clear_hints(&mut self) {
+    self.m_hints.clear();
   }
   
   pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) {
@@ -350,24 +391,12 @@ impl<'a> Renderer {
   }
   
   pub fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError> {
-    return match self.m_type {
-      EnumRendererApi::OpenGL => {
-        self.m_api = Box::new(GlContext::on_new(window, self.m_options.clone())?);
-        self.m_api.apply(window)
-      }
-      EnumRendererApi::Vulkan => {
-        #[cfg(not(feature = "vulkan"))]
-        {
-          log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot set VkContext, vulkan feature not enabled!");
-          return Err(EnumRendererError::InvalidApi);
-        }
-        #[cfg(feature = "vulkan")]
-        {
-          self.m_api = Box::new(VkContext::on_new(window, self.m_options.clone())?);
-          self.m_api.apply(window)
-        }
-      }
+    if self.m_hints.contains(&EnumRendererHint::TargetApi(EnumRendererApi::OpenGL)) {
+      self.m_api = Box::new(GlContext::on_new(window, self.m_hints.clone())?);
+      return self.m_api.apply(window);
     }
+    self.m_api = Box::new(VkContext::on_new(window, self.m_hints.clone())?);
+    return self.m_api.apply(window);
   }
   
   pub fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs) -> Result<(), EnumRendererError> {
@@ -421,11 +450,9 @@ impl<'a> Renderer {
   }
   
   pub fn enqueue(&mut self, r_entity: &mut REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
-    let mut new_id = rand::random::<u64>();
-    unsafe {
-      while S_ENTITIES_ID_CACHE.contains(&new_id) {
-        new_id = rand::random();
-      }
+    let mut new_id = 0;
+    while self.m_ids.contains(&new_id) {
+       new_id += rand::random::<u64>();
     }
     r_entity.set_uuid(new_id);
     return self.m_api.enqueue(r_entity, shader_associated);

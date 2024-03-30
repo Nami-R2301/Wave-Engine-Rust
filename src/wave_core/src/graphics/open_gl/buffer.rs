@@ -321,7 +321,7 @@ impl GlVao {
   }
 }
 
-const C_VBO_SIZE_LIMIT: usize = 5_000_000;  // Mbs.
+const C_VBO_SIZE_LIMIT: usize = 5_000_000;  // bytes.
 
 #[allow(unused)]
 pub(crate) struct GlVbo {
@@ -391,6 +391,16 @@ impl GlVbo {
     return Ok(());
   }
   
+  #[allow(unused)]
+  pub(crate) fn clear(&mut self) -> Result<(), EnumOpenGLError> {
+    self.bind()?;
+    
+    check_gl_call!("GlVbo", gl::BufferSubData(gl::ARRAY_BUFFER, 0, self.m_length as GLsizeiptr, std::ptr::null()));
+    self.m_length = 0;
+    
+    return Ok(());
+  }
+  
   pub(crate) fn push<T>(&mut self, data: &Vec<T>) -> Result<(), EnumOpenGLError> {
     if data.len() == 0 {
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidBufferSize));
@@ -413,6 +423,7 @@ impl GlVbo {
     return Ok(());
   }
   
+  #[allow(unused)]
   pub(crate) fn strip(&mut self, buffer_offset: usize, size: usize) -> Result<(), EnumOpenGLError> {
     if size == 0 || size > self.m_length {
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidBufferSize));
@@ -541,6 +552,7 @@ impl GlVbo {
     return Ok(());
   }
   
+  #[allow(unused)]
   pub fn is_empty(&self) -> bool {
     return self.m_length == 0;
   }
@@ -612,6 +624,16 @@ impl GlIbo {
       check_gl_call!("GlIbo", gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.m_buffer_id));
     }
     self.m_state = EnumBufferState::Bound;
+    return Ok(());
+  }
+  
+  #[allow(unused)]
+  pub(crate) fn clear(&mut self) -> Result<(), EnumOpenGLError> {
+    self.bind()?;
+    
+    check_gl_call!("GlIbo", gl::BufferSubData(gl::ELEMENT_ARRAY_BUFFER, 0, self.m_length as GLsizeiptr, std::ptr::null()));
+    self.m_length = 0;
+    
     return Ok(());
   }
   
@@ -820,7 +842,7 @@ pub(crate) enum EnumUboTypeSize {
 pub(crate) struct GlUbo {
   m_buffer_id: u32,
   m_name: Option<&'static str>,
-  m_size: usize,
+  m_length: usize,
   m_state: EnumBufferState,
 }
 
@@ -830,7 +852,7 @@ impl GlUbo {
     return Self {
       m_buffer_id: 0,
       m_name: block_name,
-      m_size: 0,
+      m_length: 0,
       m_state: EnumBufferState::NotCreated,
     }
   }
@@ -863,7 +885,7 @@ impl GlUbo {
     return Ok(Self {
       m_buffer_id: buffer_id,
       m_name: block_name,
-      m_size: alloc_size,
+      m_length: alloc_size,
       m_state: EnumBufferState::Created,
     });
   }
@@ -922,6 +944,16 @@ impl GlUbo {
     return Ok(());
   }
   
+  #[allow(unused)]
+  pub(crate) fn clear(&mut self) -> Result<(), EnumOpenGLError> {
+    self.bind()?;
+    
+    check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0, self.m_length as GLsizeiptr, std::ptr::null()));
+    self.m_length = 0;
+    
+    return Ok(());
+  }
+  
   pub(crate) fn push(&mut self, ubo_type: EnumUboType) -> Result<(), EnumOpenGLError> {
     self.bind()?;
     match ubo_type {
@@ -954,7 +986,7 @@ impl GlUbo {
           Mat4::get_size() as GLsizeiptr, projection.transpose().as_array().as_ptr() as *const std::ffi::c_void));
       }
       EnumUboType::Custom(value) => {
-        check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0 as GLintptr, self.m_size as GLsizeiptr, value));
+        check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0 as GLintptr, self.m_length as GLsizeiptr, value));
       }
     }
     return Ok(());

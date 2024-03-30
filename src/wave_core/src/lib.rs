@@ -29,7 +29,6 @@ use input::{EnumAction, EnumKey, EnumMouseButton, Input};
 use layers::{EnumLayerType, Layer, TraitLayer};
 use layers::renderer_layer::RendererLayer;
 use layers::window_layer::WindowLayer;
-use once_cell::sync::Lazy;
 #[cfg(feature = "debug")]
 use utils::macros::logger::{color_to_str, EnumLogColor};
 use utils::Time;
@@ -49,7 +48,7 @@ pub mod events;
 pub mod layers;
 
 static mut S_ENGINE: Option<*mut Engine> = None;
-pub(crate) static S_LOG_FILE_PTR: Lazy<std::fs::File> = Lazy::new(|| utils::macros::logger::init().unwrap());
+pub(crate) static mut S_LOG_FILE_PTR: Option<std::fs::File> = None;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum EnumEngineState {
@@ -153,15 +152,16 @@ impl<'a> Engine {
   /// engine.free();
   /// return Ok(());
   /// ```
-  pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Result<Self, EnumEngineError> {
-    Ok(Engine {
+  pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Self {
+    unsafe { S_LOG_FILE_PTR = Some(utils::macros::logger::init().unwrap()) };
+    return Engine {
       m_layers: app_layers,
       m_window: window,
       m_renderer: renderer,
       m_time_step: 0.0,
       m_tick_rate: 0.0,
       m_state: EnumEngineState::NotStarted,
-    })
+    };
   }
   
   pub fn apply(&mut self) -> Result<(), EnumEngineError> {
@@ -364,7 +364,7 @@ impl<'a> Engine {
   }
   
   pub fn get_log_file() -> &'a std::fs::File {
-    return &S_LOG_FILE_PTR;
+    return unsafe { S_LOG_FILE_PTR.as_ref().unwrap() };
   }
   
   ////////////////////////////// PRIVATE FUNCTIONS ////////////////////////////////

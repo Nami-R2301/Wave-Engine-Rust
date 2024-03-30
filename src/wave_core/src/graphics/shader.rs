@@ -22,7 +22,6 @@
  SOFTWARE.
 */
 
-use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use crate::Engine;
@@ -100,11 +99,25 @@ pub enum EnumShaderProfile {
   CompatibilityProfile,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, Hash)]
 pub enum EnumShaderHint {
   TargetApi(EnumRendererApi),
   TargetProfile(EnumShaderProfile),
   TargetGlslVersion(u32),
+}
+
+impl PartialEq for EnumShaderHint {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (EnumShaderHint::TargetApi(_), EnumShaderHint::TargetApi(_)) => true,
+      (EnumShaderHint::TargetGlslVersion(_), EnumShaderHint::TargetGlslVersion(_)) => true,
+      (EnumShaderHint::TargetProfile(_), EnumShaderHint::TargetProfile(_)) => true,
+      _ => false
+    }
+  }
+}
+
+impl Eq for EnumShaderHint {
 }
 
 impl Display for EnumShaderError {
@@ -268,24 +281,47 @@ pub struct Shader {
   m_version: u16,
   m_shader_lang: EnumShaderLanguage,
   m_api_data: Box<dyn TraitShader>,
-  m_hints: HashSet<EnumShaderHint>,
+  m_hints: Vec<EnumShaderHint>,
   m_stages: Vec<ShaderStage>,
 }
 
 impl Shader {
+  pub fn default() -> Self {
+    let mut hints = Vec::with_capacity(2);
+    hints.push(EnumShaderHint::TargetApi(EnumRendererApi::Vulkan));
+    hints.push(EnumShaderHint::TargetGlslVersion(460));
+    
+    return Self {
+      m_state: EnumShaderState::Created,
+      m_version: 460,
+      m_shader_lang: EnumShaderLanguage::Glsl,
+      m_api_data: Box::new(VkShader::default()),
+      m_hints: hints,
+      m_stages: Vec::with_capacity(3),
+    }
+  }
+  
   pub fn new() -> Self {
     return Self {
       m_state: EnumShaderState::Created,
       m_version: 420,
       m_shader_lang: EnumShaderLanguage::Glsl,
-      m_api_data: Box::new(GlShader::default()),
-      m_hints: HashSet::new(),
+      m_api_data: Box::new(VkShader::default()),
+      m_hints: Vec::with_capacity(3),
       m_stages: Vec::with_capacity(3),
     };
   }
   
   pub fn shader_hint(&mut self, hint: EnumShaderHint) {
-    self.m_hints.insert(hint);
+    
+    if let Some(position) = self.m_hints.iter().position(|h| h == &hint) {
+      self.m_hints.remove(position);
+    }
+    self.m_hints.push(hint);
+  }
+  
+  pub fn clear_hints(&mut self) {
+    self.m_hints.clear();
   }
   
   pub fn push_stage(&mut self, shader_stage: ShaderStage) -> Result<(), EnumShaderError> {
@@ -510,7 +546,7 @@ impl Shader {
     return Ok(());
   }
   
-  pub fn load_profile(shader_stage: &mut Vec<ShaderStage>, profile_requested: EnumShaderProfile) -> Result<(), EnumShaderError> {
+  pub fn load_profile(_shader_stage: &mut Vec<ShaderStage>, _profile_requested: EnumShaderProfile) -> Result<(), EnumShaderError> {
     todo!()
   }
   

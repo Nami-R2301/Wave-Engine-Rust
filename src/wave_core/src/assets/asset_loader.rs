@@ -22,6 +22,7 @@
  SOFTWARE.
 */
 
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use assimp;
@@ -45,6 +46,23 @@ pub enum EnumAssetError {
   InvalidShapeData,
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub enum EnumAssetPrimitiveMode {
+  Plain,
+  Indexed
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub enum EnumAssetHint {
+  PrimitiveDataIs(EnumAssetPrimitiveMode),
+  OptimizeGraphs(bool),
+  SplitLargeMeshes(bool, usize),
+  GenerateNormals(bool),
+  Triangulate(bool),
+  ReduceMeshes(bool),
+  OnlyTriangles(bool)
+}
+
 impl Display for EnumAssetError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "[AssetLoader] -->\t Error encountered while loading resource : {:?}", self)
@@ -54,43 +72,36 @@ impl Display for EnumAssetError {
 impl std::error::Error for EnumAssetError {}
 
 #[derive(Debug)]
-pub struct AssetLoader {}
+pub struct AssetLoader {
+  m_hints: HashSet<EnumAssetHint>
+}
 
 impl AssetLoader {
-  /// Generate a [Object3D] asset, given a file path to the desired asset file to load data from.
-  /// The supported file types are **obj** and **gltf**. Additionally, the base resource path will be
-  /// automatically supplied when looking for the file (i.e. "test.obj" => "res/assets/test.obj").
-  /// Thus, only supply file paths below the **assets/** file tree.
-  ///
-  /// # Arguments
-  ///
-  /// * `file_name`: A file path **including** the extension of its format.
-  ///
-  /// # Returns:
-  ///   - Result<Shape, EnumError> : Will return a valid shape if successful, otherwise an [EnumAssetError]
-  ///     on any error encountered. These include, but are not limited to :
-  ///     + [EnumAssetError::InvalidPath] : If the file path provided is not a valid for for assets or
-  ///     if the working directory leads to the incorrect *res* path.
-  ///     + [EnumAssetError::InvalidFileExtension] : If the file extension is not supported.
-  ///     + [EnumAssetError::InvalidRead] : If the file could not be read due to invalid formatting or
-  ///     missing read permissions.
-  ///
-  /// # Examples
-  ///
-  /// ```text
-  /// use wave_core::utils::asset_loader::{EnumError, ResLoader}
-  ///
-  /// let cube = ResLoader::new("objs/cube");
-  /// let sphere = ResLoader::new("sphere.gltt");
-  /// let diamond = ResLoader::new("res/assets/objs/diamond.obj");
-  /// let pyramid = ResLoader::new("objs/pyramid.obj");
-  ///
-  /// assert_eq!(cube, EnumError::InvalidPath);
-  /// assert_eq!(sphere, EnumError::InvalidFileExtension);
-  /// assert_eq!(diamond, EnumError::InvalidPath);
-  /// assert!(pyramid.is_ok());
-  /// ```
-  pub fn new(file_name: &str) -> Result<assimp::scene::Scene, EnumAssetError> {
+  pub fn default() -> Self {
+    let mut hints = HashSet::with_capacity(9);
+    hints.insert(EnumAssetHint::PrimitiveDataIs(EnumAssetPrimitiveMode::Indexed));
+    hints.insert(EnumAssetHint::GenerateNormals(true));
+    hints.insert(EnumAssetHint::Triangulate(true));
+    hints.insert(EnumAssetHint::SplitLargeMeshes(true, 500_000));
+    hints.insert(EnumAssetHint::ReduceMeshes(true));
+    hints.insert(EnumAssetHint::OnlyTriangles(true));
+    
+    return Self {
+      m_hints: hints,
+    }
+  }
+  
+  pub fn new() -> Self {
+    return Self {
+      m_hints: HashSet::with_capacity(5)
+    }
+  }
+  
+  pub fn hint(&mut self, hint: EnumAssetHint) {
+    self.m_hints.insert(hint);
+  }
+  
+  pub fn apply(&self, file_name: &str) -> Result<assimp::scene::Scene, EnumAssetError> {
     let asset_path = &("res/assets/".to_string() + file_name);
     let path = std::path::Path::new(asset_path);
     
@@ -101,28 +112,61 @@ impl AssetLoader {
     }
     
     let mut importer = assimp::import::Importer::new();
-    importer.triangulate(true);
-    // Toggle vertex indexing.
-    importer.join_identical_vertices(true);
-    importer.sort_by_primitive_type(|sort_type| {
-      sort_type.enable = true;
-      sort_type.remove = vec![PrimitiveType::Line, PrimitiveType::Point];
-    });
+    
+    for hint in self.m_hints.iter() {
+      match hint {
+        EnumAssetHint::PrimitiveDataIs(primitive_type) => {
+          match primitive_type {
+            EnumAssetPrimitiveMode::Plain => {
+              // Does the index buffer job for us.
+              importer.find_degenerates(|find_degen| find_degen.enable = true);
+              importer.join_identical_vertices(false);
+            }
+            EnumAssetPrimitiveMode::Indexed => {
+              // Toggle vertex indexing.
+              importer.join_identical_vertices(true);
+            }
+          }
+        }
+        EnumAssetHint::OptimizeGraphs(bool) => {
+          importer.optimize_graph(|opt_graph| {
+            opt_graph.enable = *bool;
+          })
+        }
+        EnumAssetHint::SplitLargeMeshes(bool, vertex_limit) => {
+          importer.split_large_meshes(|split_large| {
+            split_large.enable = *bool;
+            if *bool {
+              split_large.vertex_limit = *vertex_limit as i32;
+            }
+          });
+        }
+        EnumAssetHint::ReduceMeshes(bool) => {
+          importer.optimize_meshes(*bool);
+        }
+        EnumAssetHint::GenerateNormals(bool) => {
+          importer.generate_normals(|gen_normals| {
+            gen_normals.enable = *bool;
+            gen_normals.smooth = *bool;
+          });
+        }
+        EnumAssetHint::Triangulate(bool) => importer.triangulate(*bool),
+        EnumAssetHint::OnlyTriangles(bool) => {
+          importer.sort_by_primitive_type(|sort_type| {
+            sort_type.enable = *bool;
+            if *bool {
+              sort_type.remove = vec![PrimitiveType::Line, PrimitiveType::Point];
+            }
+          });
+        }
+      }
+    }
+    
+    
     importer.find_invalid_data(|invalid_data| invalid_data.enable = true);
     importer.fix_infacing_normals(true);
-    // Does the index buffer job for us.
-    importer.find_degenerates(|find_degen| find_degen.enable = true);
     importer.remove_redudant_materials(|rm_red_mat| rm_red_mat.enable = true);
-    importer.generate_normals(|gen_normals| {
-      gen_normals.enable = true;
-      gen_normals.smooth = true;
-    });
     importer.improve_cache_locality(|impv_cache| impv_cache.enable = true);
-    importer.optimize_meshes(true);
-    importer.split_large_meshes(|split_large| {
-      split_large.enable = true;
-      split_large.vertex_limit = 500_000;
-    });
     importer.measure_time(true);
     
     // #[cfg(feature = "debug")]

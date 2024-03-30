@@ -40,7 +40,6 @@ pub extern crate imgui;
 // Utilities and macros.
 pub extern crate chrono;
 pub extern crate bitflags;
-pub extern crate once_cell;
 pub extern crate rand;
 
 /// Private macros.

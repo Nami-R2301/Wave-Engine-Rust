@@ -97,9 +97,9 @@ impl TraitLayer for RendererLayer {
     unsafe {
       let mut final_str: String;
       final_str = format!("\n{0:115}State: {1:?},\n{0:115}Api: {2:?},\n{0:115}Options: [{3}]",
-        "", (*self.m_context).m_state, (*self.m_context).m_type, (*self.m_context).m_options.len());
+        "", (*self.m_context).m_state, (*self.m_context).m_type, (*self.m_context).m_hints.len());
       
-      for (position, option) in  (*self.m_context).m_options.iter().enumerate() {
+      for (position, option) in  (*self.m_context).m_hints.iter().enumerate() {
         final_str += &format!("\n{0:117}[{1}]: {2:?}", "", position + 1, option);
       }
       return final_str;
