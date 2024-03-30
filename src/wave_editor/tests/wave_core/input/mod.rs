@@ -80,9 +80,9 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
 #[ignore]
 #[test]
 fn test_synchronous_key_inputs() -> Result<(), EnumEngineError> {
-  let mut window = Window::new()?;
-  window.window_hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));
-  window.window_hint(EnumWindowHint::Resolution(1024, 768));
+  let mut window = Window::new();
+  window.hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));
+  window.hint(EnumWindowHint::Resolution(1024, 768));
   window.apply()?;
   
   // Check if PRESS input events work properly.
@@ -166,9 +166,9 @@ fn test_synchronous_key_inputs() -> Result<(), EnumEngineError> {
 #[ignore]
 #[test]
 fn test_synchronous_mouse_button_inputs() -> Result<(), EnumEngineError> {
-  let mut window = Window::new()?;
-  window.window_hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));
-  window.window_hint(EnumWindowHint::Resolution(1024, 768));
+  let mut window = Window::new();
+  window.hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));
+  window.hint(EnumWindowHint::Resolution(1024, 768));
   window.apply()?;
   
   // Check if PRESS input events work properly.

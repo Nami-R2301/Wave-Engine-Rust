@@ -36,9 +36,9 @@ use wave_editor::wave_core::window::Window;
 #[test]
 fn test_shader_send() -> Result<(), EnumEngineError> {
   let layer = Layer::new("Shader send", EmptyApp::default());
-  let window = Window::new()?;
-  let renderer = Renderer::new(EnumRendererApi::OpenGL)?;
-  let mut engine = Engine::new(window, renderer, vec![layer])?;
+  let window = Window::new();
+  let renderer = Renderer::new();
+  let mut engine = Engine::new(window, renderer, vec![layer]);
   engine.apply()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStageType::Vertex,
@@ -66,9 +66,9 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
 #[test]
 fn test_load_uniforms() -> Result<(), EnumEngineError> {
   let layer = Layer::new("Shader load", EmptyApp::default());
-  let window = Window::new()?;
-  let renderer = Renderer::new(EnumRendererApi::OpenGL)?;
-  let mut engine = Engine::new(window, renderer, vec![layer])?;
+  let window = Window::new();
+  let renderer = Renderer::new();
+  let mut engine = Engine::new(window, renderer, vec![layer]);
   engine.apply()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStageType::Vertex,

@@ -283,7 +283,7 @@ impl<'a> Window {
   pub fn apply(&mut self) -> Result<(), EnumWindowError> {
     if self.m_render_api.is_none() {
       #[cfg(not(feature = "vulkan"))]
-      self.window_hint(EnumWindowHint::TargetApi(EnumRendererApi::OpenGL));
+      self.hint(EnumWindowHint::TargetApi(EnumRendererApi::OpenGL));
       
       #[cfg(feature = "vulkan")]
       self.hint(EnumWindowHint::TargetApi(EnumRendererApi::Vulkan));

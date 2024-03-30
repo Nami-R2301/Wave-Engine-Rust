@@ -24,6 +24,7 @@
 
 use stb_image::image::Image;
 use crate::graphics::renderer::EnumRendererError;
+#[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::renderer::EnumVkContextError;
 use crate::graphics::texture::{EnumTextureType, TraitTexture};
 
@@ -41,6 +42,7 @@ pub(crate) struct VkTexture<T> {
   m_data: Image<T>
 }
 
+#[cfg(feature = "vulkan")]
 impl<T> VkTexture<T> {
   pub(crate) fn default() -> Self {
     return Self {

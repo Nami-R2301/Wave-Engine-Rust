@@ -31,6 +31,7 @@ use crate::graphics::renderer::{EnumRendererApi, EnumRendererError};
 use crate::graphics::vulkan::texture::VkTexture;
 use crate::utils::macros::logger::*;
 use crate::Engine;
+#[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::texture::EnumVkTextureError;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
