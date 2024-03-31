@@ -47,8 +47,8 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
   let mut shader = shader::Shader::new();
-  shader.shader_hint(EnumShaderHint::TargetApi(EnumRendererApi::OpenGL));
-  shader.shader_hint(EnumShaderHint::TargetGlslVersion(420));
+  shader.shader_hint(EnumShaderHint::Api(EnumRendererApi::OpenGL));
+  shader.shader_hint(EnumShaderHint::GlslVersion(420));
   
   shader.push_stage(vertex_shader)?;
   shader.push_stage(fragment_shader)?;
@@ -77,8 +77,8 @@ fn test_load_uniforms() -> Result<(), EnumEngineError> {
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
   let mut shader = shader::Shader::new();
-  shader.shader_hint(EnumShaderHint::TargetApi(EnumRendererApi::OpenGL));
-  shader.shader_hint(EnumShaderHint::TargetGlslVersion(420));
+  shader.shader_hint(EnumShaderHint::Api(EnumRendererApi::OpenGL));
+  shader.shader_hint(EnumShaderHint::GlslVersion(420));
   
   shader.push_stage(vertex_shader)?;
   shader.push_stage(fragment_shader)?;

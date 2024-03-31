@@ -25,25 +25,46 @@
 pub extern crate wave_core;
 
 use std::collections::HashMap;
-use wave_core::{camera, Engine, EnumEngineError, input, math};
-use wave_core::assets::asset_loader::{AssetLoader, EnumAssetHint, EnumAssetPrimitiveMode};
-use wave_core::assets::renderable_assets::{EnumPrimitiveType, REntity};
+
+use wave_core::{camera, Engine, EnumEngineError, input, layers, math};
+use wave_core::assets::asset_loader::AssetLoader;
+use wave_core::assets::r_assets;
 #[allow(unused)]
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
-use wave_core::graphics::renderer::{EnumRendererApi, EnumRendererRenderPrimitiveAs, Renderer};
-use wave_core::graphics::shader;
-use wave_core::graphics::shader::EnumShaderHint;
-use wave_core::graphics::texture::{EnumTextureDataType, EnumTextureFormat, EnumTextureHint, EnumTextureTarget, EnumTextureType, Texture};
+use wave_core::graphics::renderer::{EnumRendererHint, EnumRendererRenderPrimitiveAs, Renderer};
+use wave_core::graphics::{shader};
+use wave_core::graphics::texture::{Texture};
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 #[allow(unused)]
 use wave_core::layers::imgui_layer::ImguiLayer;
 #[allow(unused)]
 use wave_core::ui::ui_imgui::Imgui;
 use wave_core::utils::macros::logger::*;
-use wave_core::window::Window;
+use wave_core::window::{EnumWindowHint, EnumWindowMode, Window};
 
 static mut S_EDITOR: Option<*mut Editor> = None;
+
+#[derive(Debug, PartialEq)]
+pub enum EnumEditorError {
+  InvalidAppLayer,
+  LayerError(layers::EnumLayerError),
+  EngineError(EnumEngineError)
+}
+
+impl From<layers::EnumLayerError> for EnumEditorError {
+  fn from(value: layers::EnumLayerError) -> Self {
+    log!(EnumLogColor::Red, "ERROR", "[Editor] -->\t Error occurred in layer, Error => {:?}", value);
+    return EnumEditorError::LayerError(value);
+  }
+}
+
+impl From<EnumEngineError> for EnumEditorError {
+  fn from(value: EnumEngineError) -> Self {
+    log!(EnumLogColor::Red, "ERROR", "[Editor] -->\t Error occurred in engine, Error => {:?}", value);
+    return EnumEditorError::EngineError(value);
+  }
+}
 
 pub struct EditorLayer {
   m_editor: *mut Editor,
@@ -93,51 +114,38 @@ impl TraitLayer for EditorLayer {
 
 pub struct Editor {
   m_engine: Engine,
-  m_renderable_assets: HashMap<&'static str, (shader::Shader, Vec<REntity>)>,
+  m_r_assets: HashMap<&'static str, (shader::Shader, Vec<r_assets::REntity>)>,
   m_cameras: Vec<camera::Camera>,
   m_wireframe_on: bool,
 }
 
 impl Editor {
   pub fn default() -> Self {
-    #[cfg(feature = "vulkan")]
-    {
-      let window = Window::new();
-      let renderer = Renderer::new(renderer::EnumRendererApi::Vulkan);
-      
-      return Ok(Editor {
-        m_engine: Engine::new(window, renderer, vec![]),
-        m_shaders: Vec::new(),
-        m_renderable_assets: Vec::new(),
-        m_cameras: Vec::new(),
-        m_wireframe_on: true,
-      });
-    }
+    let mut window = Window::default();  // Apply default window hints.
+    let mut renderer = Renderer::default();  // Apply default renderer hints.
     
-    #[cfg(not(feature = "vulkan"))]
-    {
-      let window = Window::new();
-      let renderer = Renderer::new();
-      
-      return Editor {
-        m_engine: Engine::new(window, renderer, vec![]),
-        m_renderable_assets: HashMap::with_capacity(10),
-        m_cameras: Vec::new(),
-        m_wireframe_on: true,
-      };
-    }
-  }
-  
-  pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Self {
+    window.hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));  // Force window to start in windowed mode.
+    window.hint(EnumWindowHint::MSAA(None));  // Force MSAA OFF.
+    renderer.hint(EnumRendererHint::BatchSameMaterials(false));  // Force each primitive to be drawn separately.
+    
     return Editor {
-      m_engine: Engine::new(window, renderer, app_layers),
-      m_renderable_assets: HashMap::with_capacity(10),
+      m_engine: Engine::new(window, renderer, vec![]),
+      m_r_assets: HashMap::with_capacity(5),
       m_cameras: Vec::new(),
       m_wireframe_on: true,
     };
   }
   
-  pub fn run(&mut self) -> Result<(), EnumEngineError> {
+  pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Self {
+    return Editor {
+      m_engine: Engine::new(window, renderer, app_layers),
+      m_r_assets: HashMap::with_capacity(5),
+      m_cameras: Vec::new(),
+      m_wireframe_on: true,
+    };
+  }
+  
+  pub fn run(&mut self) -> Result<(), EnumEditorError> {
     let mut editor_layer = Layer::new("Editor Layer", EditorLayer::new(self));
     
     // Making editor poll input events during async call.
@@ -150,7 +158,7 @@ impl Editor {
     
     unsafe { S_EDITOR = Some(self) };
     
-    return self.m_engine.run();
+    return self.m_engine.run().map_err(|err| EnumEditorError::from(err));
   }
 }
 
@@ -170,12 +178,10 @@ impl TraitLayer for Editor {
     let geometry_shader = shader::ShaderStage::default(shader::EnumShaderStageType::Geometry);
     
     let mut shader = shader::Shader::default();  // Apply default shader hints.
-    shader.shader_hint(EnumShaderHint::TargetApi(EnumRendererApi::OpenGL));  // Force OpenGL.
-    shader.shader_hint(EnumShaderHint::TargetGlslVersion(420));  // Force #version of 420.
     
     shader.push_stage(vertex_shader)?;
-    shader.push_stage(fragment_shader)?;
     shader.push_stage(geometry_shader)?;
+    shader.push_stage(fragment_shader)?;
     
     // Sourcing and compilation.
     shader.apply()?;
@@ -183,49 +189,42 @@ impl TraitLayer for Editor {
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
     
-    let mut asset_loader = AssetLoader::new();
-    asset_loader.hint(EnumAssetHint::PrimitiveDataIs(EnumAssetPrimitiveMode::Indexed));
-    asset_loader.hint(EnumAssetHint::GenerateNormals(true));
-    asset_loader.hint(EnumAssetHint::Triangulate(true));
-    asset_loader.hint(EnumAssetHint::SplitLargeMeshes(true, 500_000));
-    asset_loader.hint(EnumAssetHint::ReduceMeshes(true));
-    asset_loader.hint(EnumAssetHint::OnlyTriangles(true));
+    let asset_loader = AssetLoader::default();  // Apply default asset loader hints.
     
     let awp_asset = asset_loader.apply("awp.obj")?;
-    let mario_asset = asset_loader.apply("Mario.obj")?;
+    let mario_asset = asset_loader.apply("mario/Mario.obj")?;
     let sphere_asset = asset_loader.apply("sphere.obj")?;
     
-    let mut awp = REntity::new(awp_asset, EnumPrimitiveType::Mesh(false));
+    let mut awp = r_assets::REntity::new(awp_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
     
     awp.translate(math::Vec3::new(&[10.0, -10.0, 50.0]));
     awp.rotate(math::Vec3::new(&[90.0, -90.0, 0.0]));
     awp.apply(&mut shader)?;
     awp.show(None);
     
-    let mut mario = REntity::new(mario_asset, EnumPrimitiveType::Mesh(false));
+    let mut mario = r_assets::REntity::new(mario_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
     
     mario.translate(math::Vec3::new(&[-5.0, -5.0, 15.0]));
     mario.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
     mario.apply(&mut shader)?;
     mario.show(None);
     
-    let mut sphere = REntity::new(sphere_asset, EnumPrimitiveType::Mesh(false));
+    let mut sphere = r_assets::REntity::new(sphere_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
     
     sphere.translate(math::Vec3::new(&[5.0, 0.0, 20.0]));
     sphere.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
     sphere.apply(&mut shader)?;
     sphere.show(None);
     
-    self.m_renderable_assets.insert("Smooth objects", (shader, vec![awp, sphere]));
+    self.m_r_assets.insert("Smooth assets", (shader, vec![awp, mario, sphere]));
     
-    let mut texture_preset = Texture::default();
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending textures to GPU...");
     
-    texture_preset.hint(EnumTextureHint::TargetApi(EnumRendererApi::OpenGL));  // Force OpenGL, default is Vulkan.
-    texture_preset.hint(EnumTextureHint::ColorChannels(EnumTextureFormat::Rgb));  // Specify to load our png without the alpha channel, default is 4 (RGBA).
-    texture_preset.hint(EnumTextureHint::Multisample(Some(4)));  // Make texture multi-sampled, default is None.
+    let mut texture_preset = Texture::default();  // Apply default texture hints.
     
     texture_preset.apply("res/textures/mario-hat.png")?;
     
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Textures sent to GPU successfully");
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
     
     let renderer = self.m_engine.get_renderer_mut();
@@ -233,7 +232,7 @@ impl TraitLayer for Editor {
     renderer.update_ubo_camera(self.m_cameras[0].get_view_matrix(), self.m_cameras[0].get_projection_matrix())?;
     
     // let mut imgui_layer: Layer = Layer::new("Imgui",
-    //   ImguiLayer::new(Imgui::new(self.m_engine.get_renderer_mut().m_type, self.m_engine.get_window_mut())));
+    //   ImguiLayer::new(Imgui::new(self.m_engine.get_renderer_mut().get_type(), self.m_engine.get_window_mut())));
     // imgui_layer.enable_async_polling_for(EnumEventMask::Input | EnumEventMask::Window);
     // self.m_engine.push_layer(imgui_layer, true)?;
     
@@ -281,27 +280,36 @@ impl TraitLayer for Editor {
       EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
         let renderer = self.m_engine.get_renderer_mut();
         match (key, action, repeat_count, modifiers) {
-          (input::EnumKey::Minus, input::EnumAction::Pressed, _, _) => {
-            let primitive_mode: EnumRendererRenderPrimitiveAs = self.m_wireframe_on.then(|| EnumRendererRenderPrimitiveAs::Wireframe)
-              .unwrap_or(EnumRendererRenderPrimitiveAs::SolidWireframe);
+          (input::EnumKey::Minus, input::EnumAction::Pressed, _, &modifier) => {
+            let mut primitive_mode: EnumRendererRenderPrimitiveAs = EnumRendererRenderPrimitiveAs::default();
+            if modifier.contains(input::EnumModifiers::Shift) {
+              primitive_mode = EnumRendererRenderPrimitiveAs::Filled;
+              self.m_wireframe_on = false;
+            } else if modifier.contains(input::EnumModifiers::Control) {
+              primitive_mode = EnumRendererRenderPrimitiveAs::SolidWireframe;
+              self.m_wireframe_on = true;
+            } else if modifier.is_empty() {
+              primitive_mode = EnumRendererRenderPrimitiveAs::Wireframe;
+              self.m_wireframe_on = true;
+            }
+            
             renderer.toggle_primitive_mode(primitive_mode)?;
-            self.m_wireframe_on = !self.m_wireframe_on;
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_renderable_assets.get_mut(&"Smooth objects").unwrap().1[0].hide(Some(0));
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].hide(Some(0));
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_renderable_assets.get_mut(&"Smooth objects").unwrap().1[0].show(Some(0));
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].show(Some(0));
             Ok(true)
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_renderable_assets.get_mut(&"Smooth objects").unwrap().1[1].hide(None);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].hide(Some(1));
             Ok(true)
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_renderable_assets.get_mut(&"Smooth objects").unwrap().1[1].show(None);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].show(Some(1));
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
@@ -310,7 +318,7 @@ impl TraitLayer for Editor {
           }
           (input::EnumKey::Delete, input::EnumAction::Pressed, _, m) => {
             if m.contains(input::EnumModifiers::Control) {
-              for (_, r_assets) in self.m_renderable_assets.values() {
+              for (_, r_assets) in self.m_r_assets.values() {
                 for r_asset in r_assets.iter() {
                   renderer.dequeue(r_asset.get_uuid(), None)?;
                 }
@@ -344,7 +352,7 @@ impl TraitLayer for Editor {
   }
   
   fn free(&mut self) -> Result<(), EnumEngineError> {
-    for (linked_shader, _) in self.m_renderable_assets.values_mut() {
+    for (linked_shader, _) in self.m_r_assets.values_mut() {
       linked_shader.free()?;
     }
     return Ok(());
@@ -353,9 +361,9 @@ impl TraitLayer for Editor {
   fn to_string(&self) -> String {
     let mut final_str: String;
     
-    final_str = format!("\n{0:115}Assets: [{1}]\n{0:115}", "", self.m_renderable_assets.len());
+    final_str = format!("\n{0:115}Assets: [{1}]\n{0:115}", "", self.m_r_assets.len());
     
-    for (position, (linked_shader, r_asset_vec)) in self.m_renderable_assets.values().enumerate() {
+    for (position, (linked_shader, r_asset_vec)) in self.m_r_assets.values().enumerate() {
       final_str += &format!("[{1}]:\n{0:117}Associated shader:\n{0:119}{2}\n{0:119}Assets\n{0:121}", "",
         position + 1, linked_shader);
       for r_asset in r_asset_vec.iter() {

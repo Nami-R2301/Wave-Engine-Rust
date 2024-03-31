@@ -52,6 +52,12 @@ pub enum EnumAssetPrimitiveMode {
   Indexed
 }
 
+impl Default for EnumAssetPrimitiveMode {
+  fn default() -> Self {
+    return EnumAssetPrimitiveMode::Indexed;
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum EnumAssetHint {
   PrimitiveDataIs(EnumAssetPrimitiveMode),
@@ -79,7 +85,7 @@ pub struct AssetLoader {
 impl AssetLoader {
   pub fn default() -> Self {
     let mut hints = HashSet::with_capacity(9);
-    hints.insert(EnumAssetHint::PrimitiveDataIs(EnumAssetPrimitiveMode::Indexed));
+    hints.insert(EnumAssetHint::PrimitiveDataIs(EnumAssetPrimitiveMode::default()));
     hints.insert(EnumAssetHint::GenerateNormals(true));
     hints.insert(EnumAssetHint::Triangulate(true));
     hints.insert(EnumAssetHint::SplitLargeMeshes(true, 500_000));

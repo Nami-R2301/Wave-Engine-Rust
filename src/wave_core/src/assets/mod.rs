@@ -23,5 +23,5 @@
 */
 
 pub mod asset_loader;
-pub mod renderable_assets;
+pub mod r_assets;
 

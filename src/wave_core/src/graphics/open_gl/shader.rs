@@ -138,7 +138,7 @@ impl TraitShader for GlShader {
     for shader_stage in self.m_shader_stages.iter() {
       let shader_id = self.m_shader_ids.get(&shader_stage.m_stage).unwrap();
       if shader_stage.cache_status() {
-        log!(EnumLogColor::Blue, "WARN", "[GlShader] -->\t Shader {0} cached, not compiling it...", shader_stage.m_source);
+        log!(EnumLogColor::Blue, "WARN", "[GlShader] -->\t Cached shader {0} found, not compiling it...", shader_stage.m_source);
         cached_shader_array.push(shader_stage.clone());
         continue;
       } else {

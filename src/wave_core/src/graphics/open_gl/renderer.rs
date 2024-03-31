@@ -31,7 +31,7 @@ use gl46::{GlFns};
 use gl::types::{GLint, GLvoid};
 
 use crate::{Engine, S_ENGINE};
-use crate::assets::renderable_assets::{EnumPrimitiveType, EnumVertexMemberOffset, REntity};
+use crate::assets::r_assets::{EnumMaterial, EnumPrimitive, EnumVertexMemberOffset, REntity};
 use crate::events::EnumEvent;
 use crate::graphics::{open_gl, renderer};
 use crate::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar, GLenum, GlIbo, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute};
@@ -480,8 +480,6 @@ impl TraitContext for GlContext {
         self.toggle_solid_wireframe(true)?
       }
     }
-    
-    log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Primitive mode: '{0}'", mode);
     return Ok(());
   }
   
@@ -965,7 +963,7 @@ impl GlContext {
     let mut attributes: Vec<GlVertexAttribute> = Vec::with_capacity(5);
     
     match entity.m_type {
-      EnumPrimitiveType::Mesh(is_flat_shaded) => {
+      EnumPrimitive::Mesh(material) => {
         // IDs.
         attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1), false,
           0, 0)?);
@@ -975,7 +973,7 @@ impl GlContext {
           EnumVertexMemberOffset::AtPos as usize, 0)?);
         
         // Normals.
-        if is_flat_shaded {
+        if material == EnumMaterial::Flat {
           attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3, false,
             EnumVertexMemberOffset::AtNormal as usize, 1)?);
         } else {

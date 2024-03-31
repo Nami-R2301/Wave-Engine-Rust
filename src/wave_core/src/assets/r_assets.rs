@@ -51,10 +51,32 @@ pub enum EnumVertexMemberOffset {
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
-pub enum EnumPrimitiveType {
+pub enum EnumPrimitive {
   Sprite,
-  Mesh(bool),
+  Mesh(EnumMaterial),
   Quad,
+}
+
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
+pub enum EnumMaterial {
+  Flat,
+  Smooth,
+  Noisy,
+  Shiny,
+  Metallic,
+  Matte
+}
+
+impl Default for EnumMaterial {
+  fn default() -> Self {
+    return EnumMaterial::Smooth;
+  }
+}
+
+impl Default for EnumPrimitive {
+  fn default() -> Self {
+    return EnumPrimitive::Sprite;
+  }
 }
 
 pub trait TraitPrimitive {
@@ -166,7 +188,7 @@ impl TraitPrimitive for Mesh {
 pub struct REntity {
   pub(crate) m_renderer_id: u64,
   pub(crate) m_sub_meshes: Vec<Box<dyn TraitPrimitive>>,
-  pub(crate) m_type: EnumPrimitiveType,
+  pub(crate) m_type: EnumPrimitive,
   // Transformations applied to the entity, to be eventually applied to the model matrix.
   m_transform: [Vec3<f32>; 3],
   m_sent: bool,
@@ -182,7 +204,7 @@ impl REntity {
         m_indices: vec![],
       })],
       m_renderer_id: u64::MAX,
-      m_type: EnumPrimitiveType::Sprite,
+      m_type: EnumPrimitive::default(),
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_sent: false,
       m_changed: false,
@@ -192,7 +214,7 @@ impl REntity {
     return Ok(new_entity);
   }
   
-  pub fn new(scene: assimp::Scene, data_type: EnumPrimitiveType) -> Self {
+  pub fn new(scene: assimp::Scene, data_type: EnumPrimitive) -> Self {
     let mut data: Vec<Box<dyn TraitPrimitive>> = Vec::with_capacity(scene.num_meshes as usize);
     
     // Offset of indices to shift to the next sub-mesh indices, in order to synchronize indices between sub-meshes
@@ -227,14 +249,14 @@ impl REntity {
       unsafe { S_ENTITY_ID_COUNTER += 1 };
       
       match data_type {
-        EnumPrimitiveType::Sprite => {
+        EnumPrimitive::Sprite => {
           data.push(Box::new(Sprite {
             m_name: String::from(mesh.name.as_ref()),
             m_vertices: vertices,
             m_indices: indices,
           }));
         }
-        EnumPrimitiveType::Mesh(_) => {
+        EnumPrimitive::Mesh(_) => {
           data.push(Box::new(Sprite {
             m_name: String::from(mesh.name.as_ref()),
             m_vertices: vertices,
@@ -248,27 +270,27 @@ impl REntity {
     let new_entity: REntity;
     
     match data_type {
-      EnumPrimitiveType::Sprite => {
+      EnumPrimitive::Sprite => {
         new_entity = REntity {
           m_renderer_id: u64::MAX,
           m_sub_meshes: data,
-          m_type: EnumPrimitiveType::Sprite,
+          m_type: EnumPrimitive::Sprite,
           m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
           m_sent: false,
           m_changed: false,
         };
       }
-      EnumPrimitiveType::Mesh(is_flat_shaded) => {
+      EnumPrimitive::Mesh(material) => {
         new_entity = REntity {
           m_renderer_id: u64::MAX,
           m_sub_meshes: data,
-          m_type: EnumPrimitiveType::Mesh(is_flat_shaded),
+          m_type: EnumPrimitive::Mesh(material),
           m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
           m_sent: false,
           m_changed: false
         };
       }
-      EnumPrimitiveType::Quad => todo!()
+      EnumPrimitive::Quad => todo!()
     }
     
     return new_entity;
@@ -276,18 +298,18 @@ impl REntity {
   
   pub fn get_size(&self) -> usize {
     return match self.m_type {
-      EnumPrimitiveType::Sprite => {
+      EnumPrimitive::Sprite => {
         size_of::<u32>() + (size_of::<f32>() * 3) + (size_of::<f32>() * 3) + size_of::<Color>() +
           (size_of::<f32>() * 2)
       }
-      EnumPrimitiveType::Mesh(_) => {
+      EnumPrimitive::Mesh(_) => {
         size_of::<u32>()                // Entity ID (uint)
           + (size_of::<f32>() * 3)      // Position (Vec3<f32>)
           + (size_of::<f32>() * 3)      // Normal (Vec3<f32>)
           + size_of::<u32>()            // Color (uint)
           + (size_of::<f32>() * 2)      // Vec2<f32
       }
-      EnumPrimitiveType::Quad => {
+      EnumPrimitive::Quad => {
         size_of::<u32>() + (size_of::<f32>() * 3) + size_of::<Color>() + (size_of::<f32>() * 2)
       }
     };

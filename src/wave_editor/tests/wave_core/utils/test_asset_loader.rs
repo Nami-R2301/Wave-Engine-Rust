@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-use wave_editor::wave_core::assets::renderable_assets::REntity;
+use wave_editor::wave_core::assets::r_assets::REntity;
 
 #[test]
 fn test_obj_loader() {

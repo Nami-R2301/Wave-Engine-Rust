@@ -120,38 +120,19 @@ pub struct Engine {
 }
 
 impl<'a> Engine {
-  /// Setup new engine struct containing an app with the [TraitApp] behavior in order to call
-  /// `on_new()`, `free()`, `on_update()`, `on_event()`, and `on_render()`. By default, the
-  /// engine uses an OpenGL renderer and GLFW for the context creation and handling.
-  ///
-  /// ### Arguments:
-  ///
-  /// * `app_provided`: A boxed generic app struct `T` which respects the trait [TraitApp].
-  ///
-  /// ### Returns:
-  ///   - `Result<GlREntity, EnumError>` : Will return a valid Engine if successful, otherwise an [EnumEngineError]
-  ///     on any error encountered. These include, but are not limited to :
-  ///     + [EnumEngineError::AppError] : If the app crashes for whatever reason the client may choose.
-  ///     + [EnumEngineError::RendererError] : If the renderer crashes due to an invalid process loading,
-  ///       missing extensions, unsupported version and/or invalid GPU command.
-  ///     + [EnumEngineError::WindowError] : If the window context crashes due to invalid context creation,
-  ///       deletion and/or command (GLX/X11 for Linux, WIN32 for Windows).
-  ///
-  /// ### Examples
-  ///
-  /// ```text
-  /// use wave_core::{Engine, EnumError};
-  ///
-  /// let my_app = Box::new(ExampleApp::new());
-  /// // Allocated on the stack -- Use new_shared() to allocate on the heap.
-  /// let mut engine = Box::new(Engine::new(my_app)?);
-  ///
-  /// // Run `on_new()` for `my_app` prior to running.
-  /// engine.on_new()?;
-  /// engine.run();
-  /// engine.free();
-  /// return Ok(());
-  /// ```
+  #[allow(unused)]
+  pub fn default() -> Self {
+    unsafe { S_LOG_FILE_PTR = Some(utils::macros::logger::init().unwrap()) };
+    return Engine {
+      m_layers: vec![],
+      m_window: Window::default(),
+      m_renderer: Renderer::default(),
+      m_time_step: 0.0,
+      m_tick_rate: 0.0,
+      m_state: EnumEngineState::NotStarted,
+    };
+  }
+  
   pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Self {
     unsafe { S_LOG_FILE_PTR = Some(utils::macros::logger::init().unwrap()) };
     return Engine {

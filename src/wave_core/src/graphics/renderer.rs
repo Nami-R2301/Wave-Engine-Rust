@@ -29,25 +29,17 @@ use std::fmt::{Display, Formatter};
 use crate::Engine;
 use crate::utils::macros::logger::*;
 use crate::assets::asset_loader;
-use crate::assets::renderable_assets::{REntity};
+use crate::assets::r_assets::{REntity};
 use crate::events;
 use crate::graphics::{open_gl, texture};
 use crate::graphics::open_gl::renderer::GlContext;
-use crate::graphics::shader::Shader;
+use crate::graphics::shader::{Shader};
 #[cfg(feature = "vulkan")]
 use crate::graphics::vulkan;
 #[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::renderer::VkContext;
 use crate::math::{Mat4};
 use crate::window::Window;
-
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub enum EnumRendererCallCheckingMode {
-  None,
-  Async,
-  Sync,
-  SyncAndAsync,
-}
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub enum EnumRendererState {
@@ -57,16 +49,42 @@ pub enum EnumRendererState {
   Deleted,
 }
 
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub enum EnumRendererCallCheckingMode {
+  None,
+  Async,
+  Sync,
+  SyncAndAsync,
+}
+
+impl Default for EnumRendererCallCheckingMode {
+  fn default() -> Self {
+    return EnumRendererCallCheckingMode::Async;
+  }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumRendererApi {
   OpenGL,
   Vulkan,
 }
 
+impl Default for EnumRendererApi {
+  fn default() -> Self {
+    return EnumRendererApi::OpenGL;
+  }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumRendererTarget {
   Runtime,
   Editor,
+}
+
+impl Default for EnumRendererTarget {
+  fn default() -> Self {
+    return EnumRendererTarget::Runtime;
+  }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -76,12 +94,24 @@ pub enum EnumRendererCull {
   FrontAndBack,
 }
 
+impl Default for EnumRendererCull {
+  fn default() -> Self {
+    return EnumRendererCull::Back;
+  }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumRendererRenderPrimitiveAs {
   Points,
   Filled,
   Wireframe,
   SolidWireframe,
+}
+
+impl Default for EnumRendererRenderPrimitiveAs {
+  fn default() -> Self {
+    return EnumRendererRenderPrimitiveAs::SolidWireframe;
+  }
 }
 
 impl Display for EnumRendererCull {
@@ -105,12 +135,12 @@ impl Display for EnumRendererRenderPrimitiveAs {
   }
 }
 
-#[derive(Debug, Copy, Clone, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumRendererHint {
-  TargetApi(EnumRendererApi),
+  ContextApi(EnumRendererApi),
   /// Combine primitives with the same material type into a single buffer if possible, both for the vbo and ibo.
   /// ### Argument:
-  /// - *true*: Enables the batching of similar materials from the same shader by appending their vertices in the same vbo,
+  /// - *true* **Default**: Enables the batching of similar materials from the same shader by appending their vertices in the same vbo,
   /// as well as appending the indices in the same ibo and joining the indices for all the those same matched primitives by
   /// offsetting the indices of each primitive in the buffer by the base one (Similar to how OpenGL's **glDrawElementsBaseVertex(...)**
   /// does it). Effectively, reducing the number of draw commands sent to the renderer, folding it into one per shader.
@@ -118,7 +148,7 @@ pub enum EnumRendererHint {
   ///   - This is useful in a runtime environment where performance is key, and you would want to cut back on as many draw calls
   /// as possible in an environment where there is no need to keep track of sub-meshes and to uniquely identify primitives.
   ///
-  /// - *false* **Default**: Disables the batching of similar materials and sends a different draw command to the renderer for every primitive
+  /// - *false*: Disables the batching of similar materials and sends a different draw command to the renderer for every primitive
   /// (or sub-primitive).
   ///
   ///   - This comes in handy when rendering for editor environments where every primitive and sub-primitive needs to be uniquely
@@ -143,7 +173,7 @@ pub enum EnumRendererHint {
   /// [EnumRendererCallCheckingMode::SyncAndAsync].
   ///
   ///
-  /// - [EnumRendererCallCheckingMode::Async]: Let the api asynchronously deal with its own warning and error reporting.
+  /// - [EnumRendererCallCheckingMode::Async] **Default**: Let the api asynchronously deal with its own warning and error reporting.
   ///
   ///   - This option is a nice
   /// balance between performance and verbosity and thus is the *default* option if this option isn't toggled manually. However,
@@ -179,10 +209,10 @@ pub enum EnumRendererHint {
   /// Change how the rasterizer processes meshes or sprites when rendered on screen.
   /// ### Argument:
   /// Three possible values can be provided:
-  /// - [EnumRendererRenderPrimitiveAs::Filled] **Default**: Show primitives' surfaces as filled triangles.
+  /// - [EnumRendererRenderPrimitiveAs::Filled]: Show primitives' surfaces as filled triangles.
   /// - [EnumRendererRenderPrimitiveAs::Points]: Show primitives' surface as points instead of filled triangles.
   /// - [EnumRendererRenderPrimitiveAs::Wireframe]: Show the contour of primitives only without filling in the surface area in triangles.
-  /// - [EnumRendererRenderPrimitiveAs::SolidWireframe]: Similar to [EnumRendererRenderPrimitiveAs::Wireframe], but the wireframe is displayed
+  /// - [EnumRendererRenderPrimitiveAs::SolidWireframe] **Default**: Similar to [EnumRendererRenderPrimitiveAs::Wireframe], but the wireframe is displayed
   /// as an additional layer on top of the primitive's solid surface filled in, to better display the depth of each underlying part of the
   /// primitive's polygons.
   ///   - Useful when you want to visualize the wireframe of a 3D model, but there are overlapping vertices due to different layers of depth,
@@ -193,20 +223,23 @@ pub enum EnumRendererHint {
   Blending(bool, Option<(i64, i64)>),
 }
 
-impl PartialEq for EnumRendererHint {
-  fn eq(&self, other: &Self) -> bool {
-    return match (self, other) {
-      (EnumRendererHint::TargetApi(_), EnumRendererHint::TargetApi(_)) => true,
-      (EnumRendererHint::BatchSameMaterials(_), EnumRendererHint::BatchSameMaterials(_)) => true,
-      (EnumRendererHint::ApiCallChecking(_), EnumRendererHint::ApiCallChecking(_)) => true,
-      (EnumRendererHint::DepthTest(_), EnumRendererHint::DepthTest(_)) => true,
-      (EnumRendererHint::CullFacing(_), EnumRendererHint::CullFacing(_)) => true,
-      (EnumRendererHint::PrimitiveMode(_), EnumRendererHint::PrimitiveMode(_)) => true,
-      (EnumRendererHint::MSAA(_), EnumRendererHint::MSAA(_)) => true,
-      (EnumRendererHint::SRGB(_), EnumRendererHint::SRGB(_)) => true,
-      (EnumRendererHint::Blending(_, _), EnumRendererHint::Blending(_, _)) => true,
-      _ => false
-    };
+impl EnumRendererHint {
+  pub fn is(&self, other: &EnumRendererHint) -> bool {
+    return std::mem::discriminant(self) == std::mem::discriminant(other);
+  }
+  
+  pub fn get_value(&self) -> &dyn Any {
+    return match self {
+      EnumRendererHint::ContextApi(api) => api,
+      EnumRendererHint::BatchSameMaterials(bool) => bool,
+      EnumRendererHint::ApiCallChecking(mode) => mode,
+      EnumRendererHint::DepthTest(bool) => bool,
+      EnumRendererHint::CullFacing(mode) => mode,
+      EnumRendererHint::PrimitiveMode(mode) => mode,
+      EnumRendererHint::MSAA(sample_count) => sample_count,
+      EnumRendererHint::SRGB(bool) => bool,
+      EnumRendererHint::Blending(bool, _blend_func) => bool,
+    }
   }
 }
 
@@ -321,8 +354,8 @@ pub(crate) trait TraitContext {
 }
 
 pub struct Renderer {
-  pub(crate) m_type: EnumRendererApi,
   pub(crate) m_state: EnumRendererState,
+  pub(crate) m_type: EnumRendererApi,
   pub(crate) m_hints: Vec<EnumRendererHint>,
   pub(crate) m_ids: Vec<u64>,
   m_api: Box<dyn TraitContext>,
@@ -331,50 +364,49 @@ pub struct Renderer {
 impl<'a> Renderer {
   pub fn default() -> Self {
     let mut hints = Vec::with_capacity(8);
-    hints.push(EnumRendererHint::TargetApi(EnumRendererApi::Vulkan));
-    hints.push(EnumRendererHint::ApiCallChecking(EnumRendererCallCheckingMode::Async));
+    hints.push(EnumRendererHint::ContextApi(EnumRendererApi::default()));
+    hints.push(EnumRendererHint::ApiCallChecking(EnumRendererCallCheckingMode::default()));
     hints.push(EnumRendererHint::SRGB(true));
     hints.push(EnumRendererHint::DepthTest(true));
     hints.push(EnumRendererHint::Blending(true, None));
-    hints.push(EnumRendererHint::PrimitiveMode(EnumRendererRenderPrimitiveAs::SolidWireframe));
-    hints.push(EnumRendererHint::BatchSameMaterials(false));
-    hints.push(EnumRendererHint::CullFacing(Some(EnumRendererCull::Back)));
+    hints.push(EnumRendererHint::PrimitiveMode(EnumRendererRenderPrimitiveAs::default()));
+    hints.push(EnumRendererHint::BatchSameMaterials(true));
+    hints.push(EnumRendererHint::CullFacing(Some(EnumRendererCull::default())));
     
     return Self {
-      m_type: EnumRendererApi::Vulkan,
       m_state: EnumRendererState::Created,
+      m_type: EnumRendererApi::default(),
       m_hints: hints,
       m_ids: Vec::with_capacity(10),
-      m_api: Box::new(VkContext::default()),
+      m_api: Box::new(GlContext::default()),
     };
   }
   
   pub fn new() -> Self {
+    #[cfg(not(feature = "vulkan"))]
+    return Renderer {
+      m_state: EnumRendererState::Created,
+      m_type: EnumRendererApi::default(),
+      m_hints: vec![],
+      m_ids: Vec::with_capacity(10),
+      m_api: Box::new(GlContext::default()),
+    };
+    
     #[cfg(feature = "vulkan")]
     return Renderer {
-      m_type: EnumRendererApi::Vulkan,
       m_state: EnumRendererState::Created,
-      m_hints: Vec::with_capacity(8),
+      m_type: EnumRendererApi::Vulkan,
+      m_hints: vec![],
       m_ids: Vec::with_capacity(10),
       m_api: Box::new(VkContext::default()),
     };
-    
-    #[cfg(not(feature = "vulkan"))]
-    {
-      Renderer {
-        m_type: EnumRendererApi::OpenGL,
-        m_state: EnumRendererState::Created,
-        m_hints: Vec::with_capacity(8),
-        m_ids: Vec::with_capacity(10),
-        m_api: Box::new(GlContext::default()),
-      }
-    }
   }
   
   pub fn hint(&mut self, feature_desired: EnumRendererHint) {
-    if let Some(position) = self.m_hints.iter().position(|hint| hint == &feature_desired) {
+    if let Some(position) = self.m_hints.iter().position(|hint| hint.is(&feature_desired)) {
       self.m_hints.remove(position);
     }
+    
     self.m_hints.push(feature_desired);
   }
   
@@ -383,18 +415,27 @@ impl<'a> Renderer {
   }
   
   pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) {
+    log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Asset {0} now hidden", entity_uuid);
     return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, false);
   }
   
   pub fn show(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) {
+    log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Asset {0} now shown", entity_uuid);
     return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, true);
   }
   
   pub fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError> {
-    if self.m_hints.contains(&EnumRendererHint::TargetApi(EnumRendererApi::OpenGL)) {
+    if self.m_hints.contains(&EnumRendererHint::ContextApi(EnumRendererApi::OpenGL)) {
       self.m_api = Box::new(GlContext::on_new(window, self.m_hints.clone())?);
       return self.m_api.apply(window);
     }
+    
+    #[cfg(not(feature = "vulkan"))]
+    {
+      log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot apply Vulkan renderer, vulkan feature not enabled!");
+      return Err(EnumRendererError::InvalidApi);
+    }
+    
     self.m_api = Box::new(VkContext::on_new(window, self.m_hints.clone())?);
     return self.m_api.apply(window);
   }
@@ -431,6 +472,10 @@ impl<'a> Renderer {
   // pub fn enable(&mut self, feature: EnumRendererOption) -> Result<(), EnumRendererError> {
   //   return self.m_api.enable(feature);
   // }
+  
+  pub fn get_type(&self) -> EnumRendererApi {
+    return self.m_type;
+  }
   
   pub fn get_api_handle(&mut self) -> &mut dyn Any {
     return self.m_api.get_api_handle();

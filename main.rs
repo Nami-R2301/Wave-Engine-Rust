@@ -22,32 +22,14 @@
  SOFTWARE.
 */
 
-// Wave core.
-use wave_editor::wave_core::*;
-use wave_editor::wave_core::layers::*;
-use wave_editor::wave_core::graphics::renderer::{self};
-use wave_editor::wave_core::window::{self};
-
 // App.
-use wave_editor::Editor;
+use wave_editor::{Editor, EnumEditorError};
 
-fn main() -> Result<(), EnumEngineError> {
-  
-  // Apply default options.
-  let mut window = window::Window::default();
-  let mut renderer = renderer::Renderer::default();
-  
-  // Override some options.
-  window.hint(window::EnumWindowHint::TargetApi(renderer::EnumRendererApi::OpenGL));  // Force OpenGL.
-  window.hint(window::EnumWindowHint::WindowMode(window::EnumWindowMode::Windowed));  // Force Windowed.
-  renderer.hint(renderer::EnumRendererHint::TargetApi(renderer::EnumRendererApi::OpenGL));  // Force OpenGL.
-  
-  let main_app_layer: Layer = Layer::new("My App", EmptyApp::default());
-  
-  // Supply all app layers to our editor. This will NOT 'apply()' editor nor engine, only filling in the structs.
+fn main() -> Result<(), EnumEditorError> {
+  // Supply app layers and init editor. This will NOT 'apply()' editor nor engine, only filling in the structs.
   // Note that calling 'default()' will default to Vulkan for the windowing and rendering context if supported,
   // otherwise falling back to OpenGL.
-  let mut editor: Editor = Editor::new(window, renderer, vec![main_app_layer]);
+  let mut editor: Editor = Editor::default();
   
   // Applying and executing the editor in game loop. Returning upon a close event or if an error occurred.
   return editor.run();

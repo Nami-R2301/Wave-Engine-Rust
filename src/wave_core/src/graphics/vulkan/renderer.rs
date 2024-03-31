@@ -42,7 +42,7 @@ use ash::vk::{self, PhysicalDeviceType, TaggedStructure};
 #[cfg(feature = "vulkan")]
 use crate::utils::macros::logger::*;
 #[cfg(feature = "vulkan")]
-use crate::assets::renderable_assets::{EnumVertexMemberOffset, REntity, Vertex};
+use crate::assets::r_assets::{EnumVertexMemberOffset, REntity, Vertex};
 #[cfg(feature = "vulkan")]
 use crate::{Engine, events};
 #[cfg(feature = "vulkan")]
@@ -1137,7 +1137,7 @@ impl TraitContext for VkContext {
   fn toggle_options(&mut self) -> Result<(), renderer::EnumRendererError> {
     for feature in self.m_features.iter() {
       match feature {
-        EnumRendererHint::TargetApi(api) => {
+        EnumRendererHint::ContextApi(api) => {
           if *api == EnumRendererApi::OpenGL {
             todo!()
           }

@@ -27,7 +27,7 @@ use gl::types::{GLint, GLsizei};
 use stb_image::image::Image;
 use crate::check_gl_call;
 use crate::graphics::open_gl::renderer::EnumOpenGLError;
-use crate::graphics::texture::{EnumTextureDataType, EnumTextureFormat, EnumTextureTarget, EnumTextureType, TraitTexture};
+use crate::graphics::texture::{EnumTextureDataAlignment, EnumTextureFormat, EnumTextureTarget, EnumTexture, TraitTexture};
 use crate::utils::macros::logger::*;
 use crate::{Engine, S_ENGINE};
 use crate::graphics::renderer::EnumRendererError;
@@ -93,6 +93,8 @@ enum EnumGlTextureInternalFormat {
 
 pub(crate) struct GlTexture<T> {
   m_id: u32,
+  #[cfg(feature = "debug")]
+  m_type_debug: EnumTexture,
   m_data: Image<T>,
   m_level: u32,
   m_ms: Option<u32>,
@@ -106,6 +108,9 @@ impl<T> GlTexture<T> {
   pub(crate) fn default() -> Self {
     return Self {
       m_id: 0,
+      #[cfg(feature = "debug")]
+      m_type_debug: EnumTexture::Texture2D(EnumTextureTarget::default(), 0, EnumTextureFormat::default(), 0, 0,
+        EnumTextureDataAlignment::default()),
       m_data: Image {
         width: 0,
         height: 0,
@@ -121,21 +126,21 @@ impl<T> GlTexture<T> {
     };
   }
   
-  pub(crate) fn new(texture_type: EnumTextureType, data: Image<T>) -> Self {
+  pub(crate) fn new(texture_type: EnumTexture, data: Image<T>) -> Self {
     let (target, sample_count) = Self::convert_target_to_internal_target(texture_type.get_target());
     let (format, internal_format) = Self::convert_format_to_internal_format(texture_type.get_format());
     
-    log!(EnumLogColor::Blue, "DEBUG", "[GlTexture] -->\t Storing texture {0}", texture_type);
-    
     return Self {
       m_id: 0,
-      m_data: data,
       m_level: texture_type.get_mipmap_level(),
-      m_ms: sample_count,
-      m_format: format,
       m_internal_target: target,
       m_internal_format: internal_format,
-      m_internal_type: Self::convert_type_to_internal_type(texture_type.get_data_type())
+      m_internal_type: Self::convert_type_to_internal_type(texture_type.get_data_type()),
+      #[cfg(feature = "debug")]
+      m_type_debug: texture_type,
+      m_data: data,
+      m_ms: sample_count,
+      m_format: format,
     };
   }
   
@@ -156,6 +161,7 @@ impl<T> GlTexture<T> {
       EnumTextureTarget::Texture2DArray => (gl::TEXTURE_2D_ARRAY, None),
       EnumTextureTarget::Texture2DArrayMs(sample_count) => (gl::TEXTURE_2D_MULTISAMPLE_ARRAY, Some(sample_count)),
       EnumTextureTarget::Texture3D => (gl::TEXTURE_3D, None),
+      EnumTextureTarget::Texture3DMs(sample_count) => (gl::TEXTURE_3D, Some(sample_count)),
       EnumTextureTarget::TextureCubeMapArray => (gl::TEXTURE_CUBE_MAP_ARRAY, None)
     };
   }
@@ -171,33 +177,36 @@ impl<T> GlTexture<T> {
     };
   }
   
-  fn convert_type_to_internal_type(texture_type: EnumTextureDataType) -> u32 {
+  fn convert_type_to_internal_type(texture_type: EnumTextureDataAlignment) -> u32 {
     return match texture_type {
-      EnumTextureDataType::UnsignedByte => gl::UNSIGNED_BYTE,
-      EnumTextureDataType::UnsignedByte233Reverse => gl::UNSIGNED_BYTE_2_3_3_REV,
-      EnumTextureDataType::UnsignedByte332 => gl::UNSIGNED_BYTE_3_3_2,
-      EnumTextureDataType::Byte => gl::BYTE,
-      EnumTextureDataType::UnsignedShort => gl::UNSIGNED_SHORT,
-      EnumTextureDataType::UnsignedShort565 => gl::UNSIGNED_SHORT_5_6_5,
-      EnumTextureDataType::UnsignedShort565Reverse => gl::UNSIGNED_SHORT_5_6_5_REV,
-      EnumTextureDataType::UnsignedShort4444 => gl::UNSIGNED_SHORT_4_4_4_4,
-      EnumTextureDataType::UnsignedShort4444Reverse => gl::UNSIGNED_SHORT_4_4_4_4_REV,
-      EnumTextureDataType::UnsignedShort5551 => gl::UNSIGNED_SHORT_5_5_5_1,
-      EnumTextureDataType::UnsignedShort1555Reverse => gl::UNSIGNED_SHORT_1_5_5_5_REV,
-      EnumTextureDataType::Short => gl::SHORT,
-      EnumTextureDataType::UnsignedInt => gl::UNSIGNED_INT,
-      EnumTextureDataType::UnsignedInt8888 => gl::UNSIGNED_INT_8_8_8_8,
-      EnumTextureDataType::UnsignedInt8888Reverse => gl::UNSIGNED_INT_8_8_8_8_REV,
-      EnumTextureDataType::UnsignedInt10_10_10_2 => gl::UNSIGNED_INT_10_10_10_2,
-      EnumTextureDataType::UnsignedInt2_10_10_10Reverse => gl::UNSIGNED_INT_2_10_10_10_REV,
-      EnumTextureDataType::Int => gl::INT,
-      EnumTextureDataType::Float => gl::FLOAT
+      EnumTextureDataAlignment::UnsignedByte => gl::UNSIGNED_BYTE,
+      EnumTextureDataAlignment::UnsignedByte233Reverse => gl::UNSIGNED_BYTE_2_3_3_REV,
+      EnumTextureDataAlignment::UnsignedByte332 => gl::UNSIGNED_BYTE_3_3_2,
+      EnumTextureDataAlignment::Byte => gl::BYTE,
+      EnumTextureDataAlignment::UnsignedShort => gl::UNSIGNED_SHORT,
+      EnumTextureDataAlignment::UnsignedShort565 => gl::UNSIGNED_SHORT_5_6_5,
+      EnumTextureDataAlignment::UnsignedShort565Reverse => gl::UNSIGNED_SHORT_5_6_5_REV,
+      EnumTextureDataAlignment::UnsignedShort4444 => gl::UNSIGNED_SHORT_4_4_4_4,
+      EnumTextureDataAlignment::UnsignedShort4444Reverse => gl::UNSIGNED_SHORT_4_4_4_4_REV,
+      EnumTextureDataAlignment::UnsignedShort5551 => gl::UNSIGNED_SHORT_5_5_5_1,
+      EnumTextureDataAlignment::UnsignedShort1555Reverse => gl::UNSIGNED_SHORT_1_5_5_5_REV,
+      EnumTextureDataAlignment::Short => gl::SHORT,
+      EnumTextureDataAlignment::UnsignedInt => gl::UNSIGNED_INT,
+      EnumTextureDataAlignment::UnsignedInt8888 => gl::UNSIGNED_INT_8_8_8_8,
+      EnumTextureDataAlignment::UnsignedInt8888Reverse => gl::UNSIGNED_INT_8_8_8_8_REV,
+      EnumTextureDataAlignment::UnsignedInt10_10_10_2 => gl::UNSIGNED_INT_10_10_10_2,
+      EnumTextureDataAlignment::UnsignedInt2_10_10_10Reverse => gl::UNSIGNED_INT_2_10_10_10_REV,
+      EnumTextureDataAlignment::Int => gl::INT,
+      EnumTextureDataAlignment::Float => gl::FLOAT
     };
   }
 }
 
 impl<T> TraitTexture for GlTexture<T> {
   fn apply(&mut self) -> Result<(), EnumRendererError> {
+    #[cfg(feature = "debug")]
+    log!(EnumLogColor::Blue, "DEBUG", "[GlTexture] -->\t Storing texture {0}", self.m_type_debug);
+    
     check_gl_call!("GlTexture", gl::GenTextures(1, &mut self.m_id));
     check_gl_call!("GlTexture", gl::BindTexture(self.m_internal_target, self.m_id));
     
