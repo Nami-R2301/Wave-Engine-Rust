@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use wave_core::{camera, Engine, EnumEngineError, input, layers, math};
 use wave_core::assets::asset_loader::AssetLoader;
 use wave_core::assets::r_assets;
+use wave_core::assets::r_assets::EnumSubPrimitivePortion;
 #[allow(unused)]
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
@@ -192,7 +193,7 @@ impl TraitLayer for Editor {
     let asset_loader = AssetLoader::default();  // Apply default asset loader hints.
     
     let awp_asset = asset_loader.apply("awp.obj")?;
-    let mario_asset = asset_loader.apply("mario/Mario.obj")?;
+    let mario_asset = asset_loader.apply("Mario.obj")?;
     let sphere_asset = asset_loader.apply("sphere.obj")?;
     
     let mut awp = r_assets::REntity::new(awp_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
@@ -200,21 +201,21 @@ impl TraitLayer for Editor {
     awp.translate(math::Vec3::new(&[10.0, -10.0, 50.0]));
     awp.rotate(math::Vec3::new(&[90.0, -90.0, 0.0]));
     awp.apply(&mut shader)?;
-    awp.show(None);
+    awp.show(EnumSubPrimitivePortion::Everything);
     
     let mut mario = r_assets::REntity::new(mario_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
     
     mario.translate(math::Vec3::new(&[-5.0, -5.0, 15.0]));
     mario.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
     mario.apply(&mut shader)?;
-    mario.show(None);
+    mario.show(EnumSubPrimitivePortion::Everything);
     
     let mut sphere = r_assets::REntity::new(sphere_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
     
     sphere.translate(math::Vec3::new(&[5.0, 0.0, 20.0]));
     sphere.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
     sphere.apply(&mut shader)?;
-    sphere.show(None);
+    sphere.show(EnumSubPrimitivePortion::Everything);
     
     self.m_r_assets.insert("Smooth assets", (shader, vec![awp, mario, sphere]));
     
@@ -297,19 +298,19 @@ impl TraitLayer for Editor {
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].hide(Some(0));
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].hide(EnumSubPrimitivePortion::Some(0));
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].show(Some(0));
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].show(EnumSubPrimitivePortion::Some(0));
             Ok(true)
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].hide(Some(1));
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].hide(EnumSubPrimitivePortion::Everything);
             Ok(true)
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].show(Some(1));
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].show(EnumSubPrimitivePortion::Some(1));
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {

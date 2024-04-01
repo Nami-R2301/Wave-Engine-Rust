@@ -957,15 +957,15 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn toggle_visibility_of(&mut self, _entity_uuid: u64, _sub_primitive_offset: Option<usize>, _visible: bool) {
-  
+  fn toggle_visibility_of(&mut self, _entity_uuid: u64, _sub_primitive_offset: Option<usize>, _visible: bool) -> Result<(), EnumRendererError> {
+    return Ok(());
   }
   
   fn update_ubo_model(&mut self, _model_transform: Mat4, _instance_offset: usize) -> Result<(), EnumRendererError> {
     return Ok(());
   }
   
-  fn on_new(window: &mut Window, features: Vec<EnumRendererHint>) -> Result<Self, renderer::EnumRendererError> {
+  fn on_new(window: &mut Window, features: Vec<EnumRendererHint>) -> Result<Self, EnumRendererError> {
     let (ash_entry, ash_instance) =
       VkContext::create_instance(window, None, None)?;
     #[allow(unused)]
@@ -1198,7 +1198,7 @@ impl TraitContext for VkContext {
     todo!()
   }
   
-  fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
+  fn enqueue(&mut self, sendable_entity: &mut REntity, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
     let vk_shader = shader_associated.get_api().get_api_handle().downcast_ref::<VkShader>()
       .expect("[VkContext] -->\t Cannot enqueue data in VkContext : Renderer is not Vulkan!");
     

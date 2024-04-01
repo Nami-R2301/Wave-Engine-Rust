@@ -340,13 +340,13 @@ pub(crate) trait TraitContext {
   fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumRendererError>;
   fn on_render(&mut self) -> Result<(), EnumRendererError>;
   fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError>;
-  fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, visible: bool);
+  fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, visible: bool) -> Result<(), EnumRendererError>;
   fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs) -> Result<(), EnumRendererError>;
   fn get_max_msaa_count(&self) -> Result<u8, EnumRendererError>;
   fn to_string(&self) -> String;
   fn toggle_options(&mut self) -> Result<(), EnumRendererError>;
   fn flush(&mut self) -> Result<(), EnumRendererError>;
-  fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError>;
+  fn enqueue(&mut self, entity: &mut REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError>;
   fn dequeue(&mut self, id: u64) -> Result<(), EnumRendererError>;
   fn update_ubo_camera(&mut self, view: Mat4, projection: Mat4) -> Result<(), EnumRendererError>;
   fn update_ubo_model(&mut self, model_transform: Mat4, instance_offset: usize) -> Result<(), EnumRendererError>;
@@ -414,12 +414,12 @@ impl<'a> Renderer {
     self.m_hints.clear();
   }
   
-  pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) {
+  pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) -> Result<(), EnumRendererError> {
     log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Asset {0} now hidden", entity_uuid);
     return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, false);
   }
   
-  pub fn show(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) {
+  pub fn show(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) -> Result<(), EnumRendererError> {
     log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Asset {0} now shown", entity_uuid);
     return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, true);
   }

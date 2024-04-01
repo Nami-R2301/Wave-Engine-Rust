@@ -433,7 +433,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, visible: bool) {
+  fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, visible: bool) -> Result<(), EnumRendererError> {
     let mut primitive_found = self.m_commands.m_primitives.iter_mut()
       .filter(|primitive| primitive.m_uuid == entity_uuid)
       .collect::<Vec<&mut GlPrimitiveInfo>>();
@@ -445,20 +445,26 @@ impl TraitContext for GlContext {
         for sub_primitive in primitive_found {
           sub_primitive.m_visible = visible;
         }
-        return;
+        return Ok(());
       }
       
       // If main primitive is matched.
       if sub_primitive_offset.unwrap() == 0 {
         primitive_found.get_mut(0).unwrap().m_visible = visible;
-        return;
+        return Ok(());
       }
       
       // If a sub primitive is matched instead.
       if let Some(sub_entity) = primitive_found.get_mut(sub_primitive_offset.unwrap()) {
         sub_entity.m_visible = visible;
+        return Ok(());
       }
+      
+      log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot toggle visibility of entity {0}, entity isn't present!", entity_uuid);
+      return Err(EnumRendererError::EntityNotFound);
     }
+    log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot toggle visibility of entity {0}, batch is empty!", entity_uuid);
+    return Err(EnumRendererError::EntityNotFound);
   }
   
   fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs) -> Result<(), EnumRendererError> {
@@ -648,7 +654,7 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn enqueue(&mut self, r_asset: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
+  fn enqueue(&mut self, r_asset: &mut REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
     if r_asset.is_empty() {
       log!(EnumLogColor::Yellow, "WARN", "[GlContext] --> Entity [{0}] has no \
       vertices! Not sending it...", r_asset)
@@ -677,9 +683,10 @@ impl TraitContext for GlContext {
     let total_vertex_count = r_asset.get_total_vertex_count();
     let total_index_count = r_asset.get_total_index_count();
     let size_per_vertex = r_asset.get_size();
+    r_asset.m_renderer_id = rand::random::<u64>();
     
     let new_primitive: GlPrimitiveInfo = GlPrimitiveInfo {
-      m_uuid: r_asset.get_uuid(),
+      m_uuid: r_asset.m_renderer_id,
       m_linked_shader: GlShaderInfo {
         m_version: shader_associated.get_version(),
         m_id: shader_associated.get_id(),

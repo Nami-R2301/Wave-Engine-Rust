@@ -26,7 +26,7 @@ use std::fmt::{Display, Formatter};
 use std::mem::size_of;
 use std::ops::Index;
 
-use crate::Engine;
+use crate::{Engine};
 use crate::graphics::color::Color;
 use crate::graphics::renderer;
 use crate::graphics::shader::Shader;
@@ -65,6 +65,13 @@ pub enum EnumMaterial {
   Shiny,
   Metallic,
   Matte
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Hash)]
+pub enum EnumSubPrimitivePortion {
+  Nothing,
+  Some(usize),
+  Everything,
 }
 
 impl Default for EnumMaterial {
@@ -370,17 +377,39 @@ impl REntity {
     todo!()
   }
   
-  pub fn hide(&mut self, primitive_index_selected: Option<usize>) {
+  pub fn hide(&mut self, sub_primitive_selected: EnumSubPrimitivePortion) {
     if self.m_sent {
       let renderer = Engine::get_active_renderer();
-      renderer.hide(self.get_uuid(), primitive_index_selected);
+      
+      return match sub_primitive_selected {
+        EnumSubPrimitivePortion::Nothing => {},
+        EnumSubPrimitivePortion::Some(sub_primitive_index) => {
+          if sub_primitive_index < self.m_sub_meshes.len() {
+            let _ = renderer.hide(self.m_renderer_id, Some(sub_primitive_index));
+          }
+        }
+        EnumSubPrimitivePortion::Everything => {
+          let _ = renderer.hide(self.m_renderer_id, None);
+        }
+      }
     }
   }
   
-  pub fn show(&mut self, primitive_index_selected: Option<usize>) {
+  pub fn show(&mut self, sub_primitive_selected: EnumSubPrimitivePortion) {
     if self.m_sent {
       let renderer = Engine::get_active_renderer();
-      renderer.show(self.get_uuid(), primitive_index_selected);
+      
+      return match sub_primitive_selected {
+        EnumSubPrimitivePortion::Nothing => {},
+        EnumSubPrimitivePortion::Some(sub_primitive_index) => {
+          if sub_primitive_index < self.m_sub_meshes.len() {
+            let _ = renderer.show(self.m_renderer_id, Some(sub_primitive_index));
+          }
+        }
+        EnumSubPrimitivePortion::Everything => {
+          let _ = renderer.show(self.m_renderer_id, None);
+        }
+      }
     }
   }
   
@@ -428,10 +457,10 @@ impl Display for dyn TraitPrimitive {
 
 impl Display for REntity {
   fn fmt(&self, format: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(format, "Type: {0:?}\n{2:115}Sent?: {1}\n{2:115}Data:", self.m_type, self.m_sent, "")?;
+    write!(format, "UUID: {3}\n{2:113}Type: {0:?}\n{2:113}Sent?: {1}\n{2:113}Data:", self.m_type, self.m_sent, "", self.get_uuid())?;
     
     for (sub_mesh_index, sub_mesh) in self.m_sub_meshes.iter().enumerate() {
-      write!(format, "\n{0:117}[{1}]:\n{0:119}{2}", "", sub_mesh_index + 1, sub_mesh)?;
+      write!(format, "\n{0:113}[{1}]:\n{0:115}{2}", "", sub_mesh_index + 1, sub_mesh)?;
     }
     return Ok(());
   }
