@@ -98,7 +98,7 @@ pub trait TraitPrimitive {
 #[derive(Clone)]
 pub struct Vertex {
   pub m_entity_id: u32,
-  // Id to differentiate instances in shaders to apply different textures for example or different transformations.
+  // ID to differentiate instances in shaders to apply different textures for example or different transformations.
   pub m_position: Vec3<f32>,
   pub m_normal: Vec3<f32>,
   pub m_color: Color,

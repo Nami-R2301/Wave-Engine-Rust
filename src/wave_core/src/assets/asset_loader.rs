@@ -61,7 +61,6 @@ impl Default for EnumAssetPrimitiveMode {
 #[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum EnumAssetHint {
   PrimitiveDataIs(EnumAssetPrimitiveMode),
-  OptimizeGraphs(bool),
   SplitLargeMeshes(bool, usize),
   GenerateNormals(bool),
   Triangulate(bool),
@@ -134,11 +133,6 @@ impl AssetLoader {
             }
           }
         }
-        EnumAssetHint::OptimizeGraphs(bool) => {
-          importer.optimize_graph(|opt_graph| {
-            opt_graph.enable = *bool;
-          })
-        }
         EnumAssetHint::SplitLargeMeshes(bool, vertex_limit) => {
           importer.split_large_meshes(|split_large| {
             split_large.enable = *bool;
@@ -149,6 +143,9 @@ impl AssetLoader {
         }
         EnumAssetHint::ReduceMeshes(bool) => {
           importer.optimize_meshes(*bool);
+          importer.optimize_graph(|opt_graph| {
+            opt_graph.enable = *bool;
+          })
         }
         EnumAssetHint::GenerateNormals(bool) => {
           importer.generate_normals(|gen_normals| {

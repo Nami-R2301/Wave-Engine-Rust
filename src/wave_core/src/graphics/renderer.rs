@@ -136,6 +136,20 @@ impl Display for EnumRendererRenderPrimitiveAs {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum EnumRendererBatchMode {
+  NoOptimizations,
+  OptimizeSubPrimitives,
+  OptimizeIndices,
+  OptimizeDrawCalls
+}
+
+impl Default for EnumRendererBatchMode {
+  fn default() -> Self {
+    return EnumRendererBatchMode::OptimizeDrawCalls;
+  }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumRendererHint {
   ContextApi(EnumRendererApi),
   /// Combine primitives with the same material type into a single buffer if possible, both for the vbo and ibo.
@@ -153,7 +167,7 @@ pub enum EnumRendererHint {
   ///
   ///   - This comes in handy when rendering for editor environments where every primitive and sub-primitive needs to be uniquely
   /// identified through ray-casting for example or when wanting to take apart a primitive by hiding or showing selected sub_primitives.
-  BatchSameMaterials(bool),
+  Optimization(EnumRendererBatchMode),
   
   /// Track internal api calls for potential errors and warnings when making api calls in the renderer.
   /// ### Argument:
@@ -231,7 +245,7 @@ impl EnumRendererHint {
   pub fn get_value(&self) -> &dyn Any {
     return match self {
       EnumRendererHint::ContextApi(api) => api,
-      EnumRendererHint::BatchSameMaterials(bool) => bool,
+      EnumRendererHint::Optimization(bool) => bool,
       EnumRendererHint::ApiCallChecking(mode) => mode,
       EnumRendererHint::DepthTest(bool) => bool,
       EnumRendererHint::CullFacing(mode) => mode,
@@ -346,7 +360,7 @@ pub(crate) trait TraitContext {
   fn to_string(&self) -> String;
   fn toggle_options(&mut self) -> Result<(), EnumRendererError>;
   fn flush(&mut self) -> Result<(), EnumRendererError>;
-  fn enqueue(&mut self, entity: &mut REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError>;
+  fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError>;
   fn dequeue(&mut self, id: u64) -> Result<(), EnumRendererError>;
   fn update_ubo_camera(&mut self, view: Mat4, projection: Mat4) -> Result<(), EnumRendererError>;
   fn update_ubo_model(&mut self, model_transform: Mat4, instance_offset: usize) -> Result<(), EnumRendererError>;
@@ -370,7 +384,7 @@ impl<'a> Renderer {
     hints.push(EnumRendererHint::DepthTest(true));
     hints.push(EnumRendererHint::Blending(true, None));
     hints.push(EnumRendererHint::PrimitiveMode(EnumRendererRenderPrimitiveAs::default()));
-    hints.push(EnumRendererHint::BatchSameMaterials(true));
+    hints.push(EnumRendererHint::Optimization(EnumRendererBatchMode::default()));
     hints.push(EnumRendererHint::CullFacing(Some(EnumRendererCull::default())));
     
     return Self {
@@ -444,6 +458,10 @@ impl<'a> Renderer {
     return self.m_api.toggle_primitive_mode(mode);
   }
   
+  pub fn toggle_msaa(&mut self, _sample_count: Option<u32>) -> Result<(), EnumRendererError> {
+    todo!()
+  }
+  
   pub fn check_extension(&self, desired_extension: &str) -> bool {
     return self.m_api.check_extension(desired_extension);
   }
@@ -497,9 +515,10 @@ impl<'a> Renderer {
   pub fn enqueue(&mut self, r_entity: &mut REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
     let mut new_id = 0;
     while self.m_ids.contains(&new_id) {
-       new_id += rand::random::<u64>();
+       new_id += 1;
     }
     r_entity.set_uuid(new_id);
+    self.m_ids.push(new_id);
     return self.m_api.enqueue(r_entity, shader_associated);
   }
   

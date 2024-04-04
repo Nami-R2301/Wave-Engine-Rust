@@ -803,9 +803,9 @@ impl GlIbo {
     }
     
     if gl::DeleteBuffers::is_loaded() {
-      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVbo...");
+      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlIbo...");
       check_gl_call!("GlIbo", gl::DeleteBuffers(1, &self.m_buffer_id));
-      log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlVbo successfully");
+      log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlIbo successfully");
     }
     
     self.m_state = EnumBufferState::Deleted;

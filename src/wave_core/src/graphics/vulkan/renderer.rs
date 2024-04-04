@@ -1188,7 +1188,7 @@ impl TraitContext for VkContext {
         }
         EnumRendererHint::SRGB(_) => {}
         EnumRendererHint::Blending(_, _) => {}
-        EnumRendererHint::BatchSameMaterials(_) => {}
+        EnumRendererHint::Optimization(_) => {}
       }
     }
     return Ok(());
@@ -1198,7 +1198,7 @@ impl TraitContext for VkContext {
     todo!()
   }
   
-  fn enqueue(&mut self, sendable_entity: &mut REntity, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
+  fn enqueue(&mut self, sendable_entity: &REntity, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
     let vk_shader = shader_associated.get_api().get_api_handle().downcast_ref::<VkShader>()
       .expect("[VkContext] -->\t Cannot enqueue data in VkContext : Renderer is not Vulkan!");
     

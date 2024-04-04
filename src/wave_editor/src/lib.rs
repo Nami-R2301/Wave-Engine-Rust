@@ -27,13 +27,13 @@ pub extern crate wave_core;
 use std::collections::HashMap;
 
 use wave_core::{camera, Engine, EnumEngineError, input, layers, math};
-use wave_core::assets::asset_loader::AssetLoader;
+use wave_core::assets::asset_loader::{AssetLoader, EnumAssetHint};
 use wave_core::assets::r_assets;
 use wave_core::assets::r_assets::EnumSubPrimitivePortion;
 #[allow(unused)]
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
-use wave_core::graphics::renderer::{EnumRendererHint, EnumRendererRenderPrimitiveAs, Renderer};
+use wave_core::graphics::renderer::{EnumRendererBatchMode, EnumRendererHint, EnumRendererRenderPrimitiveAs, Renderer};
 use wave_core::graphics::{shader};
 use wave_core::graphics::texture::{Texture};
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
@@ -126,8 +126,8 @@ impl Editor {
     let mut renderer = Renderer::default();  // Apply default renderer hints.
     
     window.hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));  // Force window to start in windowed mode.
-    window.hint(EnumWindowHint::MSAA(None));  // Force MSAA OFF.
-    renderer.hint(EnumRendererHint::BatchSameMaterials(false));  // Force each primitive to be drawn separately.
+    // Force each sub primitive to be drawn separately.
+    renderer.hint(EnumRendererHint::Optimization(EnumRendererBatchMode::OptimizeIndices));
     
     return Editor {
       m_engine: Engine::new(window, renderer, vec![]),
@@ -190,7 +190,8 @@ impl TraitLayer for Editor {
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
     
-    let asset_loader = AssetLoader::default();  // Apply default asset loader hints.
+    let mut asset_loader = AssetLoader::default(); // Apply default asset loader hints.
+    asset_loader.hint(EnumAssetHint::ReduceMeshes(false));
     
     let awp_asset = asset_loader.apply("awp.obj")?;
     let mario_asset = asset_loader.apply("Mario.obj")?;
@@ -298,7 +299,7 @@ impl TraitLayer for Editor {
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].hide(EnumSubPrimitivePortion::Some(0));
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].hide(EnumSubPrimitivePortion::Everything);
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
@@ -314,7 +315,7 @@ impl TraitLayer for Editor {
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
-            // renderer.toggle(renderer::EnumRendererOption::MSAA(Some(4)))?;
+            renderer.toggle_msaa(Some(4))?;
             Ok(true)
           }
           (input::EnumKey::Delete, input::EnumAction::Pressed, _, m) => {
