@@ -22,7 +22,6 @@
  SOFTWARE.
 */
 
-use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use assimp;
@@ -30,6 +29,7 @@ use assimp::import::structs::PrimitiveType;
 
 #[cfg(feature = "debug")]
 use crate::Engine;
+use crate::TraitHint;
 use crate::utils::macros::logger::*;
 
 /*
@@ -68,6 +68,20 @@ pub enum EnumAssetHint {
   OnlyTriangles(bool)
 }
 
+impl EnumAssetHint {
+  pub fn is(&self, other: &Self) -> bool {
+    return match (self, other) {
+      (EnumAssetHint::PrimitiveDataIs(_), EnumAssetHint::PrimitiveDataIs(_)) => true,
+      (EnumAssetHint::SplitLargeMeshes(_, _), EnumAssetHint::SplitLargeMeshes(_, _)) => true,
+      (EnumAssetHint::GenerateNormals(_), EnumAssetHint::GenerateNormals(_)) => true,
+      (EnumAssetHint::Triangulate(_), EnumAssetHint::Triangulate(_)) => true,
+      (EnumAssetHint::ReduceMeshes(_), EnumAssetHint::ReduceMeshes(_)) => true,
+      (EnumAssetHint::OnlyTriangles(_), EnumAssetHint::OnlyTriangles(_)) => true,
+      _ => false
+    }
+  }
+}
+
 impl Display for EnumAssetError {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     write!(f, "[AssetLoader] -->\t Error encountered while loading resource : {:?}", self)
@@ -78,35 +92,43 @@ impl std::error::Error for EnumAssetError {}
 
 #[derive(Debug)]
 pub struct AssetLoader {
-  m_hints: HashSet<EnumAssetHint>
+  m_hints: Vec<EnumAssetHint>
+}
+
+impl Default for AssetLoader {
+  fn default() -> Self {
+    return Self {
+      m_hints: vec![EnumAssetHint::PrimitiveDataIs(Default::default()), EnumAssetHint::GenerateNormals(true),
+        EnumAssetHint::Triangulate(true), EnumAssetHint::SplitLargeMeshes(true, 500_000),
+        EnumAssetHint::ReduceMeshes(true), EnumAssetHint::OnlyTriangles(true)],
+    }
+  }
+}
+
+impl TraitHint<EnumAssetHint> for AssetLoader {
+  fn set_hint(&mut self, hint: EnumAssetHint) {
+    if let Some(position) = self.m_hints.iter().position(|h| h.is(&hint)) {
+      self.m_hints.remove(position);
+    }
+    
+    self.m_hints.push(hint);
+  }
+  
+  fn reset_hints(&mut self) {
+    self.m_hints = vec![EnumAssetHint::PrimitiveDataIs(Default::default()), EnumAssetHint::GenerateNormals(true),
+      EnumAssetHint::Triangulate(true), EnumAssetHint::SplitLargeMeshes(true, 500_000),
+      EnumAssetHint::ReduceMeshes(true), EnumAssetHint::OnlyTriangles(true)];
+  }
 }
 
 impl AssetLoader {
-  pub fn default() -> Self {
-    let mut hints = HashSet::with_capacity(9);
-    hints.insert(EnumAssetHint::PrimitiveDataIs(EnumAssetPrimitiveMode::default()));
-    hints.insert(EnumAssetHint::GenerateNormals(true));
-    hints.insert(EnumAssetHint::Triangulate(true));
-    hints.insert(EnumAssetHint::SplitLargeMeshes(true, 500_000));
-    hints.insert(EnumAssetHint::ReduceMeshes(true));
-    hints.insert(EnumAssetHint::OnlyTriangles(true));
-    
-    return Self {
-      m_hints: hints,
-    }
-  }
-  
   pub fn new() -> Self {
     return Self {
-      m_hints: HashSet::with_capacity(5)
+      m_hints: Vec::with_capacity(5)
     }
   }
   
-  pub fn hint(&mut self, hint: EnumAssetHint) {
-    self.m_hints.insert(hint);
-  }
-  
-  pub fn apply(&self, file_name: &str) -> Result<assimp::scene::Scene, EnumAssetError> {
+  pub fn load(&self, file_name: &str) -> Result<assimp::scene::Scene, EnumAssetError> {
     let asset_path = &("res/assets/".to_string() + file_name);
     let path = std::path::Path::new(asset_path);
     

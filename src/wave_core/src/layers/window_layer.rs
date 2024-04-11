@@ -25,7 +25,7 @@
 use crate::utils::macros::logger::*;
 #[cfg(feature = "debug")]
 use crate::Engine;
-use crate::{EnumEngineError, events};
+use crate::{EnumEngineError, events, TraitApply, TraitFree};
 use crate::layers::{EnumLayerType, TraitLayer};
 use crate::window::{Window};
 

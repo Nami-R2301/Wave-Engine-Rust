@@ -23,7 +23,7 @@
 */
 
 use crate::utils::macros::logger::*;
-use crate::{Engine, EnumEngineError, events, input};
+use crate::{Engine, EnumEngineError, events, input, TraitApply, TraitFree};
 use crate::graphics::renderer::{Renderer};
 use crate::layers::{EnumLayerType, TraitLayer};
 
@@ -50,7 +50,7 @@ impl TraitLayer for RendererLayer {
     // Enable features BEFORE finalizing context.
     unsafe {
       // Finalize graphics context with all hinted features to prepare for frame presentation.
-      (*self.m_context).apply(Engine::get_active_window())?;
+      (*self.m_context).apply()?;
       
       log!(EnumLogColor::Green, "INFO", "[Engine] -->\t Setup renderer successfully");
     }

@@ -36,8 +36,9 @@ use std::ops::{BitAnd};
 
 #[cfg(feature = "vulkan")]
 use ash::extensions::{ext, khr};
+use ash::vk;
 #[cfg(feature = "vulkan")]
-use ash::vk::{self, PhysicalDeviceType, TaggedStructure};
+use ash::vk::{PhysicalDeviceType, TaggedStructure};
 
 #[cfg(feature = "vulkan")]
 use crate::utils::macros::logger::*;
@@ -217,7 +218,7 @@ pub struct VkContext {
 
 #[cfg(feature = "vulkan")]
 impl VkContext {
-  pub fn create_swap_chain(&mut self, vsync_preferred: bool) -> Result<(), renderer::EnumRendererError> {
+  pub fn create_swap_chain(&mut self, vsync_preferred: bool) -> Result<(), EnumRendererError> {
     // Setup swap chain.
     let mut swap_chain_properties = VkContext::query_swap_properties(self.m_surface.as_ref().unwrap(),
       self.m_physical_device, self.m_surface_khr)?;

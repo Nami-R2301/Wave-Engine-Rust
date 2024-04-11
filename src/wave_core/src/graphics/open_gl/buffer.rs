@@ -215,15 +215,16 @@ pub(crate) struct GlVao {
   m_buffer_id: u32,
 }
 
-impl GlVao {
-  #[allow(unused)]
-  pub(crate) fn default() -> Self {
+impl Default for GlVao {
+  fn default() -> Self {
     return GlVao {
       m_state: EnumBufferState::Created,
       m_buffer_id: 0,
     };
   }
-  
+}
+
+impl GlVao {
   pub(crate) fn new() -> Result<Self, EnumOpenGLError> {
     let mut new_vao: GLuint = 0;
     check_gl_call!("GlVao", gl::CreateVertexArrays(1, &mut new_vao));
@@ -332,8 +333,8 @@ pub(crate) struct GlVbo {
   m_old_buffer_id: u32,
 }
 
-impl GlVbo {
-  pub(crate) fn new() -> Self {
+impl Default for GlVbo {
+  fn default() -> Self {
     return Self {
       m_buffer_id: 0,
       m_state: EnumBufferState::NotCreated,
@@ -342,8 +343,10 @@ impl GlVbo {
       m_old_buffer_id: 0,
     };
   }
-  
-  pub(crate) fn reserve(&mut self, capacity: usize) -> Result<(), EnumOpenGLError> {
+}
+
+impl GlVbo {
+  pub(crate) fn new(capacity: usize) -> Result<Self, EnumOpenGLError> {
     let mut new_vbo: GLuint = 0;
     
     if capacity == 0 || capacity >= C_VBO_SIZE_LIMIT {
@@ -356,12 +359,13 @@ impl GlVbo {
     check_gl_call!("GlVbo", gl::BindBuffer(gl::ARRAY_BUFFER, new_vbo));
     check_gl_call!("GlVbo", gl::BufferData(gl::ARRAY_BUFFER, capacity as GLsizeiptr, std::ptr::null(), gl::DYNAMIC_DRAW));
     
-    self.m_buffer_id = new_vbo;
-    self.m_old_buffer_id = self.m_buffer_id;
-    self.m_state = EnumBufferState::Created;
-    self.m_capacity = capacity;
-    
-    return Ok(());
+    return Ok(Self {
+      m_buffer_id: new_vbo,
+      m_capacity: capacity,
+      m_length: 0,
+      m_state: EnumBufferState::Created,
+      m_old_buffer_id: 0,
+    });
   }
   
   #[allow(unused)]
@@ -588,8 +592,8 @@ pub(crate) struct GlIbo {
   m_state: EnumBufferState,
 }
 
-impl GlIbo {
-  pub(crate) fn new() -> Self {
+impl Default for GlIbo {
+  fn default() -> Self {
     return Self {
       m_buffer_id: 0,
       m_capacity: 0,
@@ -598,8 +602,10 @@ impl GlIbo {
       m_state: EnumBufferState::NotCreated,
     };
   }
-  
-  pub(crate) fn reserve(&mut self, capacity: usize) -> Result<(), EnumOpenGLError> {
+}
+
+impl GlIbo {
+  pub(crate) fn new(capacity: usize) -> Result<Self, EnumOpenGLError> {
     let mut new_ibo: GLuint = 0;
     
     if capacity == 0 || capacity > C_IBO_SIZE_LIMIT {
@@ -612,11 +618,13 @@ impl GlIbo {
     check_gl_call!("GlIbo", gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, new_ibo));
     check_gl_call!("GlIbo", gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, capacity as GLsizeiptr, std::ptr::null(), gl::DYNAMIC_DRAW));
     
-    self.m_buffer_id = new_ibo;
-    self.m_capacity = capacity;
-    self.m_state = EnumBufferState::Created;
-    
-    return Ok(());
+    return Ok(Self {
+      m_buffer_id: new_ibo,
+      m_capacity: capacity,
+      m_length: 0,
+      m_count: 0,
+      m_state: EnumBufferState::Created,
+    });
   }
   
   pub(crate) fn bind(&mut self) -> Result<(), EnumOpenGLError> {
@@ -834,7 +842,7 @@ pub(crate) enum EnumUboTypeSize {
   Float,
   Double,
   Long,
-  Custom(usize)
+  Custom(usize),
 }
 
 #[allow(unused)]
@@ -847,16 +855,7 @@ pub(crate) struct GlUbo {
 }
 
 impl GlUbo {
-  #[allow(unused)]
-  pub(crate) fn new(block_name: Option<&'static str>) -> Self {
-    return Self {
-      m_buffer_id: 0,
-      m_name: block_name,
-      m_length: 0,
-      m_state: EnumBufferState::NotCreated,
-    }
-  }
-  pub(crate) fn reserve(block_name: Option<&'static str>, ubo_type: EnumUboTypeSize, binding: u32) -> Result<Self, EnumOpenGLError> {
+  pub(crate) fn new(block_name: Option<&'static str>, ubo_type: EnumUboTypeSize, binding: u32) -> Result<Self, EnumOpenGLError> {
     let mut buffer_id = 0;
     let alloc_size: usize;
     

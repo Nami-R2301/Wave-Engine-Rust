@@ -22,13 +22,15 @@
  SOFTWARE.
 */
 
+use std::collections::{HashSet};
 use std::fmt::{Display, Formatter};
 use std::mem::size_of;
 use std::ops::Index;
 
-use crate::{Engine};
+use crate::{Engine, TraitFree};
+use crate::utils::macros::logger::*;
 use crate::graphics::color::Color;
-use crate::graphics::renderer;
+use crate::graphics::renderer::EnumRendererError;
 use crate::graphics::shader::Shader;
 use crate::math::{Mat4, Vec2, Vec3};
 
@@ -64,7 +66,7 @@ pub enum EnumMaterial {
   Noisy,
   Shiny,
   Metallic,
-  Matte
+  Matte,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Hash)]
@@ -143,20 +145,16 @@ impl TraitPrimitive for Sprite {
   fn get_name(&self) -> &str {
     return &self.m_name;
   }
-  
   fn get_vertices(&self) -> &Vec<Vertex> {
     return &self.m_vertices;
   }
-  
   fn get_indices(&self) -> &Vec<u32> {
     return &self.m_indices;
   }
-  
   fn get_entity_id(&self) -> u32 {
     return (!self.m_vertices.is_empty()).then(|| self.m_vertices[0].m_entity_id)
       .unwrap_or(0);
   }
-  
   fn is_empty(&self) -> bool {
     return self.m_vertices.is_empty();
   }
@@ -173,20 +171,16 @@ impl TraitPrimitive for Mesh {
   fn get_name(&self) -> &str {
     return &self.m_name;
   }
-  
   fn get_vertices(&self) -> &Vec<Vertex> {
     return &self.m_vertices;
   }
-  
   fn get_indices(&self) -> &Vec<u32> {
     return &self.m_indices;
   }
-  
   fn get_entity_id(&self) -> u32 {
     return (!self.m_vertices.is_empty()).then(|| self.m_vertices[0].m_entity_id)
       .unwrap_or(0);
   }
-  
   fn is_empty(&self) -> bool {
     return self.m_vertices.is_empty();
   }
@@ -195,6 +189,7 @@ impl TraitPrimitive for Mesh {
 pub struct REntity {
   pub(crate) m_renderer_id: u64,
   pub(crate) m_sub_meshes: Vec<Box<dyn TraitPrimitive>>,
+  pub(crate) m_textures: HashSet<(&'static str, usize)>,
   pub(crate) m_type: EnumPrimitive,
   // Transformations applied to the entity, to be eventually applied to the model matrix.
   m_transform: [Vec3<f32>; 3],
@@ -202,14 +197,15 @@ pub struct REntity {
   m_changed: bool,
 }
 
-impl REntity {
-  pub fn default() -> Result<Self, renderer::EnumRendererError> {
+impl Default for REntity {
+  fn default() -> Self {
     let mut new_entity: REntity = REntity {
       m_sub_meshes: vec![Box::new(Sprite {
         m_name: "".to_string(),
         m_vertices: vec![],
         m_indices: vec![],
       })],
+      m_textures: HashSet::with_capacity(1),
       m_renderer_id: u64::MAX,
       m_type: EnumPrimitive::default(),
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
@@ -217,10 +213,26 @@ impl REntity {
       m_changed: false,
     };
     
-    new_entity.translate(Vec3::new(&[0.0, 0.0, 10.0]));
-    return Ok(new_entity);
+    new_entity.translate(0.0, 0.0, 10.0);
+    return new_entity;
   }
-  
+}
+
+impl TraitFree<EnumRendererError> for REntity {
+  fn free(&mut self) -> Result<(), EnumRendererError> {
+    if self.m_sent {
+      let renderer = Engine::get_active_renderer();
+      
+      renderer.dequeue(self.get_uuid(), None)?;
+      self.m_sent = false;
+      self.m_changed = false;
+      return Ok(());
+    }
+    return Ok(());
+  }
+}
+
+impl REntity {
   pub fn new(scene: assimp::Scene, data_type: EnumPrimitive) -> Self {
     let mut data: Vec<Box<dyn TraitPrimitive>> = Vec::with_capacity(scene.num_meshes as usize);
     
@@ -264,7 +276,7 @@ impl REntity {
           }));
         }
         EnumPrimitive::Mesh(_) => {
-          data.push(Box::new(Sprite {
+          data.push(Box::new(Mesh {
             m_name: String::from(mesh.name.as_ref()),
             m_vertices: vertices,
             m_indices: indices,
@@ -274,40 +286,21 @@ impl REntity {
       }
     }
     
-    let new_entity: REntity;
-    
-    match data_type {
-      EnumPrimitive::Sprite => {
-        new_entity = REntity {
-          m_renderer_id: u64::MAX,
-          m_sub_meshes: data,
-          m_type: EnumPrimitive::Sprite,
-          m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
-          m_sent: false,
-          m_changed: false,
-        };
-      }
-      EnumPrimitive::Mesh(material) => {
-        new_entity = REntity {
-          m_renderer_id: u64::MAX,
-          m_sub_meshes: data,
-          m_type: EnumPrimitive::Mesh(material),
-          m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
-          m_sent: false,
-          m_changed: false
-        };
-      }
-      EnumPrimitive::Quad => todo!()
-    }
-    
-    return new_entity;
+    return REntity {
+      m_renderer_id: u64::MAX,
+      m_sub_meshes: data,
+      m_textures: HashSet::with_capacity(1),
+      m_type: data_type,
+      m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
+      m_sent: false,
+      m_changed: false,
+    };
   }
   
   pub fn get_size(&self) -> usize {
     return match self.m_type {
-      EnumPrimitive::Sprite => {
-        size_of::<u32>() + (size_of::<f32>() * 3) + (size_of::<f32>() * 3) + size_of::<Color>() +
-          (size_of::<f32>() * 2)
+      EnumPrimitive::Sprite | EnumPrimitive::Quad => {
+        size_of::<u32>() + (size_of::<f32>() * 2) + size_of::<u32>() + (size_of::<f32>() * 2)
       }
       EnumPrimitive::Mesh(_) => {
         size_of::<u32>()                // Entity ID (uint)
@@ -315,9 +308,6 @@ impl REntity {
           + (size_of::<f32>() * 3)      // Normal (Vec3<f32>)
           + size_of::<u32>()            // Color (uint)
           + (size_of::<f32>() * 2)      // Vec2<f32
-      }
-      EnumPrimitive::Quad => {
-        size_of::<u32>() + (size_of::<f32>() * 3) + size_of::<Color>() + (size_of::<f32>() * 2)
       }
     };
   }
@@ -338,33 +328,72 @@ impl REntity {
     return count;
   }
   
+  pub fn add_texture(&mut self, file_path: &'static str) {
+    for sub_primitive_index in 0..self.m_sub_meshes.len() {
+      self.m_textures.insert((file_path, sub_primitive_index));
+    }
+  }
+  
+  pub fn add_texture_at(&mut self, sub_primitive_index: Option<usize>, file_path: &'static str) {
+    if sub_primitive_index.is_some_and(|s| s > self.m_sub_meshes.len()) {
+      log!(EnumLogColor::Red, "ERROR", "[Asset] -->\t Cannot add texture for sub mesh index {0}, index isn't within boundaries!",
+        sub_primitive_index.unwrap());
+      return;
+    }
+    
+    if sub_primitive_index.is_none() {
+      return self.add_texture(file_path);
+    }
+    
+    self.m_textures.insert((file_path, sub_primitive_index.unwrap()));
+  }
+  
+  pub fn remove_texture(&mut self, file_path: &'static str) {
+    let matches = self.m_textures.clone().into_iter()
+      .filter(|t| t.0 == file_path)
+      .collect::<Vec<(&str, usize)>>();
+    
+    for (file_path, sub_primitive_index) in matches.into_iter() {
+      self.m_textures.remove(&(file_path, sub_primitive_index));
+    }
+  }
+  
+  pub fn remove_texture_at(&mut self, sub_primitive_index: Option<usize>, file_path: &'static str) {
+    if sub_primitive_index.is_some_and(|s| s > self.m_sub_meshes.len()) {
+      log!(EnumLogColor::Red, "ERROR", "[Asset] -->\t Cannot remove texture for sub mesh index {0}, index isn't within boundaries!",
+        sub_primitive_index.unwrap());
+      return;
+    }
+    
+    if sub_primitive_index.is_none() {
+      self.remove_texture(file_path);
+      return;
+    }
+    
+    self.m_textures.remove(&(file_path, sub_primitive_index.unwrap()));
+  }
+  
   pub fn is_empty(&self) -> bool {
     return self.m_sub_meshes.is_empty();
   }
   
-  pub fn translate(&mut self, amount: Vec3<f32>) {
-    self.m_transform[0] += Vec3::new(&[amount.x, amount.y, -amount.z]);
+  pub fn translate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
+    self.m_transform[0] += Vec3::new(&[amount_x, amount_y, -amount_z]);
     self.m_changed = true;
   }
   
-  pub fn rotate(&mut self, amount: Vec3<f32>) {
-    let mut copy = self.m_transform[1];
-    
+  pub fn rotate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
     // Inverse x and y to correspond to the right orientation.
-    copy.x = amount.y;
-    copy.y = amount.x;
-    copy.z = -amount.z;
-    
-    self.m_transform[1] += copy;
+    self.m_transform[1] += Vec3::new(&[amount_y, amount_x, -amount_z]);
     self.m_changed = true;
   }
   
-  pub fn scale(&mut self, amount: Vec3<f32>) {
-    self.m_transform[2] += amount;
+  pub fn scale(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
+    self.m_transform[2] += Vec3::new(&[amount_y, amount_x, amount_z]);
     self.m_changed = true;
   }
   
-  pub fn apply(&mut self, shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
+  pub fn apply(&mut self, shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
     let renderer = Engine::get_active_renderer();
     
     renderer.enqueue(self, shader_associated)?;
@@ -373,7 +402,7 @@ impl REntity {
     return Ok(());
   }
   
-  pub fn resend(&mut self, _shader_associated: &mut Shader) -> Result<(), renderer::EnumRendererError> {
+  pub fn reapply(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
     todo!()
   }
   
@@ -382,7 +411,7 @@ impl REntity {
       let renderer = Engine::get_active_renderer();
       
       return match sub_primitive_selected {
-        EnumSubPrimitivePortion::Nothing => {},
+        EnumSubPrimitivePortion::Nothing => {}
         EnumSubPrimitivePortion::Some(sub_primitive_index) => {
           if sub_primitive_index < self.m_sub_meshes.len() {
             let _ = renderer.hide(self.m_renderer_id, Some(sub_primitive_index));
@@ -391,7 +420,7 @@ impl REntity {
         EnumSubPrimitivePortion::Everything => {
           let _ = renderer.hide(self.m_renderer_id, None);
         }
-      }
+      };
     }
   }
   
@@ -400,7 +429,7 @@ impl REntity {
       let renderer = Engine::get_active_renderer();
       
       return match sub_primitive_selected {
-        EnumSubPrimitivePortion::Nothing => {},
+        EnumSubPrimitivePortion::Nothing => {}
         EnumSubPrimitivePortion::Some(sub_primitive_index) => {
           if sub_primitive_index < self.m_sub_meshes.len() {
             let _ = renderer.show(self.m_renderer_id, Some(sub_primitive_index));
@@ -409,20 +438,8 @@ impl REntity {
         EnumSubPrimitivePortion::Everything => {
           let _ = renderer.show(self.m_renderer_id, None);
         }
-      }
+      };
     }
-  }
-  
-  pub fn free(&mut self, primitive_index_selected: Option<usize>) -> Result<(), renderer::EnumRendererError> {
-    if self.m_sent {
-      let renderer = Engine::get_active_renderer();
-      
-      renderer.dequeue(self.get_uuid(), primitive_index_selected)?;
-      self.m_sent = false;
-      self.m_changed = false;
-      return Ok(());
-    }
-    return Ok(());
   }
   
   pub fn is_sent(&self) -> bool {

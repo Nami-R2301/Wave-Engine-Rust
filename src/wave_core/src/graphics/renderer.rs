@@ -30,7 +30,7 @@ use crate::Engine;
 use crate::utils::macros::logger::*;
 use crate::assets::asset_loader;
 use crate::assets::r_assets::{REntity};
-use crate::events;
+use crate::{events, TraitApply, TraitFree, TraitHint};
 use crate::graphics::{open_gl, texture};
 use crate::graphics::open_gl::renderer::GlContext;
 use crate::graphics::shader::{Shader};
@@ -238,7 +238,7 @@ pub enum EnumRendererHint {
 }
 
 impl EnumRendererHint {
-  pub fn is(&self, other: &EnumRendererHint) -> bool {
+  pub fn is_equivalent(&self, other: &EnumRendererHint) -> bool {
     return std::mem::discriminant(self) == std::mem::discriminant(other);
   }
   
@@ -375,27 +375,77 @@ pub struct Renderer {
   m_api: Box<dyn TraitContext>,
 }
 
-impl<'a> Renderer {
-  pub fn default() -> Self {
-    let mut hints = Vec::with_capacity(8);
-    hints.push(EnumRendererHint::ContextApi(EnumRendererApi::default()));
-    hints.push(EnumRendererHint::ApiCallChecking(EnumRendererCallCheckingMode::default()));
-    hints.push(EnumRendererHint::SRGB(true));
-    hints.push(EnumRendererHint::DepthTest(true));
-    hints.push(EnumRendererHint::Blending(true, None));
-    hints.push(EnumRendererHint::PrimitiveMode(EnumRendererRenderPrimitiveAs::default()));
-    hints.push(EnumRendererHint::Optimization(EnumRendererBatchMode::default()));
-    hints.push(EnumRendererHint::CullFacing(Some(EnumRendererCull::default())));
-    
+impl Default for Renderer {
+  fn default() -> Self {
     return Self {
       m_state: EnumRendererState::Created,
       m_type: EnumRendererApi::default(),
-      m_hints: hints,
+      m_hints: vec![EnumRendererHint::ContextApi(Default::default()),
+        EnumRendererHint::ApiCallChecking(Default::default()),
+        EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true), EnumRendererHint::Blending(true, None),
+        EnumRendererHint::PrimitiveMode(Default::default()),
+        EnumRendererHint::Optimization(Default::default()),
+        EnumRendererHint::CullFacing(Some(Default::default()))],
       m_ids: Vec::with_capacity(10),
       m_api: Box::new(GlContext::default()),
     };
   }
+}
+
+impl TraitHint<EnumRendererHint> for Renderer {
+  fn set_hint(&mut self, hint: EnumRendererHint) {
+    if let Some(position) = self.m_hints.iter().position(|hint| hint.is_equivalent(&hint)) {
+      self.m_hints.remove(position);
+    }
+    
+    self.m_hints.push(hint);
+  }
   
+  fn reset_hints(&mut self) {
+    self.m_hints = vec![EnumRendererHint::ContextApi(Default::default()),
+      EnumRendererHint::ApiCallChecking(Default::default()),
+      EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true), EnumRendererHint::Blending(true, None),
+      EnumRendererHint::PrimitiveMode(Default::default()),
+      EnumRendererHint::Optimization(Default::default()),
+      EnumRendererHint::CullFacing(Some(Default::default()))];
+  }
+}
+
+impl TraitApply<EnumRendererError> for Renderer {
+  fn apply(&mut self) -> Result<(), EnumRendererError> {
+    let window = Engine::get_active_window();
+    if self.m_hints.contains(&EnumRendererHint::ContextApi(EnumRendererApi::Vulkan)) {
+      #[cfg(not(feature = "vulkan"))]
+      {
+        log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot apply Vulkan renderer, vulkan feature not enabled!");
+        return Err(EnumRendererError::InvalidApi);
+      }
+      
+      self.m_api = Box::new(VkContext::on_new(window, self.m_hints.clone())?);
+      return self.m_api.apply(window);
+    }
+    
+    self.m_api = Box::new(GlContext::on_new(window, self.m_hints.clone())?);
+    return self.m_api.apply(window);
+  }
+}
+
+impl TraitFree<EnumRendererError> for Renderer {
+  fn free(&mut self) -> Result<(), EnumRendererError> {
+    log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Freeing resources...");
+    if self.m_state == EnumRendererState::NotCreated || self.m_state == EnumRendererState::Deleted {
+      return Ok(());
+    }
+    
+    // Free up resources.
+    self.m_api.free()?;
+    self.m_state = EnumRendererState::Deleted;
+    log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Freed resources successfully");
+    return Ok(());
+  }
+}
+
+impl<'a> Renderer {
   pub fn new() -> Self {
     #[cfg(not(feature = "vulkan"))]
     return Renderer {
@@ -416,18 +466,6 @@ impl<'a> Renderer {
     };
   }
   
-  pub fn hint(&mut self, feature_desired: EnumRendererHint) {
-    if let Some(position) = self.m_hints.iter().position(|hint| hint.is(&feature_desired)) {
-      self.m_hints.remove(position);
-    }
-    
-    self.m_hints.push(feature_desired);
-  }
-  
-  pub fn clear_hints(&mut self) {
-    self.m_hints.clear();
-  }
-  
   pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) -> Result<(), EnumRendererError> {
     log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Asset {0} now hidden", entity_uuid);
     return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, false);
@@ -436,22 +474,6 @@ impl<'a> Renderer {
   pub fn show(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) -> Result<(), EnumRendererError> {
     log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Asset {0} now shown", entity_uuid);
     return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, true);
-  }
-  
-  pub fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError> {
-    if self.m_hints.contains(&EnumRendererHint::ContextApi(EnumRendererApi::OpenGL)) {
-      self.m_api = Box::new(GlContext::on_new(window, self.m_hints.clone())?);
-      return self.m_api.apply(window);
-    }
-    
-    #[cfg(not(feature = "vulkan"))]
-    {
-      log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot apply Vulkan renderer, vulkan feature not enabled!");
-      return Err(EnumRendererError::InvalidApi);
-    }
-    
-    self.m_api = Box::new(VkContext::on_new(window, self.m_hints.clone())?);
-    return self.m_api.apply(window);
   }
   
   pub fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs) -> Result<(), EnumRendererError> {
@@ -497,19 +519,6 @@ impl<'a> Renderer {
   
   pub fn get_api_handle(&mut self) -> &mut dyn Any {
     return self.m_api.get_api_handle();
-  }
-  
-  pub fn free(&mut self) -> Result<(), EnumRendererError> {
-    log!(EnumLogColor::Purple, "INFO", "[Renderer] -->\t Freeing resources...");
-    if self.m_state == EnumRendererState::NotCreated || self.m_state == EnumRendererState::Deleted {
-      return Ok(());
-    }
-    
-    // Free up resources.
-    self.m_api.free()?;
-    self.m_state = EnumRendererState::Deleted;
-    log!(EnumLogColor::Green, "INFO", "[Renderer] -->\t Freed resources successfully");
-    return Ok(());
   }
   
   pub fn enqueue(&mut self, r_entity: &mut REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError> {

@@ -96,14 +96,14 @@ impl Camera {
   pub fn set_up_vector(&mut self, to_this: Vec3<f32>) {
     return self.m_api.set_up_vector(to_this);
   }
-  pub fn translate(&mut self, by: Vec3<f32>) {
-    return self.m_api.translate(by);
+  pub fn translate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
+    return self.m_api.translate(Vec3::new(&[amount_x, amount_y, -amount_z]));
   }
-  pub fn rotate(&mut self, by: Vec3<f32>) {
-    return self.m_api.rotate(by);
+  pub fn rotate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
+    return self.m_api.rotate(Vec3::new(&[amount_y, amount_x, -amount_z]));
   }
-  pub fn scale(&mut self, by: Vec3<f32>) {
-    return self.m_api.scale(by);
+  pub fn scale(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
+    return self.m_api.scale(Vec3::new(&[amount_x, amount_y, amount_z]));
   }
 }
 

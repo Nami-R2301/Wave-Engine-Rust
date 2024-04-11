@@ -69,6 +69,7 @@ pub enum EnumEngineError {
   LayerError(layers::EnumLayerError),
   ResourceError(assets::asset_loader::EnumAssetError),
   ShaderError(shader::EnumShaderError),
+  TextureLoaderError(graphics::texture::EnumTextureLoaderError),
   RendererError(renderer::EnumRendererError),
   WindowError(window::EnumWindowError),
   InputError(input::EnumInputError),
@@ -108,7 +109,24 @@ impl_enum_error!(input::EnumInputError, EnumEngineError::InputError);
 // Convert ui errors to wave_core::EnumError.
 impl_enum_error!(ui::EnumUIError, EnumEngineError::UiError);
 
+// Convert texture loader errors to wave_core::EnumError.
+impl_enum_error!(graphics::texture::EnumTextureLoaderError, EnumEngineError::TextureLoaderError);
+
+// Convert event errors to wave_core::EnumError
 impl_enum_error!(events::EnumEventError, EnumEngineError::EventError);
+
+pub trait TraitHint<T: 'static + PartialEq> {
+  fn set_hint(&mut self, hint: T);
+  fn reset_hints(&mut self);
+}
+
+pub trait TraitFree<T: 'static + PartialEq> {
+  fn free(&mut self) -> Result<(), T>;
+}
+
+pub trait TraitApply<T: 'static + PartialEq> {
+  fn apply(&mut self) -> Result<(), T>;
+}
 
 pub struct Engine {
   m_layers: Vec<Layer>,

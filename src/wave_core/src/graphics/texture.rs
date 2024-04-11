@@ -26,9 +26,9 @@
 use std::any::Any;
 use std::fmt::{Display, Formatter};
 
-use stb_image::image::{Image, LoadResult};
+use stb_image;
 
-use crate::Engine;
+use crate::{Engine, TraitApply, TraitFree, TraitHint};
 use crate::graphics::open_gl::texture::{EnumGlTextureError, GlTexture};
 use crate::graphics::renderer::{EnumRendererApi, EnumRendererError};
 #[cfg(feature = "vulkan")]
@@ -222,6 +222,8 @@ pub enum EnumTextureHint {
   TargetFormat(EnumTextureFormat),
   IsHdr(bool),
   DataEncodedWith(EnumTextureDataAlignment),
+  FlipPixels(bool),
+  BindLess(bool)
 }
 
 impl EnumTextureHint {
@@ -235,25 +237,43 @@ impl EnumTextureHint {
       EnumTextureHint::TargetFormat(value) => result = value,
       EnumTextureHint::IsHdr(value) => result = value,
       EnumTextureHint::DataEncodedWith(value) => result = value,
+      EnumTextureHint::FlipPixels(bool) => result = bool,
+      EnumTextureHint::BindLess(bool) => result = bool
     };
     return result;
   }
   
-  pub fn is(&self, other: &EnumTextureHint) -> bool {
+  pub fn is_equivalent(&self, other: &Self) -> bool {
     return std::mem::discriminant(self) == std::mem::discriminant(other);
   }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum EnumAtlasTextureHint {
+  TextureFormat(EnumTextureFormat),
+  AtlasDimensions((usize, usize)),
+  OptimizeMemory(bool),
 }
 
 #[allow(unused)]
 #[derive(Debug, PartialEq)]
 pub enum EnumTextureError {
-  FileError(String),
   InvalidSize,
+  FileError(String),
   InvalidMipMap,
   InvalidFormat,
   OpenGLError(EnumGlTextureError),
   #[cfg(feature = "vulkan")]
   VulkanError(EnumVkTextureError),
+}
+
+#[allow(unused)]
+#[derive(Debug, PartialEq)]
+pub enum EnumTextureLoaderError {
+  FileError(String),
+  InvalidPath(String),
+  InvalidSize,
+  InvalidFormat,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -264,6 +284,17 @@ pub(crate) enum EnumTextureState {
 }
 
 //////////////////////////// DISPLAY /////////////////////////////////////
+
+impl Display for EnumTextureLoaderError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    return match self {
+      EnumTextureLoaderError::InvalidPath(_) => write!(f, "Invalid path"),
+      EnumTextureLoaderError::InvalidSize => write!(f, "Invalid size"),
+      EnumTextureLoaderError::InvalidFormat => write!(f, "Invalid format"),
+      EnumTextureLoaderError::FileError(err) => write!(f, "Error reading file, Error => {0}", err)
+    };
+  }
+}
 
 impl Display for EnumCubeMapFace {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -383,57 +414,60 @@ impl Display for EnumTexture {
 }
 
 pub(crate) trait TraitTexture {
+  fn convert_to(&mut self, format: EnumTextureFormat) -> Result<(), EnumRendererError>;
   fn apply(&mut self) -> Result<(), EnumRendererError>;
   fn clear(&mut self) -> Result<(), EnumRendererError>;
   fn free(&mut self) -> Result<(), EnumRendererError>;
 }
 
 #[allow(unused)]
-pub struct Texture {
-  m_state: EnumTextureState,
-  m_api: Box<dyn TraitTexture>,
+pub struct TextureLoader {
   m_hints: Vec<EnumTextureHint>,
 }
 
-impl Texture {
-  pub fn default() -> Self {
-    let mut hints = Vec::with_capacity(4);
-    
-    hints.push(EnumTextureHint::TargetApi(EnumRendererApi::OpenGL));
-    hints.push(EnumTextureHint::IsHdr(false));
-    hints.push(EnumTextureHint::TargetFormat(EnumTextureFormat::default()));
-    hints.push(EnumTextureHint::TargetMipMapLevel(0));
-    hints.push(EnumTextureHint::DataEncodedWith(EnumTextureDataAlignment::default()));
-    
+impl Default for TextureLoader {
+  fn default() -> Self {
     return Self {
-      m_state: EnumTextureState::Created,
-      m_api: Box::new(VkTexture::<u8>::default()),
-      m_hints: hints,
+      m_hints: vec![EnumTextureHint::TargetApi(Default::default()), EnumTextureHint::IsHdr(false),
+        EnumTextureHint::TargetFormat(Default::default()), EnumTextureHint::TargetMipMapLevel(0),
+        EnumTextureHint::DataEncodedWith(Default::default()), EnumTextureHint::FlipPixels(true)],
     };
   }
+}
+
+impl TraitHint<EnumTextureHint> for TextureLoader {
+  fn set_hint(&mut self, hint: EnumTextureHint) {
+    if let Some(hint_found) = self.m_hints.iter().position(|h| h.is_equivalent(&hint)) {
+      self.m_hints.remove(hint_found);
+    }
+    
+    self.m_hints.push(hint);
+  }
+  
+  fn reset_hints(&mut self) {
+    self.m_hints = vec![EnumTextureHint::TargetApi(Default::default()), EnumTextureHint::IsHdr(false),
+      EnumTextureHint::TargetFormat(Default::default()), EnumTextureHint::TargetMipMapLevel(0),
+      EnumTextureHint::DataEncodedWith(Default::default()), EnumTextureHint::FlipPixels(true)];
+  }
+}
+
+impl TextureLoader {
   pub fn new() -> Self {
     return Self {
-      m_state: EnumTextureState::Created,
-      m_api: Box::new(GlTexture::<u8>::default()),
       m_hints: vec![],
     };
   }
   
-  pub fn hint(&mut self, hint: EnumTextureHint) {
-    if let Some(position) = self.m_hints.iter().position(|h| h.is(&hint)) {
-      self.m_hints.remove(position);
+  pub fn load(&mut self, file_path: &str) -> Result<Texture, EnumTextureLoaderError> {
+    // If we are dealing with left hand side coordinates for UVs, like in OpenGL.
+    if self.m_hints.contains(&EnumTextureHint::FlipPixels(true)) {
+      unsafe {
+        stb_image::stb_image::stbi_set_flip_vertically_on_load(1);
+      }
     }
-    self.m_hints.push(hint);
-  }
-  
-  pub fn clear_hints(&mut self) {
-    self.m_hints.clear();
-  }
-  
-  pub fn apply(&mut self, file_name: &str) -> Result<(), EnumRendererError> {
-    let file_loaded = stb_image::image::load(file_name);
     
-    let mut texture_data: (EnumTexture, Image<u8>) = (EnumTexture::default(), Image {
+    let file_loaded = stb_image::image::load(file_path);
+    let mut texture_data: (EnumTexture, stb_image::image::Image<u8>) = (EnumTexture::default(), stb_image::image::Image {
       width: 0,
       height: 0,
       depth: 0,
@@ -442,7 +476,6 @@ impl Texture {
     
     // Init with default values if case no hints were specified.
     let mut texture_dimensions = (0, 0, 0);
-    let mut texture_api = EnumRendererApi::default();
     let mut texture_target = EnumTextureTarget::default();
     let mut texture_mipmap = 0;
     let mut texture_data_type = EnumTextureDataAlignment::default();
@@ -453,21 +486,21 @@ impl Texture {
     for hint in self.m_hints.iter() {
       match *hint {
         EnumTextureHint::TextureType(target) => texture_target = target,
-        EnumTextureHint::TargetApi(api) => texture_api = api,
         EnumTextureHint::TargetDimensions(dimensions) => texture_dimensions = dimensions,
         EnumTextureHint::TargetMipMapLevel(mipmap) => texture_mipmap = mipmap,
         EnumTextureHint::TargetFormat(format) => texture_format = format,
         EnumTextureHint::DataEncodedWith(data_type) => texture_data_type = data_type,
         EnumTextureHint::IsHdr(bool) => texture_hdr = bool,
+        _ => {}
       }
     }
     
     match file_loaded {
-      LoadResult::Error(message) => {
-        log!(EnumLogColor::Red, "ERROR", "[Texture] -->\t Cannot load texture from file {0}, Error => {1}", file_name, message);
-        return Err(EnumRendererError::from(EnumTextureError::FileError(message)));
+      stb_image::image::LoadResult::Error(message) => {
+        log!(EnumLogColor::Red, "ERROR", "[Texture] -->\t Cannot load texture from file {0}, Error => {1}", file_path, message);
+        return Err(EnumTextureLoaderError::FileError(message));
       }
-      LoadResult::ImageU8(data) => {
+      stb_image::image::LoadResult::ImageU8(data) => {
         match data.depth {
           1 => texture_format = EnumTextureFormat::Red,
           2 => texture_format = EnumTextureFormat::Rg,
@@ -504,39 +537,84 @@ impl Texture {
           }
           _ => todo!()
         }
-        
-        self.m_state = EnumTextureState::Sent;
-        if texture_api == EnumRendererApi::OpenGL {
-          self.m_api = Box::new(GlTexture::new(texture_data.0, texture_data.1));
-          return self.m_api.apply();
-        }
-        
-        #[cfg(not(feature = "vulkan"))]
-        {
-          log!(EnumLogColor::Red, "ERROR", "[Texture] -->\t Cannot crate Vulkan texture, vulkan feature not enabled!");
-          return Err(EnumTextureError::VulkanError);
-        }
-        
-        #[cfg(feature = "vulkan")]
-        {
-          self.m_api = Box::new(VkTexture::new(texture_data.0, texture_data.1));
-          return self.m_api.apply();
-        }
       }
-      LoadResult::ImageF32(_data) => {
+      stb_image::image::LoadResult::ImageF32(_data) => {
         if !texture_hdr {
           log!(EnumLogColor::Red, "ERROR", "[Texture] -->\t Cannot load texture {0:?} as HDR, texture not HDR!", texture_data.0);
-          return Err(EnumRendererError::TextureError(EnumTextureError::InvalidFormat));
+          return Err(EnumTextureLoaderError::InvalidFormat);
         }
-        
         todo!()
       }
     }
+    
+    return Ok(Texture::new(self.m_hints.clone(), texture_data.0, texture_data.1));
+  }
+}
+
+#[allow(unused)]
+pub struct Texture {
+  m_state: EnumTextureState,
+  m_api: Box<dyn TraitTexture>,
+  m_hints: Vec<EnumTextureHint>,
+}
+
+impl Default for Texture {
+  fn default() -> Self {
+    return Self {
+      m_state: EnumTextureState::Created,
+      m_api: Box::new(GlTexture::<u8>::default()),
+      m_hints: vec![EnumTextureHint::TargetApi(Default::default()), EnumTextureHint::IsHdr(false),
+        EnumTextureHint::TargetFormat(Default::default()), EnumTextureHint::TargetMipMapLevel(0),
+        EnumTextureHint::DataEncodedWith(Default::default())],
+    };
+  }
+}
+
+impl TraitHint<EnumTextureHint> for Texture {
+  fn set_hint(&mut self, hint: EnumTextureHint) {
+    if let Some(position) = self.m_hints.iter().position(|h| h.is_equivalent(&hint)) {
+      self.m_hints.remove(position);
+    }
+    self.m_hints.push(hint);
   }
   
-  pub fn free(&mut self) -> Result<(), EnumRendererError> {
+  fn reset_hints(&mut self) {
+    self.m_hints = vec![EnumTextureHint::TargetApi(Default::default()), EnumTextureHint::IsHdr(false),
+      EnumTextureHint::TargetFormat(Default::default()), EnumTextureHint::TargetMipMapLevel(0),
+      EnumTextureHint::DataEncodedWith(Default::default())];
+  }
+}
+
+impl TraitFree<EnumRendererError> for Texture {
+  fn free(&mut self) -> Result<(), EnumRendererError> {
     self.m_api.free()?;
     self.m_state = EnumTextureState::Deleted;
     return Ok(());
+  }
+}
+
+impl TraitApply<EnumRendererError> for Texture {
+  fn apply(&mut self) -> Result<(), EnumRendererError> {
+    self.m_api.apply()?;
+    self.m_state = EnumTextureState::Sent;
+    return Ok(());
+  }
+}
+
+impl Texture {
+  pub(crate) fn new<T: 'static>(hints: Vec<EnumTextureHint>, texture_type: EnumTexture, data: stb_image::image::Image<T>) -> Self {
+    if hints.contains(&EnumTextureHint::TargetApi(EnumRendererApi::Vulkan)) {
+      return Self {
+        m_state: EnumTextureState::Created,
+        m_api: Box::new(VkTexture::<T>::new(texture_type, data)),
+        m_hints: hints,
+      };
+    }
+    
+    return Self {
+      m_state: EnumTextureState::Created,
+      m_api: Box::new(GlTexture::<T>::new(texture_type, data)),
+      m_hints: hints,
+    };
   }
 }

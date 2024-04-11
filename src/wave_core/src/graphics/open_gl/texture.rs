@@ -104,8 +104,8 @@ pub(crate) struct GlTexture<T> {
   m_internal_format: u32,
 }
 
-impl<T> GlTexture<T> {
-  pub(crate) fn default() -> Self {
+impl<T> Default for GlTexture<T> {
+  fn default() -> Self {
     return Self {
       m_id: 0,
       #[cfg(feature = "debug")]
@@ -125,7 +125,9 @@ impl<T> GlTexture<T> {
       m_internal_format: gl::RGBA8,
     };
   }
-  
+}
+
+impl<T> GlTexture<T> {
   pub(crate) fn new(texture_type: EnumTexture, data: Image<T>) -> Self {
     let (target, sample_count) = Self::convert_target_to_internal_target(texture_type.get_target());
     let (format, internal_format) = Self::convert_format_to_internal_format(texture_type.get_format());
@@ -203,6 +205,10 @@ impl<T> GlTexture<T> {
 }
 
 impl<T> TraitTexture for GlTexture<T> {
+  fn convert_to(&mut self, _format: EnumTextureFormat) -> Result<(), EnumRendererError> {
+    todo!()
+  }
+  
   fn apply(&mut self) -> Result<(), EnumRendererError> {
     #[cfg(feature = "debug")]
     log!(EnumLogColor::Blue, "DEBUG", "[GlTexture] -->\t Storing texture {0}", self.m_type_debug);

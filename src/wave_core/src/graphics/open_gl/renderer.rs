@@ -773,7 +773,7 @@ impl TraitContext for GlContext {
     
     // If we already have a perspective camera ubo bound, skip.
     if !self.m_commands.m_ubo_buffers.iter().any(|ubo| ubo.get_name() == Some("ubo_camera")) {
-      let mut camera_ubo = GlUbo::reserve(Some("ubo_camera"), EnumUboTypeSize::ViewProjection, 0)?;
+      let mut camera_ubo = GlUbo::new(Some("ubo_camera"), EnumUboTypeSize::ViewProjection, 0)?;
       
       // If glsl version is lower than 420, then we cannot bind blocks in shaders and have to encode them here instead.
       if shader_associated.get_version() < 420 {
@@ -900,7 +900,7 @@ impl GlContext {
     
     if result.is_none() {
       // Setup wireframe ubo.
-      let mut wireframe_ubo = GlUbo::reserve(Some("ubo_wireframe"), EnumUboTypeSize::Bool, 3)?;
+      let mut wireframe_ubo = GlUbo::new(Some("ubo_wireframe"), EnumUboTypeSize::Bool, 3)?;
       for matched in self.m_commands.m_primitives.iter_mut()
         .filter(|matched| matched.m_linked_shader.m_version < 420) {
         wireframe_ubo.bind_block(matched.m_linked_shader.m_id, 3)?
@@ -916,16 +916,16 @@ impl GlContext {
   
   fn alloc_buffers(&mut self, sendable_entity: &REntity, shader: &mut Shader) -> Result<(), EnumOpenGLError> {
     let mut new_vao = GlVao::new()?;
-    let mut new_vbo = GlVbo::new();
-    let mut new_ibo = GlIbo::new();
+    let new_vbo = GlVbo::new(sendable_entity.get_size() * sendable_entity.get_total_vertex_count())?;
     
     if sendable_entity.get_total_index_count() > 0 {
-      new_ibo.reserve(size_of::<u32>() * sendable_entity.get_total_index_count())?;
+      let new_ibo = GlIbo::new(size_of::<u32>() * sendable_entity.get_total_index_count())?;
+      self.m_commands.m_ibo_buffers.push(new_ibo);
     }
-    new_vbo.reserve(sendable_entity.get_size() * sendable_entity.get_total_vertex_count())?;
+    
     Self::set_attributes(sendable_entity, &mut new_vao)?;
     
-    let mut model_ubo = GlUbo::reserve(Some("ubo_model"), EnumUboTypeSize::Transform(255), 1)?;
+    let mut model_ubo = GlUbo::new(Some("ubo_model"), EnumUboTypeSize::Transform(255), 1)?;
     // If glsl version is lower than 420, then we cannot bind blocks in shaders and have to encode them here instead.
     if shader.get_version() < 420 && shader.get_lang() == EnumShaderLanguage::Glsl {
       model_ubo.bind_block(shader.get_id(), 1)?;
@@ -933,7 +933,6 @@ impl GlContext {
     
     self.m_commands.m_vao_buffers.push(new_vao);
     self.m_commands.m_vbo_buffers.push(new_vbo);
-    self.m_commands.m_ibo_buffers.push(new_ibo);
     self.m_commands.m_ubo_buffers.push(model_ubo);
     return Ok(());
   }

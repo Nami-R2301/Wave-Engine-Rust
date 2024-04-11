@@ -24,7 +24,7 @@
 
 use std::fmt::{Display, Formatter};
 
-use crate::Engine;
+use crate::{Engine, TraitApply, TraitFree, TraitHint};
 use crate::graphics::open_gl;
 use crate::graphics::open_gl::shader::GlShader;
 use crate::graphics::renderer::{EnumRendererApi, EnumRendererState, Renderer};
@@ -119,7 +119,7 @@ pub enum EnumShaderHint {
 }
 
 impl EnumShaderHint {
-  pub fn is(&self, other: &Self) -> bool {
+  pub fn is_equivalent(&self, other: &Self) -> bool {
     return std::mem::discriminant(self) == std::mem::discriminant(other);
   }
 }
@@ -227,7 +227,7 @@ pub struct ShaderStage {
 }
 
 impl ShaderStage {
-  pub fn default(stage: EnumShaderStageType) -> Self {
+  pub fn default_for(stage: EnumShaderStageType) -> Self {
     let stage_: EnumShaderStageType;
     let source: EnumShaderSource;
     
@@ -289,85 +289,35 @@ pub struct Shader {
   m_stages: Vec<ShaderStage>,
 }
 
-impl Shader {
-  pub fn default() -> Self {
-    let mut hints = Vec::with_capacity(2);
-    hints.push(EnumShaderHint::Api(EnumRendererApi::default()));
-    hints.push(EnumShaderHint::GlslVersion(420));
-    
+impl Default for Shader {
+  fn default() -> Self {
     return Self {
       m_state: EnumShaderState::Created,
       m_version: 420,
       m_shader_lang: EnumShaderLanguage::Glsl,
       m_api_data: Box::new(GlShader::default()),
-      m_hints: hints,
+      m_hints: vec![EnumShaderHint::Api(EnumRendererApi::default()), EnumShaderHint::GlslVersion(420)],
       m_stages: Vec::with_capacity(3),
     };
   }
-  
-  pub fn new() -> Self {
-    #[cfg(not(feature = "vulkan"))]
-    return Self {
-      m_state: EnumShaderState::Created,
-      m_version: 330,
-      m_shader_lang: EnumShaderLanguage::Glsl,
-      m_api_data: Box::new(GlShader::default()),
-      m_hints: Vec::with_capacity(3),
-      m_stages: Vec::with_capacity(3),
-    };
-    
-    #[cfg(feature = "vulkan")]
-    return Self {
-      m_state: EnumShaderState::Created,
-      m_version: 330,
-      m_shader_lang: EnumShaderLanguage::Glsl,
-      m_api_data: Box::new(VkShader::default()),
-      m_hints: Vec::with_capacity(3),
-      m_stages: Vec::with_capacity(3),
-    };
-  }
-  
-  pub fn shader_hint(&mut self, hint: EnumShaderHint) {
-    if let Some(position) = self.m_hints.iter().position(|h| h.is(&hint)) {
+}
+
+impl TraitHint<EnumShaderHint> for Shader {
+  fn set_hint(&mut self, hint: EnumShaderHint) {
+    if let Some(position) = self.m_hints.iter().position(|h| h.is_equivalent(&hint)) {
       self.m_hints.remove(position);
     }
     
     self.m_hints.push(hint);
   }
   
-  pub fn clear_hints(&mut self) {
-    self.m_hints.clear();
+  fn reset_hints(&mut self) {
+    self.m_hints = vec![EnumShaderHint::Api(EnumRendererApi::default()), EnumShaderHint::GlslVersion(420)];
   }
-  
-  pub fn push_stage(&mut self, shader_stage: ShaderStage) -> Result<(), EnumShaderError> {
-    if self.m_stages.contains(&shader_stage) {
-      return Err(EnumShaderError::StageAlreadyProvided);
-    }
-    self.m_stages.push(shader_stage);
-    return Ok(());
-  }
-  
-  pub fn remove_stage(&mut self, shader_stage_type: EnumShaderStageType) -> Result<(), EnumShaderError> {
-    if self.m_stages.is_empty() {
-      return Err(EnumShaderError::NoStagesProvided);
-    }
-    
-    if let Some(stage) = self.m_stages.iter().position(|stage| stage.m_stage == shader_stage_type) {
-      self.m_stages.remove(stage);
-      return Ok(());
-    }
-    return Err(EnumShaderError::StageNotFound);
-  }
-  
-  pub fn pop_stage(&mut self) -> Result<ShaderStage, EnumShaderError> {
-    if self.m_stages.is_empty() {
-      return Err(EnumShaderError::NoStagesProvided);
-    }
-    
-    return Ok(self.m_stages.pop().unwrap());
-  }
-  
-  pub fn apply(&mut self) -> Result<(), EnumShaderError> {
+}
+
+impl TraitApply<EnumShaderError> for Shader {
+  fn apply(&mut self) -> Result<(), EnumShaderError> {
     if self.m_stages.is_empty() {
       log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Cannot create shader : No shader stages \
         provided!");
@@ -468,6 +418,73 @@ impl Shader {
       self.m_state = EnumShaderState::Sent;
       return Ok(());
     }
+  }
+}
+
+impl TraitFree<EnumShaderError> for Shader {
+  fn free(&mut self) -> Result<(), EnumShaderError> {
+    if self.m_state != EnumShaderState::Sent {
+      return Ok(());
+    }
+    
+    let renderer: &mut Renderer = Engine::get_active_renderer();
+    if renderer.m_state != EnumRendererState::Deleted || renderer.m_state != EnumRendererState::NotCreated {
+      self.m_api_data.free()?;
+    }
+    self.m_state = EnumShaderState::Deleted;
+    return Ok(());
+  }
+}
+
+impl Shader {
+  pub fn new() -> Self {
+    #[cfg(not(feature = "vulkan"))]
+    return Self {
+      m_state: EnumShaderState::Created,
+      m_version: 420,
+      m_shader_lang: EnumShaderLanguage::Glsl,
+      m_api_data: Box::new(GlShader::default()),
+      m_hints: Vec::with_capacity(3),
+      m_stages: Vec::with_capacity(3),
+    };
+    
+    #[cfg(feature = "vulkan")]
+    return Self {
+      m_state: EnumShaderState::Created,
+      m_version: 420,
+      m_shader_lang: EnumShaderLanguage::Glsl,
+      m_api_data: Box::new(VkShader::default()),
+      m_hints: Vec::with_capacity(3),
+      m_stages: Vec::with_capacity(3),
+    };
+  }
+  
+  pub fn push_stage(&mut self, shader_stage: ShaderStage) -> Result<(), EnumShaderError> {
+    if self.m_stages.contains(&shader_stage) {
+      return Err(EnumShaderError::StageAlreadyProvided);
+    }
+    self.m_stages.push(shader_stage);
+    return Ok(());
+  }
+  
+  pub fn remove_stage(&mut self, shader_stage_type: EnumShaderStageType) -> Result<(), EnumShaderError> {
+    if self.m_stages.is_empty() {
+      return Err(EnumShaderError::NoStagesProvided);
+    }
+    
+    if let Some(stage) = self.m_stages.iter().position(|stage| stage.m_stage == shader_stage_type) {
+      self.m_stages.remove(stage);
+      return Ok(());
+    }
+    return Err(EnumShaderError::StageNotFound);
+  }
+  
+  pub fn pop_stage(&mut self) -> Result<ShaderStage, EnumShaderError> {
+    if self.m_stages.is_empty() {
+      return Err(EnumShaderError::NoStagesProvided);
+    }
+    
+    return Ok(self.m_stages.pop().unwrap());
   }
   
   pub fn target_version(shader_stages: &mut Vec<ShaderStage>, version_requested: u32) -> Result<(), EnumShaderError> {
@@ -659,12 +676,12 @@ impl Shader {
     let renderer: &mut Renderer = Engine::get_active_renderer();
     
     let max_version = renderer.get_max_shader_version_available();
-      // If the shader source version number is higher than supported.
+    // If the shader source version number is higher than supported.
     if max_version < version_number {
-        // Try loading a source file with the appropriate version number.
-        log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Attempting to load a source file compatible with glsl {0}", max_version);
-        std::fs::read_to_string(&source.replace("#version 420", &("#version ".to_owned() + &max_version.to_string())))?;
-        return Ok(max_version);
+      // Try loading a source file with the appropriate version number.
+      log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Attempting to load a source file compatible with glsl {0}", max_version);
+      std::fs::read_to_string(&source.replace("#version 420", &("#version ".to_owned() + &max_version.to_string())))?;
+      return Ok(max_version);
     }
     return Ok(max_version);
   }
@@ -743,19 +760,6 @@ impl Shader {
   pub fn to_string(&self) -> String {
     return format!("ID: {1}\n{0:117}[Api] |Shader stage| (Source, Cached?) : {2}",
       "", self.get_id(), self.m_api_data.to_string());
-  }
-  
-  pub fn free(&mut self) -> Result<(), EnumShaderError> {
-    if self.m_state != EnumShaderState::Sent {
-      return Ok(());
-    }
-    
-    let renderer: &mut Renderer = Engine::get_active_renderer();
-    if renderer.m_state != EnumRendererState::Deleted || renderer.m_state != EnumRendererState::NotCreated {
-      self.m_api_data.free()?;
-    }
-    self.m_state = EnumShaderState::Deleted;
-    return Ok(());
   }
 }
 

@@ -26,7 +26,7 @@ pub extern crate wave_core;
 
 use std::collections::HashMap;
 
-use wave_core::{camera, Engine, EnumEngineError, input, layers, math};
+use wave_core::{camera, Engine, EnumEngineError, input, layers, TraitApply, TraitHint};
 use wave_core::assets::asset_loader::{AssetLoader, EnumAssetHint};
 use wave_core::assets::r_assets;
 use wave_core::assets::r_assets::EnumSubPrimitivePortion;
@@ -35,7 +35,7 @@ use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
 use wave_core::graphics::renderer::{EnumRendererBatchMode, EnumRendererHint, EnumRendererRenderPrimitiveAs, Renderer};
 use wave_core::graphics::{shader};
-use wave_core::graphics::texture::{Texture};
+use wave_core::graphics::texture::{TextureLoader};
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 #[allow(unused)]
 use wave_core::layers::imgui_layer::ImguiLayer;
@@ -120,14 +120,15 @@ pub struct Editor {
   m_wireframe_on: bool,
 }
 
-impl Editor {
-  pub fn default() -> Self {
+impl Default for Editor {
+  fn default() -> Self {
     let mut window = Window::default();  // Apply default window hints.
     let mut renderer = Renderer::default();  // Apply default renderer hints.
     
-    window.hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));  // Force window to start in windowed mode.
+    window.set_hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));  // Force window to start in windowed mode.
+    window.set_hint(EnumWindowHint::MSAA(None));  // Force window to discard MSAA for framebuffer.
     // Force each sub primitive to be drawn separately.
-    renderer.hint(EnumRendererHint::Optimization(EnumRendererBatchMode::OptimizeIndices));
+    renderer.set_hint(EnumRendererHint::Optimization(EnumRendererBatchMode::OptimizeIndices));
     
     return Editor {
       m_engine: Engine::new(window, renderer, vec![]),
@@ -136,7 +137,9 @@ impl Editor {
       m_wireframe_on: true,
     };
   }
-  
+}
+
+impl Editor {
   pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Self {
     return Editor {
       m_engine: Engine::new(window, renderer, app_layers),
@@ -174,9 +177,9 @@ impl TraitLayer for Editor {
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
-    let vertex_shader = shader::ShaderStage::default(shader::EnumShaderStageType::Vertex);
-    let fragment_shader = shader::ShaderStage::default(shader::EnumShaderStageType::Fragment);
-    let geometry_shader = shader::ShaderStage::default(shader::EnumShaderStageType::Geometry);
+    let vertex_shader = shader::ShaderStage::default_for(shader::EnumShaderStageType::Vertex);
+    let fragment_shader = shader::ShaderStage::default_for(shader::EnumShaderStageType::Fragment);
+    let geometry_shader = shader::ShaderStage::default_for(shader::EnumShaderStageType::Geometry);
     
     let mut shader = shader::Shader::default();  // Apply default shader hints.
     
@@ -184,47 +187,46 @@ impl TraitLayer for Editor {
     shader.push_stage(geometry_shader)?;
     shader.push_stage(fragment_shader)?;
     
-    // Sourcing and compilation.
-    shader.apply()?;
+    shader.apply()?;  // Source and compile the shader program.
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
     
     let mut asset_loader = AssetLoader::default(); // Apply default asset loader hints.
-    asset_loader.hint(EnumAssetHint::ReduceMeshes(false));
+    asset_loader.set_hint(EnumAssetHint::ReduceMeshes(false));  // Keep sub primitives for Editor view of sub meshes.
     
-    let awp_asset = asset_loader.apply("awp.obj")?;
-    let mario_asset = asset_loader.apply("Mario.obj")?;
-    let sphere_asset = asset_loader.apply("sphere.obj")?;
+    let awp_asset = asset_loader.load("awp.obj")?;
+    let mario_asset = asset_loader.load("Mario.obj")?;
+    let logo_asset = asset_loader.load("n64logo.obj")?;
     
     let mut awp = r_assets::REntity::new(awp_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
     
-    awp.translate(math::Vec3::new(&[10.0, -10.0, 50.0]));
-    awp.rotate(math::Vec3::new(&[90.0, -90.0, 0.0]));
-    awp.apply(&mut shader)?;
+    awp.translate(10.0, -10.0, 50.0);
+    awp.rotate(90.0, -90.0, 0.0);
+    awp.apply(&mut shader)?;  // Bake and send the asset.
     awp.show(EnumSubPrimitivePortion::Everything);
     
     let mut mario = r_assets::REntity::new(mario_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
     
-    mario.translate(math::Vec3::new(&[-5.0, -5.0, 15.0]));
-    mario.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
-    mario.apply(&mut shader)?;
+    mario.translate(-5.0, -5.0, 15.0);
+    mario.rotate(0.0, 0.0, 0.0);
+    mario.apply(&mut shader)?;  // Bake and send the asset.
     mario.show(EnumSubPrimitivePortion::Everything);
     
-    let mut sphere = r_assets::REntity::new(sphere_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
+    let mut logo = r_assets::REntity::new(logo_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
     
-    sphere.translate(math::Vec3::new(&[5.0, 0.0, 20.0]));
-    sphere.rotate(math::Vec3::new(&[0.0, 0.0, 0.0]));
-    sphere.apply(&mut shader)?;
-    sphere.show(EnumSubPrimitivePortion::Everything);
+    logo.translate(5.0, 0.0, 20.0);
+    logo.rotate(0.0, 0.0, 0.0);
+    logo.apply(&mut shader)?;  // Bake and send the asset.
+    logo.show(EnumSubPrimitivePortion::Everything);
     
-    self.m_r_assets.insert("Smooth assets", (shader, vec![awp, mario, sphere]));
+    self.m_r_assets.insert("Smooth assets", (shader, vec![awp, mario, logo]));
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending textures to GPU...");
     
-    let mut texture_preset = Texture::default();  // Apply default texture hints.
-    
-    texture_preset.apply("res/textures/mario-hat.png")?;
+    let mut texture_preset = TextureLoader::default();  // Apply default texture loader hints.
+    let mut texture = texture_preset.load("res/textures/mario-atlas.png")?;  // Load texture.
+    texture.apply()?;  // Bake and send the texture.
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Textures sent to GPU successfully");
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
@@ -249,32 +251,31 @@ impl TraitLayer for Editor {
     let time_step = self.m_engine.get_time_step();
     
     if Engine::is_key(input::EnumKey::W, input::EnumAction::Held) {
-      self.m_cameras[0].translate(math::Vec3::new(&[0.0, 10.0 * time_step as f32, 0.0]));
+      self.m_cameras[0].translate(0.0, 0.0, -10.0 * time_step as f32);
     }
     if Engine::is_key(input::EnumKey::A, input::EnumAction::Held) {
-      self.m_cameras[0].translate(math::Vec3::new(&[-10.0 * time_step as f32, 0.0, 0.0]));
+      self.m_cameras[0].translate(-10.0 * time_step as f32, 0.0, 0.0);
     }
     if Engine::is_key(input::EnumKey::S, input::EnumAction::Held) {
-      self.m_cameras[0].translate(math::Vec3::new(&[0.0, -10.0 * time_step as f32, 0.0]));
+      self.m_cameras[0].translate(0.0, 0.0, 10.0 * time_step as f32);
     }
     if Engine::is_key(input::EnumKey::D, input::EnumAction::Held) {
-      self.m_cameras[0].translate(math::Vec3::new(&[10.0 * time_step as f32, 0.0, 0.0]));
+      self.m_cameras[0].translate(10.0 * time_step as f32, 0.0, 0.0);
     }
     if Engine::is_key(input::EnumKey::Up, input::EnumAction::Held) {
-      self.m_cameras[0].rotate(math::Vec3::new(&[0.0, 25.0 * time_step as f32, 0.0]));
+      self.m_cameras[0].rotate(0.0, 25.0 * time_step as f32, 0.0);
     }
     if Engine::is_key(input::EnumKey::Left, input::EnumAction::Held) {
-      self.m_cameras[0].rotate(math::Vec3::new(&[-25.0 * time_step as f32, 0.0, 0.0]));
+      self.m_cameras[0].rotate(-25.0 * time_step as f32, 0.0, 0.0);
     }
     if Engine::is_key(input::EnumKey::Down, input::EnumAction::Held) {
-      self.m_cameras[0].rotate(math::Vec3::new(&[0.0, -25.0 * time_step as f32, 0.0]));
+      self.m_cameras[0].rotate(0.0, -25.0 * time_step as f32, 0.0);
     }
     if Engine::is_key(input::EnumKey::Right, input::EnumAction::Held) {
-      self.m_cameras[0].rotate(math::Vec3::new(&[25.0 * time_step as f32, 0.0, 0.0]));
+      self.m_cameras[0].rotate(25.0 * time_step as f32, 0.0, 0.0);
     }
     return Ok(());
   }
-  
   
   fn on_async_event(&mut self, event: &EnumEvent) -> Result<bool, EnumEngineError> {
     // Process asynchronous events.
@@ -354,9 +355,6 @@ impl TraitLayer for Editor {
   }
   
   fn free(&mut self) -> Result<(), EnumEngineError> {
-    for (linked_shader, _) in self.m_r_assets.values_mut() {
-      linked_shader.free()?;
-    }
     return Ok(());
   }
   

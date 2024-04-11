@@ -26,11 +26,10 @@ use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
 #[cfg(feature = "vulkan")]
-use ash::vk;
 use glfw::Context;
 
 use crate::utils::macros::logger::*;
-use crate::{Engine};
+use crate::{Engine, TraitApply, TraitFree, TraitHint};
 use crate::events::{EnumEvent, EnumEventMask};
 use crate::graphics::renderer::EnumRendererApi;
 use crate::input::{self, EnumAction, EnumKey, EnumModifiers, EnumMouseButton};
@@ -132,8 +131,8 @@ pub struct Window {
   m_render_api: Option<EnumRendererApi>,
 }
 
-impl<'a> Window {
-  pub fn default() -> Self {
+impl Default for Window {
+  fn default() -> Self {
     let mut result = glfw::init(glfw::fail_on_errors);
     
     match result {
@@ -176,42 +175,11 @@ impl<'a> Window {
       m_state: EnumWindowState::ContextReady,
     };
   }
-  
-  pub fn new() -> Self {
-    let result = glfw::init(glfw::fail_on_errors);
-    
-    match result {
-      Err(glfw::InitError::AlreadyInitialized) => {
-        log!(EnumLogColor::Yellow, "WARN",
-          "[Window] -->\t GLFW window already initialized! Skipping creation of a new one...");
-      }
-      Err(glfw::InitError::Internal) => {
-        log!(EnumLogColor::Red, "ERROR",
-          "[Window] -->\t Failed to create GLFW window due to internal error! Exiting...");
-        panic!("[Window] -->\t Cannot init glfw library for window context, Error => {0}", glfw::InitError::Internal)
-      }
-      Ok(_) => {}
-    }
-    
-    unsafe { S_WINDOW_CONTEXT = Some(result.unwrap()); }
-    
-    return Self {
-      m_api_window_events: None,
-      m_api_window: None,
-      m_vsync: true,
-      m_refresh_count_desired: None,
-      m_samples: None,
-      m_window_resolution: None,
-      m_window_pos: None,
-      m_is_windowed: true,
-      m_window_mode: None,
-      m_render_api: None,
-      m_state: EnumWindowState::ContextReady,
-    };
-  }
-  
-  pub fn hint(&mut self, option: EnumWindowHint) {
-    match option {
+}
+
+impl TraitHint<EnumWindowHint> for Window {
+  fn set_hint(&mut self, hint: EnumWindowHint) {
+    match hint {
       EnumWindowHint::WindowMode(window_mode) => {
         self.m_window_mode = Some(window_mode);
         self.m_is_windowed = window_mode == EnumWindowMode::Windowed;
@@ -276,17 +244,37 @@ impl<'a> Window {
     }
   }
   
-  pub fn is_applied(&self) -> bool {
-    return self.m_api_window.is_some();
+  fn reset_hints(&mut self) {
+    let context_ref = unsafe { &mut *S_WINDOW_CONTEXT.as_mut().unwrap() };
+    
+    // Set default window behavior.
+    context_ref.window_hint(glfw::WindowHint::Visible(false));
+    context_ref.window_hint(glfw::WindowHint::Decorated(true));
+    context_ref.window_hint(glfw::WindowHint::Maximized(true));
+    context_ref.window_hint(glfw::WindowHint::Resizable(true));
+    context_ref.window_hint(glfw::WindowHint::RefreshRate(None));
+    context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::OpenGl));
+    context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(false));
+    context_ref.window_hint(glfw::WindowHint::Samples(Some(4)));
+    
+    self.m_vsync = true;
+    self.m_render_api = None;
+    self.m_window_resolution = None;
+    self.m_window_mode = None;
+    self.m_refresh_count_desired = None;
+    self.m_window_pos = None;
+    self.m_is_windowed = false;
   }
-  
-  pub fn apply(&mut self) -> Result<(), EnumWindowError> {
+}
+
+impl TraitApply<EnumWindowError> for Window {
+  fn apply(&mut self) -> Result<(), EnumWindowError> {
     if self.m_render_api.is_none() {
       #[cfg(not(feature = "vulkan"))]
       self.hint(EnumWindowHint::WindowApi(EnumRendererApi::OpenGL));
       
       #[cfg(feature = "vulkan")]
-      self.hint(EnumWindowHint::WindowApi(EnumRendererApi::Vulkan));
+      self.set_hint(EnumWindowHint::WindowApi(EnumRendererApi::Vulkan));
     }
     
     unsafe {
@@ -367,6 +355,56 @@ impl<'a> Window {
     }
     return Ok(());
   }
+}
+
+impl TraitFree<EnumWindowError> for Window {
+  fn free(&mut self) -> Result<(), EnumWindowError> {
+    if self.m_state == EnumWindowState::Closed {
+      return Ok(());
+    }
+    self.m_state = EnumWindowState::Closed;
+    unsafe { S_WINDOW_CONTEXT = None };
+    return Ok(());
+  }
+}
+
+impl<'a> Window {
+  pub fn new() -> Self {
+    let result = glfw::init(glfw::fail_on_errors);
+    
+    match result {
+      Err(glfw::InitError::AlreadyInitialized) => {
+        log!(EnumLogColor::Yellow, "WARN",
+          "[Window] -->\t GLFW window already initialized! Skipping creation of a new one...");
+      }
+      Err(glfw::InitError::Internal) => {
+        log!(EnumLogColor::Red, "ERROR",
+          "[Window] -->\t Failed to create GLFW window due to internal error! Exiting...");
+        panic!("[Window] -->\t Cannot init glfw library for window context, Error => {0}", glfw::InitError::Internal)
+      }
+      Ok(_) => {}
+    }
+    
+    unsafe { S_WINDOW_CONTEXT = Some(result.unwrap()); }
+    
+    return Self {
+      m_api_window_events: None,
+      m_api_window: None,
+      m_vsync: true,
+      m_refresh_count_desired: None,
+      m_samples: None,
+      m_window_resolution: None,
+      m_window_pos: None,
+      m_is_windowed: true,
+      m_window_mode: None,
+      m_render_api: None,
+      m_state: EnumWindowState::ContextReady,
+    };
+  }
+  
+  pub fn is_applied(&self) -> bool {
+    return self.m_api_window.is_some();
+  }
   
   pub fn show(&mut self) {
     self.m_api_window.as_mut().unwrap().show();
@@ -389,7 +427,7 @@ impl<'a> Window {
   }
   
   #[cfg(feature = "vulkan")]
-  pub fn init_vulkan_surface(&self, vk_instance: &ash::Instance, vk_surface_khr: &mut vk::SurfaceKHR) {
+  pub fn init_vulkan_surface(&self, vk_instance: &ash::Instance, vk_surface_khr: &mut ash::vk::SurfaceKHR) {
     let result = self.m_api_window.as_ref().unwrap().create_window_surface(vk_instance.handle(),
       std::ptr::null_mut(), vk_surface_khr).result();
     
@@ -680,15 +718,6 @@ impl<'a> Window {
     if event_mask.contains(EnumEventMask::DragAndDrop) {
       self.m_api_window.as_mut().unwrap().unset_drag_and_drop_callback();
     }
-  }
-  
-  pub fn free(&mut self) -> Result<(), EnumWindowError> {
-    if self.m_state == EnumWindowState::Closed {
-      return Ok(());
-    }
-    self.m_state = EnumWindowState::Closed;
-    unsafe { S_WINDOW_CONTEXT = None };
-    return Ok(());
   }
   
   pub fn refresh(&mut self) {

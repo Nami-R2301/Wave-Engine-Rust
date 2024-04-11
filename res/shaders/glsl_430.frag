@@ -10,6 +10,7 @@ struct Frag_data_s
 
 layout (location = 0) flat in uint vout_entity_ID;
 layout (location = 1) in Frag_data_s vout_vertex_data;
+layout (location = 2) in vec3 vout_frag_pos;
 
 layout (location = 0) out vec4 fout_color;
 layout (location = 1) out uint fout_entity_ID;
@@ -18,6 +19,12 @@ layout (std140, binding = 3) uniform ubo_wireframe
 {
     bool is_enabled;
 } Ubo_wireframe;
+
+layout (std140, binding = 4) uniform ubo_light
+{
+    bool is_enabled;
+    vec3 position;
+} Ubo_light;
 
 void main() {
     // Fragment shader snippet
@@ -37,6 +44,21 @@ void main() {
         fout_entity_ID = vout_entity_ID;
         return;
     }
-    fout_color = vout_vertex_data.vout_frag_color;
+
+    // Lighting calculations.
+    float ambient_strength = 0.1;
+    vec3 ambient = ambient_strength * vec3(1.0);
+
+    vec3 light_pos = vec3(0.0, 1.0, 0.0);
+    vec3 norm = normalize(vout_vertex_data.vout_normal);
+    vec3 light_dir = normalize(light_pos - vout_frag_pos);
+
+    float diff = max(dot(norm, light_dir), 0.0);
+    vec3 diffuse = diff * vec3(1.0);
+
+    vec3 result = (ambient + diffuse) * vec3(1.0);
+    fout_color = vec4(result, 1.0);
+
+//    fout_color = vout_vertex_data.vout_frag_color;
     fout_entity_ID = vout_entity_ID;
 }
