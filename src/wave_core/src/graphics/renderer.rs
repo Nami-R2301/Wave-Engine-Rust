@@ -136,16 +136,17 @@ impl Display for EnumRendererRenderPrimitiveAs {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum EnumRendererBatchMode {
+pub enum EnumRendererOptimizationMode {
   NoOptimizations,
-  OptimizeSubPrimitives,
-  OptimizeIndices,
-  OptimizeDrawCalls
+  MinimizeVertexBuffers,
+  MinimizeIndexBuffers,
+  MinimizeDrawCalls,
+  All
 }
 
-impl Default for EnumRendererBatchMode {
+impl Default for EnumRendererOptimizationMode {
   fn default() -> Self {
-    return EnumRendererBatchMode::OptimizeDrawCalls;
+    return EnumRendererOptimizationMode::All;
   }
 }
 
@@ -167,7 +168,7 @@ pub enum EnumRendererHint {
   ///
   ///   - This comes in handy when rendering for editor environments where every primitive and sub-primitive needs to be uniquely
   /// identified through ray-casting for example or when wanting to take apart a primitive by hiding or showing selected sub_primitives.
-  Optimization(EnumRendererBatchMode),
+  Optimization(EnumRendererOptimizationMode),
   
   /// Track internal api calls for potential errors and warnings when making api calls in the renderer.
   /// ### Argument:
@@ -219,19 +220,6 @@ pub enum EnumRendererHint {
   ///
   /// - Some([EnumRendererCull::FrontAndBack]): Cull both front and back faces of primitives.
   CullFacing(Option<EnumRendererCull>),
-  
-  /// Change how the rasterizer processes meshes or sprites when rendered on screen.
-  /// ### Argument:
-  /// Three possible values can be provided:
-  /// - [EnumRendererRenderPrimitiveAs::Filled]: Show primitives' surfaces as filled triangles.
-  /// - [EnumRendererRenderPrimitiveAs::Points]: Show primitives' surface as points instead of filled triangles.
-  /// - [EnumRendererRenderPrimitiveAs::Wireframe]: Show the contour of primitives only without filling in the surface area in triangles.
-  /// - [EnumRendererRenderPrimitiveAs::SolidWireframe] **Default**: Similar to [EnumRendererRenderPrimitiveAs::Wireframe], but the wireframe is displayed
-  /// as an additional layer on top of the primitive's solid surface filled in, to better display the depth of each underlying part of the
-  /// primitive's polygons.
-  ///   - Useful when you want to visualize the wireframe of a 3D model, but there are overlapping vertices due to different layers of depth,
-  /// which makes visualizing the line layouts difficult.
-  PrimitiveMode(EnumRendererRenderPrimitiveAs),
   MSAA(Option<u8>),
   SRGB(bool),
   Blending(bool, Option<(i64, i64)>),
@@ -249,7 +237,6 @@ impl EnumRendererHint {
       EnumRendererHint::ApiCallChecking(mode) => mode,
       EnumRendererHint::DepthTest(bool) => bool,
       EnumRendererHint::CullFacing(mode) => mode,
-      EnumRendererHint::PrimitiveMode(mode) => mode,
       EnumRendererHint::MSAA(sample_count) => sample_count,
       EnumRendererHint::SRGB(bool) => bool,
       EnumRendererHint::Blending(bool, _blend_func) => bool,
@@ -355,7 +342,7 @@ pub(crate) trait TraitContext {
   fn on_render(&mut self) -> Result<(), EnumRendererError>;
   fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError>;
   fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, visible: bool) -> Result<(), EnumRendererError>;
-  fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs) -> Result<(), EnumRendererError>;
+  fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs, entity_uuid: u64, sub_primitive_index: Option<usize>) -> Result<(), EnumRendererError>;
   fn get_max_msaa_count(&self) -> Result<u8, EnumRendererError>;
   fn to_string(&self) -> String;
   fn toggle_options(&mut self) -> Result<(), EnumRendererError>;
@@ -363,7 +350,7 @@ pub(crate) trait TraitContext {
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError>;
   fn dequeue(&mut self, id: u64) -> Result<(), EnumRendererError>;
   fn update_ubo_camera(&mut self, view: Mat4, projection: Mat4) -> Result<(), EnumRendererError>;
-  fn update_ubo_model(&mut self, model_transform: Mat4, instance_offset: usize) -> Result<(), EnumRendererError>;
+  fn update_ubo_model(&mut self, model_transform: Mat4, entity_uuid: u64, instance_offset: Option<usize>) -> Result<(), EnumRendererError>;
   fn free(&mut self) -> Result<(), EnumRendererError>;
 }
 
@@ -383,7 +370,6 @@ impl Default for Renderer {
       m_hints: vec![EnumRendererHint::ContextApi(Default::default()),
         EnumRendererHint::ApiCallChecking(Default::default()),
         EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true), EnumRendererHint::Blending(true, None),
-        EnumRendererHint::PrimitiveMode(Default::default()),
         EnumRendererHint::Optimization(Default::default()),
         EnumRendererHint::CullFacing(Some(Default::default()))],
       m_ids: Vec::with_capacity(10),
@@ -394,7 +380,7 @@ impl Default for Renderer {
 
 impl TraitHint<EnumRendererHint> for Renderer {
   fn set_hint(&mut self, hint: EnumRendererHint) {
-    if let Some(position) = self.m_hints.iter().position(|hint| hint.is_equivalent(&hint)) {
+    if let Some(position) = self.m_hints.iter().position(|h| h.is_equivalent(&hint)) {
       self.m_hints.remove(position);
     }
     
@@ -405,7 +391,6 @@ impl TraitHint<EnumRendererHint> for Renderer {
     self.m_hints = vec![EnumRendererHint::ContextApi(Default::default()),
       EnumRendererHint::ApiCallChecking(Default::default()),
       EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true), EnumRendererHint::Blending(true, None),
-      EnumRendererHint::PrimitiveMode(Default::default()),
       EnumRendererHint::Optimization(Default::default()),
       EnumRendererHint::CullFacing(Some(Default::default()))];
   }
@@ -476,8 +461,12 @@ impl<'a> Renderer {
     return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, true);
   }
   
-  pub fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs) -> Result<(), EnumRendererError> {
-    return self.m_api.toggle_primitive_mode(mode);
+  pub fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs, entity_uuid: u64, sub_primitive_index: Option<usize>) -> Result<(), EnumRendererError> {
+    self.m_api.toggle_primitive_mode(mode, entity_uuid, sub_primitive_index)?;
+    log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t {0} now shown in {1}",
+      sub_primitive_index.is_some().then(|| format!("Sub primitive {0} of asset: {1}", sub_primitive_index.unwrap(), entity_uuid))
+      .unwrap_or(format!("Asset: {0}", entity_uuid)), mode);
+    return Ok(());
   }
   
   pub fn toggle_msaa(&mut self, _sample_count: Option<u32>) -> Result<(), EnumRendererError> {
@@ -526,7 +515,7 @@ impl<'a> Renderer {
     while self.m_ids.contains(&new_id) {
        new_id += 1;
     }
-    r_entity.set_uuid(new_id);
+    r_entity.m_renderer_id = new_id;
     self.m_ids.push(new_id);
     return self.m_api.enqueue(r_entity, shader_associated);
   }
@@ -539,8 +528,8 @@ impl<'a> Renderer {
     return self.m_api.update_ubo_camera(view, projection);
   }
   
-  pub fn update_ubo_model(&mut self, model_transform: Mat4, instance_offset: usize) -> Result<(), EnumRendererError> {
-    return self.m_api.update_ubo_model(model_transform, instance_offset);
+  pub fn update_ubo_model(&mut self, model_transform: Mat4, entity_uuid: u64, instance_offset: Option<usize>) -> Result<(), EnumRendererError> {
+    return self.m_api.update_ubo_model(model_transform, entity_uuid, instance_offset);
   }
   
   pub fn get_version(&self) -> f32 {

@@ -30,7 +30,7 @@ use std::ops::Index;
 use crate::{Engine, TraitFree};
 use crate::utils::macros::logger::*;
 use crate::graphics::color::Color;
-use crate::graphics::renderer::EnumRendererError;
+use crate::graphics::renderer::{EnumRendererError, EnumRendererRenderPrimitiveAs};
 use crate::graphics::shader::Shader;
 use crate::math::{Mat4, Vec2, Vec3};
 
@@ -191,6 +191,7 @@ pub struct REntity {
   pub(crate) m_sub_meshes: Vec<Box<dyn TraitPrimitive>>,
   pub(crate) m_textures: HashSet<(&'static str, usize)>,
   pub(crate) m_type: EnumPrimitive,
+  pub(crate) m_wireframe_mode: bool,
   // Transformations applied to the entity, to be eventually applied to the model matrix.
   m_transform: [Vec3<f32>; 3],
   m_sent: bool,
@@ -209,6 +210,7 @@ impl Default for REntity {
       m_renderer_id: u64::MAX,
       m_type: EnumPrimitive::default(),
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
+      m_wireframe_mode: false,
       m_sent: false,
       m_changed: false,
     };
@@ -292,6 +294,7 @@ impl REntity {
       m_textures: HashSet::with_capacity(1),
       m_type: data_type,
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
+      m_wireframe_mode: false,
       m_sent: false,
       m_changed: false,
     };
@@ -373,6 +376,13 @@ impl REntity {
     self.m_textures.remove(&(file_path, sub_primitive_index.unwrap()));
   }
   
+  pub fn toggle_wireframe_mode(&mut self, toggle: bool) {
+    if self.m_wireframe_mode != toggle {
+      self.m_wireframe_mode = toggle;
+      self.m_changed = true;
+    }
+  }
+  
   pub fn is_empty(&self) -> bool {
     return self.m_sub_meshes.is_empty();
   }
@@ -402,8 +412,19 @@ impl REntity {
     return Ok(());
   }
   
-  pub fn reapply(&mut self, _shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
-    todo!()
+  pub fn reapply(&mut self) -> Result<(), EnumRendererError> {
+    if self.m_changed && self.m_sent {
+      let renderer = Engine::get_active_renderer();
+      let matrix = self.get_matrix();
+      
+      renderer.update_ubo_model(matrix, self.m_renderer_id, None)?;
+      
+      renderer.toggle_primitive_mode(self.m_wireframe_mode.then(|| EnumRendererRenderPrimitiveAs::SolidWireframe)
+        .unwrap_or(EnumRendererRenderPrimitiveAs::Filled), self.m_renderer_id, None)?;
+      
+      self.m_changed = false;
+    }
+    return Ok(());
   }
   
   pub fn hide(&mut self, sub_primitive_selected: EnumSubPrimitivePortion) {
@@ -457,10 +478,6 @@ impl REntity {
   pub fn get_matrix(&self) -> Mat4 {
     return Mat4::apply_transformations(&self.m_transform[0],
       &self.m_transform[1], &self.m_transform[2]);
-  }
-  
-  pub(crate) fn set_uuid(&mut self, renderer_id: u64) {
-    self.m_renderer_id = renderer_id;
   }
 }
 

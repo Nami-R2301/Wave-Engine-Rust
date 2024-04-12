@@ -26,14 +26,14 @@ pub extern crate wave_core;
 
 use std::collections::HashMap;
 
-use wave_core::{camera, Engine, EnumEngineError, input, layers, TraitApply, TraitHint};
+use wave_core::{camera, Engine, EnumEngineError, input, layers, TraitApply, TraitFree, TraitHint};
 use wave_core::assets::asset_loader::{AssetLoader, EnumAssetHint};
 use wave_core::assets::r_assets;
 use wave_core::assets::r_assets::EnumSubPrimitivePortion;
 #[allow(unused)]
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
-use wave_core::graphics::renderer::{EnumRendererBatchMode, EnumRendererHint, EnumRendererRenderPrimitiveAs, Renderer};
+use wave_core::graphics::renderer::{EnumRendererOptimizationMode, EnumRendererHint, Renderer};
 use wave_core::graphics::{shader};
 use wave_core::graphics::texture::{TextureLoader};
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
@@ -50,7 +50,7 @@ static mut S_EDITOR: Option<*mut Editor> = None;
 pub enum EnumEditorError {
   InvalidAppLayer,
   LayerError(layers::EnumLayerError),
-  EngineError(EnumEngineError)
+  EngineError(EnumEngineError),
 }
 
 impl From<layers::EnumLayerError> for EnumEditorError {
@@ -117,7 +117,6 @@ pub struct Editor {
   m_engine: Engine,
   m_r_assets: HashMap<&'static str, (shader::Shader, Vec<r_assets::REntity>)>,
   m_cameras: Vec<camera::Camera>,
-  m_wireframe_on: bool,
 }
 
 impl Default for Editor {
@@ -126,15 +125,14 @@ impl Default for Editor {
     let mut renderer = Renderer::default();  // Apply default renderer hints.
     
     window.set_hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));  // Force window to start in windowed mode.
-    window.set_hint(EnumWindowHint::MSAA(None));  // Force window to discard MSAA for framebuffer.
+    // window.set_hint(EnumWindowHint::MSAA(None));  // Force window to discard MSAA for framebuffer.
     // Force each sub primitive to be drawn separately.
-    renderer.set_hint(EnumRendererHint::Optimization(EnumRendererBatchMode::OptimizeIndices));
+    renderer.set_hint(EnumRendererHint::Optimization(EnumRendererOptimizationMode::MinimizeIndexBuffers));
     
     return Editor {
       m_engine: Engine::new(window, renderer, vec![]),
       m_r_assets: HashMap::with_capacity(5),
       m_cameras: Vec::new(),
-      m_wireframe_on: true,
     };
   }
 }
@@ -145,7 +143,6 @@ impl Editor {
       m_engine: Engine::new(window, renderer, app_layers),
       m_r_assets: HashMap::with_capacity(5),
       m_cameras: Vec::new(),
-      m_wireframe_on: true,
     };
   }
   
@@ -187,7 +184,8 @@ impl TraitLayer for Editor {
     shader.push_stage(geometry_shader)?;
     shader.push_stage(fragment_shader)?;
     
-    shader.apply()?;  // Source and compile the shader program.
+    shader.apply()?;
+    // Source and compile the shader program.
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
@@ -263,16 +261,36 @@ impl TraitLayer for Editor {
       self.m_cameras[0].translate(10.0 * time_step as f32, 0.0, 0.0);
     }
     if Engine::is_key(input::EnumKey::Up, input::EnumAction::Held) {
-      self.m_cameras[0].rotate(0.0, 25.0 * time_step as f32, 0.0);
+      for asset in self.m_r_assets.values_mut() {
+        for primitive in asset.1.iter_mut() {
+          primitive.rotate(0.0, 25.0 * time_step as f32, 0.0);
+          primitive.reapply()?;
+        }
+      }
     }
     if Engine::is_key(input::EnumKey::Left, input::EnumAction::Held) {
-      self.m_cameras[0].rotate(-25.0 * time_step as f32, 0.0, 0.0);
+      for asset in self.m_r_assets.values_mut() {
+        for primitive in asset.1.iter_mut() {
+          primitive.rotate(-25.0 * time_step as f32, 0.0, 0.0);
+          primitive.reapply()?;
+        }
+      }
     }
     if Engine::is_key(input::EnumKey::Down, input::EnumAction::Held) {
-      self.m_cameras[0].rotate(0.0, -25.0 * time_step as f32, 0.0);
+      for asset in self.m_r_assets.values_mut() {
+        for primitive in asset.1.iter_mut() {
+          primitive.rotate(0.0, -25.0 * time_step as f32, 0.0);
+          primitive.reapply()?;
+        }
+      }
     }
     if Engine::is_key(input::EnumKey::Right, input::EnumAction::Held) {
-      self.m_cameras[0].rotate(25.0 * time_step as f32, 0.0, 0.0);
+      for asset in self.m_r_assets.values_mut() {
+        for primitive in asset.1.iter_mut() {
+          primitive.rotate(25.0 * time_step as f32, 0.0, 0.0);
+          primitive.reapply()?;
+        }
+      }
     }
     return Ok(());
   }
@@ -281,22 +299,19 @@ impl TraitLayer for Editor {
     // Process asynchronous events.
     return match event {
       EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
-        let renderer = self.m_engine.get_renderer_mut();
         match (key, action, repeat_count, modifiers) {
           (input::EnumKey::Minus, input::EnumAction::Pressed, _, &modifier) => {
-            let mut primitive_mode: EnumRendererRenderPrimitiveAs = EnumRendererRenderPrimitiveAs::default();
+            let mut wireframe_mode = true;
             if modifier.contains(input::EnumModifiers::Shift) {
-              primitive_mode = EnumRendererRenderPrimitiveAs::Filled;
-              self.m_wireframe_on = false;
-            } else if modifier.contains(input::EnumModifiers::Control) {
-              primitive_mode = EnumRendererRenderPrimitiveAs::SolidWireframe;
-              self.m_wireframe_on = true;
-            } else if modifier.is_empty() {
-              primitive_mode = EnumRendererRenderPrimitiveAs::Wireframe;
-              self.m_wireframe_on = true;
+              wireframe_mode = false;
             }
             
-            renderer.toggle_primitive_mode(primitive_mode)?;
+            for asset in self.m_r_assets.values_mut() {
+              for primitive in asset.1.iter_mut() {
+                primitive.toggle_wireframe_mode(wireframe_mode);
+                primitive.reapply()?;
+              }
+            }
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
@@ -304,7 +319,7 @@ impl TraitLayer for Editor {
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].show(EnumSubPrimitivePortion::Some(0));
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].show(EnumSubPrimitivePortion::Everything);
             Ok(true)
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
@@ -312,19 +327,17 @@ impl TraitLayer for Editor {
             Ok(true)
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].show(EnumSubPrimitivePortion::Some(1));
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].show(EnumSubPrimitivePortion::Everything);
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
-            renderer.toggle_msaa(Some(4))?;
+            // renderer.toggle_msaa(Some(4))?;
             Ok(true)
           }
-          (input::EnumKey::Delete, input::EnumAction::Pressed, _, m) => {
-            if m.contains(input::EnumModifiers::Control) {
-              for (_, r_assets) in self.m_r_assets.values() {
-                for r_asset in r_assets.iter() {
-                  renderer.dequeue(r_asset.get_uuid(), None)?;
-                }
+          (input::EnumKey::Delete, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
+            for (_, r_assets) in self.m_r_assets.values_mut() {
+              for r_asset in r_assets.iter_mut() {
+                r_asset.free()?;
               }
             }
             return Ok(true);

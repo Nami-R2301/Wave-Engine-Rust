@@ -3,7 +3,7 @@
 
  Copyright (c) 2023 Nami Reghbati
 
- Permission is hereby granted, free of charge, to any person obtaining a copy
+ Permission is hereby granted, free of charge, to1 any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
  in the Software without restriction, including without limitation the rights
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
@@ -827,7 +827,7 @@ pub(crate) enum EnumUboType {
   Transform(Mat4, usize),
   ViewProjection(Mat4, Mat4),
   MVP(Mat4, Mat4, Mat4),
-  Custom(*const std::ffi::c_void),
+  Wireframe(bool, usize),
 }
 
 #[allow(unused)]
@@ -842,7 +842,7 @@ pub(crate) enum EnumUboTypeSize {
   Float,
   Double,
   Long,
-  Custom(usize),
+  Wireframe(usize),
 }
 
 #[allow(unused)]
@@ -869,8 +869,8 @@ impl GlUbo {
       EnumUboTypeSize::MVP => {
         alloc_size = Mat4::get_size() * 3;
       }
-      EnumUboTypeSize::Custom(size) => {
-        alloc_size = size
+      EnumUboTypeSize::Wireframe(count) => {
+        alloc_size = 16 * count;
       }
       _ => {
         alloc_size = 4;
@@ -900,6 +900,7 @@ impl GlUbo {
   
   pub(crate) fn bind(&mut self) -> Result<(), EnumOpenGLError> {
     check_gl_call!("GlUbo", gl::BindBuffer(gl::UNIFORM_BUFFER, self.m_buffer_id));
+    self.m_state = EnumBufferState::Bound;
     return Ok(());
   }
   
@@ -984,8 +985,14 @@ impl GlUbo {
         check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, (Mat4::get_size() * 2) as GLintptr,
           Mat4::get_size() as GLsizeiptr, projection.transpose().as_array().as_ptr() as *const std::ffi::c_void));
       }
-      EnumUboType::Custom(value) => {
-        check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, 0 as GLintptr, self.m_length as GLsizeiptr, value));
+      EnumUboType::Wireframe(value, instance_index) => {
+        let instance_offset = 16 * instance_index;  // Add offset of vec4 for std140 alignment reasons.
+        
+        // This step is necessary since it seems that glsl will always get 'true' from a boolean pointer even if its value is false.
+        let convert_to_number = value.then(|| 1).unwrap_or(0);
+        let c_void = &convert_to_number as *const _ as *const std::ffi::c_void;
+        
+        check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, instance_offset as GLintptr, 4 as GLsizeiptr, c_void));
       }
     }
     return Ok(());
