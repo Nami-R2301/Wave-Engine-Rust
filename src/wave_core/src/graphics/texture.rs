@@ -28,13 +28,15 @@ use std::fmt::{Display, Formatter};
 
 use stb_image;
 
-use crate::{Engine, TraitApply, TraitFree, TraitHint};
+use crate::{TraitApply, TraitFree, TraitHint};
 use crate::graphics::open_gl::texture::{EnumGlTextureError, GlTexture};
 use crate::graphics::renderer::{EnumRendererApi, EnumRendererError};
 #[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::texture::EnumVkTextureError;
 #[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::texture::VkTexture;
+#[cfg(feature = "debug")]
+use crate::Engine;
 use crate::utils::macros::logger::*;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -458,7 +460,7 @@ impl TextureLoader {
     };
   }
   
-  pub fn load(&mut self, file_path: &str) -> Result<Texture, EnumTextureLoaderError> {
+  pub fn load(&self, file_path: &str) -> Result<Texture, EnumTextureLoaderError> {
     // If we are dealing with left hand side coordinates for UVs, like in OpenGL.
     if self.m_hints.contains(&EnumTextureHint::FlipPixels(true)) {
       unsafe {

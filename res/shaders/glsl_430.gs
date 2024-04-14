@@ -12,10 +12,12 @@ layout (location = 1) in struct Frag_data_s
     vec2 vout_tex_coords;
     vec3 vout_wireframe_distances;
 } vd_in[];
+layout (location = 5) in vec3 vout_frag_pos[];
 
 // Outputs.
 layout (location = 0) flat out uint gout_entity_ID;
 layout (location = 1) out Frag_data_s gout_geo_data;
+layout (location = 5) out vec3 gout_frag_pos;
 
 
 void main() {
@@ -24,6 +26,7 @@ void main() {
         gout_geo_data.vout_normal = vd_in[i].vout_normal;
         gout_geo_data.vout_tex_coords = vd_in[i].vout_tex_coords;
         gout_entity_ID = vout_vertex_entity_ID[i];
+        gout_frag_pos = vout_frag_pos[i];
         gl_Position = gl_in[i].gl_Position;
 
         /// Taken from : https://pastebin.com/G9grT2Kp

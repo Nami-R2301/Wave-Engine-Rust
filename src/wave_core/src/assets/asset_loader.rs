@@ -60,7 +60,8 @@ impl Default for EnumAssetPrimitiveMode {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum EnumAssetHint {
-  PrimitiveDataIs(EnumAssetPrimitiveMode),
+  
+  VertexDataIs(EnumAssetPrimitiveMode),
   SplitLargeMeshes(bool, usize),
   GenerateNormals(bool),
   Triangulate(bool),
@@ -71,7 +72,7 @@ pub enum EnumAssetHint {
 impl EnumAssetHint {
   pub fn is(&self, other: &Self) -> bool {
     return match (self, other) {
-      (EnumAssetHint::PrimitiveDataIs(_), EnumAssetHint::PrimitiveDataIs(_)) => true,
+      (EnumAssetHint::VertexDataIs(_), EnumAssetHint::VertexDataIs(_)) => true,
       (EnumAssetHint::SplitLargeMeshes(_, _), EnumAssetHint::SplitLargeMeshes(_, _)) => true,
       (EnumAssetHint::GenerateNormals(_), EnumAssetHint::GenerateNormals(_)) => true,
       (EnumAssetHint::Triangulate(_), EnumAssetHint::Triangulate(_)) => true,
@@ -98,9 +99,9 @@ pub struct AssetLoader {
 impl Default for AssetLoader {
   fn default() -> Self {
     return Self {
-      m_hints: vec![EnumAssetHint::PrimitiveDataIs(Default::default()), EnumAssetHint::GenerateNormals(true),
+      m_hints: vec![EnumAssetHint::VertexDataIs(Default::default()), EnumAssetHint::GenerateNormals(true),
         EnumAssetHint::Triangulate(true), EnumAssetHint::SplitLargeMeshes(true, 500_000),
-        EnumAssetHint::ReduceMeshes(true), EnumAssetHint::OnlyTriangles(true)],
+        EnumAssetHint::ReduceMeshes(false), EnumAssetHint::OnlyTriangles(true)],
     }
   }
 }
@@ -115,10 +116,15 @@ impl TraitHint<EnumAssetHint> for AssetLoader {
   }
   
   fn reset_hints(&mut self) {
-    self.m_hints = vec![EnumAssetHint::PrimitiveDataIs(Default::default()), EnumAssetHint::GenerateNormals(true),
+    self.m_hints = vec![EnumAssetHint::VertexDataIs(Default::default()), EnumAssetHint::GenerateNormals(true),
       EnumAssetHint::Triangulate(true), EnumAssetHint::SplitLargeMeshes(true, 500_000),
-      EnumAssetHint::ReduceMeshes(true), EnumAssetHint::OnlyTriangles(true)];
+      EnumAssetHint::ReduceMeshes(false), EnumAssetHint::OnlyTriangles(true)];
   }
+}
+
+pub struct AssetInfo<'a> {
+  pub(crate) m_is_indexed: bool,
+  pub(crate) m_data: assimp::scene::Scene<'a>
 }
 
 impl AssetLoader {
@@ -128,7 +134,7 @@ impl AssetLoader {
     }
   }
   
-  pub fn load(&self, file_name: &str) -> Result<assimp::scene::Scene, EnumAssetError> {
+  pub fn load(&self, file_name: &str) -> Result<AssetInfo, EnumAssetError> {
     let asset_path = &("res/assets/".to_string() + file_name);
     let path = std::path::Path::new(asset_path);
     
@@ -142,15 +148,15 @@ impl AssetLoader {
     
     for hint in self.m_hints.iter() {
       match hint {
-        EnumAssetHint::PrimitiveDataIs(primitive_type) => {
+        EnumAssetHint::VertexDataIs(primitive_type) => {
           match primitive_type {
             EnumAssetPrimitiveMode::Plain => {
-              // Does the index buffer job for us.
               importer.find_degenerates(|find_degen| find_degen.enable = true);
+              // Don't join indices and let vertices repeat themselves if be, since we want to render without indexing.
               importer.join_identical_vertices(false);
             }
             EnumAssetPrimitiveMode::Indexed => {
-              // Toggle vertex indexing.
+              // Make each index point to a single vertex if possible (turn on indexing).
               importer.join_identical_vertices(true);
             }
           }
@@ -208,6 +214,17 @@ impl AssetLoader {
       return Err(EnumAssetError::InvalidShapeData);
     }
     
-    return Ok(scene.unwrap());
+    let data_type = self.m_hints.iter()
+      .find(|h| h.is(&EnumAssetHint::VertexDataIs(EnumAssetPrimitiveMode::default())));
+    
+    return Ok(AssetInfo {
+      m_is_indexed: data_type.is_some().then(|| {
+        return match data_type.unwrap() {
+          EnumAssetHint::VertexDataIs(flag) => *flag == EnumAssetPrimitiveMode::Indexed,
+          _ => false
+        }
+      }).unwrap_or(EnumAssetPrimitiveMode::default() == EnumAssetPrimitiveMode::Indexed),
+      m_data: scene.unwrap(),
+    });
   }
 }

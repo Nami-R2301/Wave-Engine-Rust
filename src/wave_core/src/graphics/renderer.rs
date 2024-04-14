@@ -25,7 +25,6 @@
 use std::any::Any;
 use std::fmt::{Display, Formatter};
 
-#[cfg(feature = "debug")]
 use crate::Engine;
 use crate::utils::macros::logger::*;
 use crate::assets::asset_loader;
@@ -101,6 +100,30 @@ impl Default for EnumRendererCull {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum EnumRendererBlendingFactor {
+  Zero,
+  One,
+  SrcColor,
+  OneMinusSrcColor,
+  DstColor,
+  OneMinusDstColor,
+  SrcAlpha,
+  OneMinusSrcAlpha,
+  DstAlpha,
+  OneMinusDstAlpha,
+  ConstantColor,
+  OneMinusConstantColor,
+  ConstantAlpha,
+  OneMinusConstantAlpha
+}
+
+impl Default for EnumRendererBlendingFactor {
+  fn default() -> Self {
+    return EnumRendererBlendingFactor::OneMinusSrcAlpha;
+  }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumRendererRenderPrimitiveAs {
   Points,
   Filled,
@@ -111,6 +134,27 @@ pub enum EnumRendererRenderPrimitiveAs {
 impl Default for EnumRendererRenderPrimitiveAs {
   fn default() -> Self {
     return EnumRendererRenderPrimitiveAs::SolidWireframe;
+  }
+}
+
+impl Display for EnumRendererBlendingFactor {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    return match self {
+      EnumRendererBlendingFactor::Zero => write!(f, "Zero"),
+      EnumRendererBlendingFactor::One => write!(f, "One"),
+      EnumRendererBlendingFactor::SrcColor => write!(f, "Source color"),
+      EnumRendererBlendingFactor::OneMinusSrcColor => write!(f, "One minus source color"),
+      EnumRendererBlendingFactor::DstColor => write!(f, "Destination color"),
+      EnumRendererBlendingFactor::OneMinusDstColor => write!(f, "One minus dst color"),
+      EnumRendererBlendingFactor::SrcAlpha => write!(f, "Source alpha"),
+      EnumRendererBlendingFactor::OneMinusSrcAlpha => write!(f, "One minus src alpha"),
+      EnumRendererBlendingFactor::DstAlpha => write!(f, "Destination alpha"),
+      EnumRendererBlendingFactor::OneMinusDstAlpha => write!(f, "One minus dst alpha"),
+      EnumRendererBlendingFactor::ConstantColor => write!(f, "Constant color"),
+      EnumRendererBlendingFactor::OneMinusConstantColor => write!(f, "One minus constant color"),
+      EnumRendererBlendingFactor::ConstantAlpha => write!(f, "Constant alpha"),
+      EnumRendererBlendingFactor::OneMinusConstantAlpha => write!(f, "One minus constant alpha"),
+    }
   }
 }
 
@@ -170,6 +214,10 @@ pub enum EnumRendererHint {
   /// identified through ray-casting for example or when wanting to take apart a primitive by hiding or showing selected sub_primitives.
   Optimization(EnumRendererOptimizationMode),
   
+  SplitLargeVertexBuffers(Option<usize>),
+  SplitLargeIndexBuffers(Option<usize>),
+  
+  
   /// Track internal api calls for potential errors and warnings when making api calls in the renderer.
   /// ### Argument:
   /// Four possible values can be provided:
@@ -222,7 +270,7 @@ pub enum EnumRendererHint {
   CullFacing(Option<EnumRendererCull>),
   MSAA(Option<u8>),
   SRGB(bool),
-  Blending(bool, Option<(i64, i64)>),
+  Blending(Option<(EnumRendererBlendingFactor, EnumRendererBlendingFactor)>),
 }
 
 impl EnumRendererHint {
@@ -239,7 +287,9 @@ impl EnumRendererHint {
       EnumRendererHint::CullFacing(mode) => mode,
       EnumRendererHint::MSAA(sample_count) => sample_count,
       EnumRendererHint::SRGB(bool) => bool,
-      EnumRendererHint::Blending(bool, _blend_func) => bool,
+      EnumRendererHint::Blending(blend_func) => blend_func,
+      EnumRendererHint::SplitLargeVertexBuffers(vertex_limit) => vertex_limit,
+      EnumRendererHint::SplitLargeIndexBuffers(index_limit) => index_limit
     }
   }
 }
@@ -342,7 +392,7 @@ pub(crate) trait TraitContext {
   fn on_render(&mut self) -> Result<(), EnumRendererError>;
   fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError>;
   fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, visible: bool) -> Result<(), EnumRendererError>;
-  fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs, entity_uuid: u64, sub_primitive_index: Option<usize>) -> Result<(), EnumRendererError>;
+  fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs, entity_uuid: u64, sub_primitive_index: Option<usize>, instance_count: usize) -> Result<(), EnumRendererError>;
   fn get_max_msaa_count(&self) -> Result<u8, EnumRendererError>;
   fn to_string(&self) -> String;
   fn toggle_options(&mut self) -> Result<(), EnumRendererError>;
@@ -350,7 +400,7 @@ pub(crate) trait TraitContext {
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError>;
   fn dequeue(&mut self, id: u64) -> Result<(), EnumRendererError>;
   fn update_ubo_camera(&mut self, view: Mat4, projection: Mat4) -> Result<(), EnumRendererError>;
-  fn update_ubo_model(&mut self, model_transform: Mat4, entity_uuid: u64, instance_offset: Option<usize>) -> Result<(), EnumRendererError>;
+  fn update_ubo_model(&mut self, model_transform: Mat4, entity_uuid: u64, instance_offset: Option<usize>, instance_count: usize) -> Result<(), EnumRendererError>;
   fn free(&mut self) -> Result<(), EnumRendererError>;
 }
 
@@ -369,9 +419,11 @@ impl Default for Renderer {
       m_type: EnumRendererApi::default(),
       m_hints: vec![EnumRendererHint::ContextApi(Default::default()),
         EnumRendererHint::ApiCallChecking(Default::default()),
-        EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true), EnumRendererHint::Blending(true, None),
+        EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true),
+        EnumRendererHint::Blending(Some((EnumRendererBlendingFactor::SrcAlpha, EnumRendererBlendingFactor::default()))),
         EnumRendererHint::Optimization(Default::default()),
-        EnumRendererHint::CullFacing(Some(Default::default()))],
+        EnumRendererHint::CullFacing(Some(Default::default())),
+       EnumRendererHint::MSAA(Some(4))],
       m_ids: Vec::with_capacity(10),
       m_api: Box::new(GlContext::default()),
     };
@@ -390,7 +442,8 @@ impl TraitHint<EnumRendererHint> for Renderer {
   fn reset_hints(&mut self) {
     self.m_hints = vec![EnumRendererHint::ContextApi(Default::default()),
       EnumRendererHint::ApiCallChecking(Default::default()),
-      EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true), EnumRendererHint::Blending(true, None),
+      EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true),
+      EnumRendererHint::Blending(Some((EnumRendererBlendingFactor::SrcAlpha, EnumRendererBlendingFactor::default()))),
       EnumRendererHint::Optimization(Default::default()),
       EnumRendererHint::CullFacing(Some(Default::default()))];
   }
@@ -406,6 +459,7 @@ impl TraitApply<EnumRendererError> for Renderer {
         return Err(EnumRendererError::InvalidApi);
       }
       
+      self.m_type = EnumRendererApi::Vulkan;
       self.m_api = Box::new(VkContext::on_new(window, self.m_hints.clone())?);
       return self.m_api.apply(window);
     }
@@ -461,11 +515,13 @@ impl<'a> Renderer {
     return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, true);
   }
   
-  pub fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs, entity_uuid: u64, sub_primitive_index: Option<usize>) -> Result<(), EnumRendererError> {
-    self.m_api.toggle_primitive_mode(mode, entity_uuid, sub_primitive_index)?;
-    log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t {0} now shown in {1}",
-      sub_primitive_index.is_some().then(|| format!("Sub primitive {0} of asset: {1}", sub_primitive_index.unwrap(), entity_uuid))
-      .unwrap_or(format!("Asset: {0}", entity_uuid)), mode);
+  pub fn toggle_primitive_mode(&mut self, name: &'static str, mode: EnumRendererRenderPrimitiveAs, entity_uuid: u64, instance_offset: Option<usize>,
+                               instance_count: usize) -> Result<(), EnumRendererError> {
+    self.m_api.toggle_primitive_mode(mode, entity_uuid, instance_offset, instance_count)?;
+    
+    log!("INFO", "[Renderer] -->\t {0} now shown as \x1b[0;35m{1}\x1b[0m",instance_offset.is_some()
+      .then(|| format!("Sub primitive \x1b[0;35m{0}\x1b[0m of asset \x1b[0;35m{1}\x1b[0m", instance_offset.unwrap(), name))
+      .unwrap_or(format!("Asset \x1b[0;35m{0}\x1b[0m", name)), mode);
     return Ok(());
   }
   
@@ -528,8 +584,8 @@ impl<'a> Renderer {
     return self.m_api.update_ubo_camera(view, projection);
   }
   
-  pub fn update_ubo_model(&mut self, model_transform: Mat4, entity_uuid: u64, instance_offset: Option<usize>) -> Result<(), EnumRendererError> {
-    return self.m_api.update_ubo_model(model_transform, entity_uuid, instance_offset);
+  pub fn update_ubo_model(&mut self, model_transform: Mat4, entity_uuid: u64, instance_offset: Option<usize>, instance_count: usize) -> Result<(), EnumRendererError> {
+    return self.m_api.update_ubo_model(model_transform, entity_uuid, instance_offset, instance_count);
   }
   
   pub fn get_version(&self) -> f32 {

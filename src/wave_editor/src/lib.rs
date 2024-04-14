@@ -27,15 +27,16 @@ pub extern crate wave_core;
 use std::collections::HashMap;
 
 use wave_core::{camera, Engine, EnumEngineError, input, layers, TraitApply, TraitFree, TraitHint};
-use wave_core::assets::asset_loader::{AssetLoader, EnumAssetHint};
+use wave_core::assets::asset_loader::{AssetLoader, EnumAssetHint, EnumAssetPrimitiveMode};
 use wave_core::assets::r_assets;
 use wave_core::assets::r_assets::EnumSubPrimitivePortion;
 #[allow(unused)]
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
-use wave_core::graphics::renderer::{EnumRendererOptimizationMode, EnumRendererHint, Renderer};
+use wave_core::graphics::renderer::{Renderer, EnumRendererRenderPrimitiveAs, EnumRendererHint, EnumRendererOptimizationMode};
 use wave_core::graphics::{shader};
-use wave_core::graphics::texture::{TextureLoader};
+use wave_core::graphics::shader::EnumShaderHint;
+use wave_core::graphics::texture::TextureLoader;
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 #[allow(unused)]
 use wave_core::layers::imgui_layer::ImguiLayer;
@@ -46,9 +47,10 @@ use wave_core::window::{EnumWindowHint, EnumWindowMode, Window};
 
 static mut S_EDITOR: Option<*mut Editor> = None;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum EnumEditorError {
   InvalidAppLayer,
+  IoError(std::io::Result<()>),
   LayerError(layers::EnumLayerError),
   EngineError(EnumEngineError),
 }
@@ -125,9 +127,13 @@ impl Default for Editor {
     let mut renderer = Renderer::default();  // Apply default renderer hints.
     
     window.set_hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));  // Force window to start in windowed mode.
-    // window.set_hint(EnumWindowHint::MSAA(None));  // Force window to discard MSAA for framebuffer.
+    // window.set_hint(EnumWindowHint::WindowApi(EnumRendererApi::Vulkan));  // Select Vulkan client api.
+    window.set_hint(EnumWindowHint::MSAA(None));  // Force MSAA to be off.
+    
     // Force each sub primitive to be drawn separately.
-    renderer.set_hint(EnumRendererHint::Optimization(EnumRendererOptimizationMode::MinimizeIndexBuffers));
+    renderer.set_hint(EnumRendererHint::Optimization(EnumRendererOptimizationMode::All));
+    // renderer.set_hint(EnumRendererHint::ContextApi(EnumRendererApi::Vulkan));  // Select Vulkan context api.
+    renderer.set_hint(EnumRendererHint::MSAA(None));  // Force MSAA to be off.
     
     return Editor {
       m_engine: Engine::new(window, renderer, vec![]),
@@ -179,54 +185,53 @@ impl TraitLayer for Editor {
     let geometry_shader = shader::ShaderStage::default_for(shader::EnumShaderStageType::Geometry);
     
     let mut shader = shader::Shader::default();  // Apply default shader hints.
+    shader.set_hint(EnumShaderHint::GlslVersion(420));
+    // shader.set_hint(EnumShaderHint::Api(EnumRendererApi::Vulkan));
     
     shader.push_stage(vertex_shader)?;
     shader.push_stage(geometry_shader)?;
     shader.push_stage(fragment_shader)?;
     
-    shader.apply()?;
-    // Source and compile the shader program.
+    shader.apply()?;  // Source and compile the shader program.
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
     
-    let mut asset_loader = AssetLoader::default(); // Apply default asset loader hints.
-    asset_loader.set_hint(EnumAssetHint::ReduceMeshes(false));  // Keep sub primitives for Editor view of sub meshes.
+    let asset_loader = AssetLoader::default(); // Apply default asset loader hints.
+    // asset_loader.set_hint(EnumAssetHint::VertexDataIs(EnumAssetPrimitiveMode::Plain));
     
-    let awp_asset = asset_loader.load("awp.obj")?;
-    let mario_asset = asset_loader.load("Mario.obj")?;
-    let logo_asset = asset_loader.load("n64logo.obj")?;
+    let texture_preset = TextureLoader::default();
     
-    let mut awp = r_assets::REntity::new(awp_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
+    let awp_asset = asset_loader.load("awp/awp.obj")?;
+    let mario_asset = asset_loader.load("mario/mario.obj")?;
+    let logo_asset = asset_loader.load("n64_logo/n64_logo.obj")?;
+    
+    let mut awp = r_assets::REntity::new(awp_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth),
+      "Awp Sniper");
     
     awp.translate(10.0, -10.0, 50.0);
     awp.rotate(90.0, -90.0, 0.0);
     awp.apply(&mut shader)?;  // Bake and send the asset.
     awp.show(EnumSubPrimitivePortion::Everything);
     
-    let mut mario = r_assets::REntity::new(mario_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
+    let mut mario = r_assets::REntity::new(mario_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth),
+      "Mario");
     
     mario.translate(-5.0, -5.0, 15.0);
-    mario.rotate(0.0, 0.0, 0.0);
+    mario.add_textures_from("res/textures/mario", &texture_preset)?;  // Add all textures in folder.
     mario.apply(&mut shader)?;  // Bake and send the asset.
     mario.show(EnumSubPrimitivePortion::Everything);
     
-    let mut logo = r_assets::REntity::new(logo_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth));
+    let mut logo = r_assets::REntity::new(logo_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth),
+      "N64 Logo");
     
-    logo.translate(5.0, 0.0, 20.0);
-    logo.rotate(0.0, 0.0, 0.0);
+    logo.translate(3.0, 0.0, 7.0);
+    logo.add_textures_from("res/textures/n64_logo", &texture_preset)?;  // Add all textures in folder.
     logo.apply(&mut shader)?;  // Bake and send the asset.
     logo.show(EnumSubPrimitivePortion::Everything);
     
     self.m_r_assets.insert("Smooth assets", (shader, vec![awp, mario, logo]));
     
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending textures to GPU...");
-    
-    let mut texture_preset = TextureLoader::default();  // Apply default texture loader hints.
-    let mut texture = texture_preset.load("res/textures/mario-atlas.png")?;  // Load texture.
-    texture.apply()?;  // Bake and send the texture.
-    
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Textures sent to GPU successfully");
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
     
     let renderer = self.m_engine.get_renderer_mut();
@@ -300,15 +305,12 @@ impl TraitLayer for Editor {
     return match event {
       EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
         match (key, action, repeat_count, modifiers) {
-          (input::EnumKey::Minus, input::EnumAction::Pressed, _, &modifier) => {
-            let mut wireframe_mode = true;
-            if modifier.contains(input::EnumModifiers::Shift) {
-              wireframe_mode = false;
-            }
-            
+          (input::EnumKey::Minus, input::EnumAction::Pressed, _, _) => {
             for asset in self.m_r_assets.values_mut() {
               for primitive in asset.1.iter_mut() {
-                primitive.toggle_wireframe_mode(wireframe_mode);
+                primitive.toggle_primitive_mode((primitive.get_primitive_mode() == EnumRendererRenderPrimitiveAs::SolidWireframe)
+                  .then(|| EnumRendererRenderPrimitiveAs::Filled)
+                  .unwrap_or(EnumRendererRenderPrimitiveAs::SolidWireframe));
                 primitive.reapply()?;
               }
             }
@@ -328,6 +330,14 @@ impl TraitLayer for Editor {
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
             self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].show(EnumSubPrimitivePortion::Everything);
+            Ok(true)
+          }
+          (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[2].hide(EnumSubPrimitivePortion::Everything);
+            Ok(true)
+          }
+          (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[2].show(EnumSubPrimitivePortion::Everything);
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {

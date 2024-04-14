@@ -322,13 +322,14 @@ impl GlVao {
   }
 }
 
-const C_VBO_SIZE_LIMIT: usize = 5_000_000;  // bytes.
+const C_VBO_SIZE_LIMIT: usize = 10_000_000;  // bytes.
 
 #[allow(unused)]
 pub(crate) struct GlVbo {
   pub(crate) m_buffer_id: u32,
   pub(crate) m_capacity: usize,
   pub(crate) m_length: usize,
+  pub(crate) m_count: usize,
   m_state: EnumBufferState,
   m_old_buffer_id: u32,
 }
@@ -340,6 +341,7 @@ impl Default for GlVbo {
       m_state: EnumBufferState::NotCreated,
       m_capacity: 0,
       m_length: 0,
+      m_count: 0,
       m_old_buffer_id: 0,
     };
   }
@@ -363,6 +365,7 @@ impl GlVbo {
       m_buffer_id: new_vbo,
       m_capacity: capacity,
       m_length: 0,
+      m_count: 0,
       m_state: EnumBufferState::Created,
       m_old_buffer_id: 0,
     });
@@ -371,6 +374,8 @@ impl GlVbo {
   #[allow(unused)]
   pub(crate) fn resize(&mut self, to_size: usize) -> Result<(), EnumOpenGLError> {
     if to_size == 0 {
+      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot resize vbo, size is either 0 \
+      or size exceeds the custom limit enforced (5 Megabytes) per Vertex buffer!");
       return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferSize));
     }
     
@@ -407,6 +412,7 @@ impl GlVbo {
   
   pub(crate) fn push<T>(&mut self, data: &Vec<T>) -> Result<(), EnumOpenGLError> {
     if data.len() == 0 {
+      log!(EnumLogColor::Yellow, "WARN", "[GlVbo] -->\t Cannot append data in vbo {0}, data is empty!", self.m_buffer_id);
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidBufferSize));
     }
     
@@ -419,6 +425,7 @@ impl GlVbo {
       self.expand(vec_size)?;
     }
     self.m_length += vec_size;
+    self.m_count += data.len();
     
     // Set new data in new buffer.
     self.bind()?;
@@ -428,12 +435,13 @@ impl GlVbo {
   }
   
   #[allow(unused)]
-  pub(crate) fn strip(&mut self, buffer_offset: usize, size: usize) -> Result<(), EnumOpenGLError> {
-    if size == 0 || size > self.m_length {
+  pub(crate) fn strip(&mut self, buffer_offset: usize, size: usize, count: usize) -> Result<(), EnumOpenGLError> {
+    if size * count == 0 || size * count > self.m_length {
+      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot strip data from vbo, size is either 0 or exceeds buffer length!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidBufferSize));
     }
     self.bind()?;
-    if size == self.m_length {
+    if size * count == self.m_length {
       check_gl_call!("GlVbo", gl::MapBufferRange(gl::ARRAY_BUFFER, buffer_offset as GLintptr, size as GLsizeiptr,
         gl::MAP_WRITE_BIT | gl::MAP_INVALIDATE_BUFFER_BIT));
     } else {
@@ -443,11 +451,14 @@ impl GlVbo {
     check_gl_call!("GlVbo", gl::UnmapBuffer(gl::ARRAY_BUFFER));
     
     self.m_length -= size;
+    self.m_count -= count;
     return Ok(());
   }
   
   pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), EnumOpenGLError> {
     if alloc_size == 0 || alloc_size + self.m_capacity > C_VBO_SIZE_LIMIT {
+      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot resize vbo, size is either 0 \
+      or size exceeds the custom limit enforced (5 Megabytes) per Vertex buffer!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidCapacitySize));
     }
     
@@ -691,6 +702,8 @@ impl GlIbo {
   
   pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), EnumOpenGLError> {
     if alloc_size == 0 || alloc_size + self.m_capacity > C_IBO_SIZE_LIMIT {
+      log!(EnumLogColor::Red, "ERROR", "[GlIbo] -->\t Cannot resize ibo, size is either 0 \
+      or size exceeds the custom limit enforced (10 Megabytes) per Index buffer!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidCapacitySize));
     }
     
@@ -828,6 +841,7 @@ pub(crate) enum EnumUboType {
   ViewProjection(Mat4, Mat4),
   MVP(Mat4, Mat4, Mat4),
   Wireframe(bool, usize),
+  Texture(i32, usize)
 }
 
 #[allow(unused)]
@@ -843,6 +857,7 @@ pub(crate) enum EnumUboTypeSize {
   Double,
   Long,
   Wireframe(usize),
+  Texture(usize)
 }
 
 #[allow(unused)]
@@ -850,7 +865,9 @@ pub(crate) enum EnumUboTypeSize {
 pub(crate) struct GlUbo {
   m_buffer_id: u32,
   m_name: Option<&'static str>,
+  m_capacity: usize,
   m_length: usize,
+  m_count: usize,
   m_state: EnumBufferState,
 }
 
@@ -858,22 +875,28 @@ impl GlUbo {
   pub(crate) fn new(block_name: Option<&'static str>, ubo_type: EnumUboTypeSize, binding: u32) -> Result<Self, EnumOpenGLError> {
     let mut buffer_id = 0;
     let alloc_size: usize;
+    let data_count: usize;
     
     match ubo_type {
       EnumUboTypeSize::Transform(count) => {
         alloc_size = Mat4::get_size() * count;
+        data_count = count;
       }
       EnumUboTypeSize::ViewProjection => {
         alloc_size = Mat4::get_size() * 2;
+        data_count = 2;
       }
       EnumUboTypeSize::MVP => {
         alloc_size = Mat4::get_size() * 3;
+        data_count = 3;
       }
-      EnumUboTypeSize::Wireframe(count) => {
+      EnumUboTypeSize::Wireframe(count) | EnumUboTypeSize::Texture(count) => {
         alloc_size = 16 * count;
+        data_count = count;
       }
       _ => {
-        alloc_size = 4;
+        alloc_size = 16;
+        data_count = 1;
       }
     }
     check_gl_call!("GlUbo", gl::CreateBuffers(1, &mut buffer_id));
@@ -884,7 +907,9 @@ impl GlUbo {
     return Ok(Self {
       m_buffer_id: buffer_id,
       m_name: block_name,
+      m_capacity: alloc_size,
       m_length: alloc_size,
+      m_count: data_count,
       m_state: EnumBufferState::Created,
     });
   }
@@ -892,6 +917,16 @@ impl GlUbo {
   #[allow(unused)]
   pub(crate) fn get_id(&self) -> u32 {
     return self.m_buffer_id;
+  }
+  
+  #[allow(unused)]
+  pub fn len(&self) -> usize {
+    return self.m_length;
+  }
+  
+  #[allow(unused)]
+  pub fn count(&self) -> usize {
+    return self.m_count;
   }
   
   pub(crate) fn get_name(&self) -> Option<&str> {
@@ -958,6 +993,11 @@ impl GlUbo {
     self.bind()?;
     match ubo_type {
       EnumUboType::Transform(transform, instance_index) => {
+        if instance_index > self.m_count {
+          log!(EnumLogColor::Red, "ERROR", "[GlUbo] -->\t Cannot push transform data for instance {0}, instance index \
+           exceeds buffer capacity!", instance_index);
+          return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferOffset));
+        }
         // Set transform matrix.
         let instance_offset = Mat4::get_size() * instance_index;
         check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, instance_offset as GLintptr,
@@ -985,13 +1025,29 @@ impl GlUbo {
         check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, (Mat4::get_size() * 2) as GLintptr,
           Mat4::get_size() as GLsizeiptr, projection.transpose().as_array().as_ptr() as *const std::ffi::c_void));
       }
-      EnumUboType::Wireframe(value, instance_index) => {
+      EnumUboType::Wireframe(enabled, instance_index) => {
+        if instance_index > self.m_count {
+          log!(EnumLogColor::Red, "ERROR", "[GlUbo] -->\t Cannot push wireframe data for instance {0}, instance index \
+           exceeds buffer capacity!", instance_index);
+          return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferOffset));
+        }
         let instance_offset = 16 * instance_index;  // Add offset of vec4 for std140 alignment reasons.
         
         // This step is necessary since it seems that glsl will always get 'true' from a boolean pointer even if its value is false.
-        let convert_to_number = value.then(|| 1).unwrap_or(0);
+        let convert_to_number = enabled.then(|| 1).unwrap_or(0);
         let c_void = &convert_to_number as *const _ as *const std::ffi::c_void;
         
+        check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, instance_offset as GLintptr, 4 as GLsizeiptr, c_void));
+      }
+      EnumUboType::Texture(depth, instance_index) => {
+        if instance_index > self.m_count {
+          log!(EnumLogColor::Red, "ERROR", "[GlUbo] -->\t Cannot push wireframe data for instance {0}, instance index \
+           exceeds buffer capacity!", instance_index);
+          return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferOffset));
+        }
+        let instance_offset = 16 * instance_index;  // Add offset of vec4 for std140 alignment reasons.
+        
+        let c_void = &depth as *const _ as *const std::ffi::c_void;
         check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, instance_offset as GLintptr, 4 as GLsizeiptr, c_void));
       }
     }

@@ -33,6 +33,7 @@ use crate::graphics::vulkan;
 #[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::shader::VkShader;
 use crate::utils::macros::logger::*;
+use crate::window::S_WINDOW_CONTEXT;
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub enum EnumShaderState {
@@ -131,6 +132,15 @@ impl Display for EnumShaderError {
 }
 
 impl EnumShaderSource {
+  pub fn default_for(stage_type: EnumShaderStageType) -> &'static str {
+    return match stage_type {
+      EnumShaderStageType::Vertex => "res/shaders/glsl_460.vert",
+      EnumShaderStageType::Fragment => "res/shaders/glsl_460.frag",
+      EnumShaderStageType::Geometry => "res/shaders/glsl_460.gs",
+      EnumShaderStageType::Compute => "res/shaders/glsl_460.cp",
+    }
+  }
+  
   pub fn is_file(&self) -> bool {
     return match self {
       EnumShaderSource::FromFile(_) => true,
@@ -234,19 +244,19 @@ impl ShaderStage {
     match stage {
       EnumShaderStageType::Vertex => {
         stage_ = EnumShaderStageType::Vertex;
-        source = EnumShaderSource::FromFile("glsl_420.vert".to_string());
+        source = EnumShaderSource::FromFile("glsl_460.vert".to_string());
       }
       EnumShaderStageType::Fragment => {
         stage_ = EnumShaderStageType::Fragment;
-        source = EnumShaderSource::FromFile("glsl_420.frag".to_string());
+        source = EnumShaderSource::FromFile("glsl_460.frag".to_string());
       }
       EnumShaderStageType::Geometry => {
         stage_ = EnumShaderStageType::Geometry;
-        source = EnumShaderSource::FromFile("glsl_420.gs".to_string());
+        source = EnumShaderSource::FromFile("glsl_460.gs".to_string());
       }
       EnumShaderStageType::Compute => {
         stage_ = EnumShaderStageType::Compute;
-        source = EnumShaderSource::FromFile("glsl_420.cs".to_string());
+        source = EnumShaderSource::FromFile("glsl_460.cp".to_string());
       }
     }
     
@@ -293,10 +303,10 @@ impl Default for Shader {
   fn default() -> Self {
     return Self {
       m_state: EnumShaderState::Created,
-      m_version: 420,
+      m_version: 460,
       m_shader_lang: EnumShaderLanguage::Glsl,
       m_api_data: Box::new(GlShader::default()),
-      m_hints: vec![EnumShaderHint::Api(EnumRendererApi::default()), EnumShaderHint::GlslVersion(420)],
+      m_hints: vec![EnumShaderHint::Api(EnumRendererApi::default()), EnumShaderHint::GlslVersion(460)],
       m_stages: Vec::with_capacity(3),
     };
   }
@@ -426,10 +436,13 @@ impl TraitFree<EnumShaderError> for Shader {
     if self.m_state != EnumShaderState::Sent {
       return Ok(());
     }
-    
-    let renderer: &mut Renderer = Engine::get_active_renderer();
-    if renderer.m_state != EnumRendererState::Deleted || renderer.m_state != EnumRendererState::NotCreated {
-      self.m_api_data.free()?;
+    if unsafe { S_WINDOW_CONTEXT.as_mut().is_some() } {
+      let renderer: &mut Renderer = Engine::get_active_renderer();
+      if renderer.m_state != EnumRendererState::Deleted || renderer.m_state != EnumRendererState::NotCreated {
+        if self.m_state != EnumShaderState::NotCreated && self.m_state != EnumShaderState::Deleted {
+          self.m_api_data.free()?;
+        }
+      }
     }
     self.m_state = EnumShaderState::Deleted;
     return Ok(());
@@ -441,7 +454,7 @@ impl Shader {
     #[cfg(not(feature = "vulkan"))]
     return Self {
       m_state: EnumShaderState::Created,
-      m_version: 420,
+      m_version: 460,
       m_shader_lang: EnumShaderLanguage::Glsl,
       m_api_data: Box::new(GlShader::default()),
       m_hints: Vec::with_capacity(3),
@@ -451,7 +464,7 @@ impl Shader {
     #[cfg(feature = "vulkan")]
     return Self {
       m_state: EnumShaderState::Created,
-      m_version: 420,
+      m_version: 460,
       m_shader_lang: EnumShaderLanguage::Glsl,
       m_api_data: Box::new(VkShader::default()),
       m_hints: Vec::with_capacity(3),
@@ -515,22 +528,7 @@ impl Shader {
             return Err(EnumShaderError::FileNotFound);
           }
           
-          let mut file_path_str: String;
-          match shader_stage.m_stage {
-            EnumShaderStageType::Vertex => {
-              file_path_str = "res/shaders/glsl_420.vert".to_string();
-            }
-            EnumShaderStageType::Fragment => {
-              file_path_str = "res/shaders/glsl_420.frag".to_string();
-            }
-            EnumShaderStageType::Geometry => {
-              file_path_str = "res/shaders/glsl_420.gs".to_string();
-            }
-            EnumShaderStageType::Compute => {
-              file_path_str = "res/shaders/glsl_420.cp".to_string();
-            }
-          }
-          
+          let mut file_path_str: String = String::from(EnumShaderSource::default_for(shader_stage.m_stage));
           let mut glsl_other_source = std::path::Path::new(&file_path_str);
           let mut new_version = 460;
           let version_pattern = format!("#version {0}", version_requested);
@@ -676,12 +674,14 @@ impl Shader {
     let renderer: &mut Renderer = Engine::get_active_renderer();
     
     let max_version = renderer.get_max_shader_version_available();
-    // If the shader source version number is higher than supported.
-    if max_version < version_number {
-      // Try loading a source file with the appropriate version number.
-      log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Attempting to load a source file compatible with glsl {0}", max_version);
-      std::fs::read_to_string(&source.replace("#version 420", &("#version ".to_owned() + &max_version.to_string())))?;
-      return Ok(max_version);
+    if renderer.m_type == EnumRendererApi::OpenGL {
+      // If the shader source version number is higher than supported.
+      if max_version < version_number {
+        // Try loading a source file with the appropriate version number.
+        log!(EnumLogColor::Yellow, "WARN", "[Shader] -->\t Attempting to load a source file compatible with glsl {0}", max_version);
+        std::fs::read_to_string(&source.replace("#version 420", &("#version ".to_owned() + &max_version.to_string())))?;
+        return Ok(max_version);
+      }
     }
     return Ok(max_version);
   }

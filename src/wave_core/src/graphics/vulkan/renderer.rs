@@ -954,7 +954,8 @@ impl TraitContext for VkContext {
     }
   }
   
-  fn toggle_primitive_mode(&mut self, _mode: EnumRendererRenderPrimitiveAs, _entity_uuid: u64, _sub_primitive_index: Option<usize>) -> Result<(), EnumRendererError> {
+  fn toggle_primitive_mode(&mut self, _mode: EnumRendererRenderPrimitiveAs, _entity_uuid: u64, _instance_offset: Option<usize>,
+  _instance_count: usize) -> Result<(), EnumRendererError> {
     return Ok(());
   }
   
@@ -962,7 +963,7 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn update_ubo_model(&mut self, _model_transform: Mat4, _entity_uuid: u64, _instance_offset: Option<usize>) -> Result<(), EnumRendererError> {
+  fn update_ubo_model(&mut self, _model_transform: Mat4, _entity_uuid: u64, _instance_offset: Option<usize>, _instance_count: usize) -> Result<(), EnumRendererError> {
     return Ok(());
   }
   
@@ -1187,8 +1188,10 @@ impl TraitContext for VkContext {
           .unwrap_or("disabled".to_string()));
         }
         EnumRendererHint::SRGB(_) => {}
-        EnumRendererHint::Blending(_, _) => {}
+        EnumRendererHint::Blending(_) => {}
         EnumRendererHint::Optimization(_) => {}
+        EnumRendererHint::SplitLargeVertexBuffers(_) => {}
+        EnumRendererHint::SplitLargeIndexBuffers(_) => {}
       }
     }
     return Ok(());

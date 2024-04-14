@@ -29,7 +29,9 @@ use crate::check_gl_call;
 use crate::graphics::open_gl::renderer::EnumOpenGLError;
 use crate::graphics::texture::{EnumTextureDataAlignment, EnumTextureFormat, EnumTextureTarget, EnumTexture, TraitTexture};
 use crate::utils::macros::logger::*;
-use crate::{Engine, S_ENGINE};
+#[cfg(feature = "debug")]
+use crate::Engine;
+use crate::{S_ENGINE};
 use crate::graphics::renderer::EnumRendererError;
 
 
@@ -84,6 +86,7 @@ enum EnumGlTextureInternalFormat {
   Rg16Snorm = gl::RG16_SNORM,
   Rg8Snorm = gl::RG8_SNORM,
   CompressedSignedRedRGTC1 = gl::COMPRESSED_SIGNED_RED_RGTC1,
+  CompressedRGBADXT3 = 0x83f2,
   DepthComponent32F = gl::DEPTH_COMPONENT32F,
   DepthComponent24 = gl::DEPTH_COMPONENT24,
   DepthComponent16 = gl::DEPTH_COMPONENT16,
@@ -122,7 +125,7 @@ impl<T> Default for GlTexture<T> {
       m_format: gl::RGBA,
       m_internal_target: gl::TEXTURE_2D,
       m_internal_type: gl::UNSIGNED_BYTE,
-      m_internal_format: gl::RGBA8,
+      m_internal_format: 0x83f2,
     };
   }
 }

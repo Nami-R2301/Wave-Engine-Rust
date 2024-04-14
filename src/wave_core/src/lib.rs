@@ -61,11 +61,12 @@ enum EnumEngineState {
   ShutDown,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum EnumEngineError {
   NoActiveEngine,
   UndefinedError,
   AppError,
+  IoError(std::io::Error),
   LayerError(layers::EnumLayerError),
   ResourceError(assets::asset_loader::EnumAssetError),
   ShaderError(shader::EnumShaderError),
@@ -85,6 +86,13 @@ macro_rules! impl_enum_error {
         return $resulting_error(err);
       }
     }
+  }
+}
+
+impl From<std::io::Error> for EnumEngineError {
+  fn from(value: std::io::Error) -> Self {
+    log!(EnumLogColor::Red, "ERROR", "[Editor] -->\t Error occurred when performing I/O operations, Error => {:?}", value);
+    return EnumEngineError::IoError(value);
   }
 }
 

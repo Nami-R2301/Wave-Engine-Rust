@@ -166,7 +166,7 @@ impl Default for Window {
       m_api_window: None,
       m_vsync: true,
       m_refresh_count_desired: None,
-      m_samples: None,
+      m_samples: Some(4),
       m_window_resolution: None,
       m_window_pos: None,
       m_is_windowed: true,

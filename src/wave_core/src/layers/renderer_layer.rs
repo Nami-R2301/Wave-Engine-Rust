@@ -22,8 +22,10 @@
  SOFTWARE.
 */
 
+#[cfg(feature = "debug")]
+use crate::Engine;
 use crate::utils::macros::logger::*;
-use crate::{Engine, EnumEngineError, events, input, TraitApply, TraitFree};
+use crate::{EnumEngineError, events, input, TraitApply, TraitFree};
 use crate::graphics::renderer::{Renderer};
 use crate::layers::{EnumLayerType, TraitLayer};
 

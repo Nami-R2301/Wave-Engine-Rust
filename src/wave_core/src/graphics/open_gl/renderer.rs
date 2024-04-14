@@ -31,11 +31,11 @@ use gl46::GlFns;
 use gl::types::{GLint, GLvoid};
 
 use crate::{Engine, S_ENGINE};
-use crate::assets::r_assets::{EnumMaterial, EnumPrimitive, EnumVertexMemberOffset, REntity};
+use crate::assets::r_assets::{EnumMaterial, EnumPrimitive, EnumVertexMemberOffset, REntity, TraitPrimitive};
 use crate::events::EnumEvent;
 use crate::graphics::{open_gl, renderer};
 use crate::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar, GLenum, GlIbo, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute};
-use crate::graphics::renderer::{EnumRendererOptimizationMode, EnumRendererCallCheckingMode, EnumRendererCull, EnumRendererError, EnumRendererHint, EnumRendererRenderPrimitiveAs, EnumRendererState, TraitContext};
+use crate::graphics::renderer::{EnumRendererBlendingFactor, EnumRendererCallCheckingMode, EnumRendererCull, EnumRendererError, EnumRendererHint, EnumRendererOptimizationMode, EnumRendererRenderPrimitiveAs, EnumRendererState, TraitContext};
 use crate::graphics::shader::{EnumShaderLanguage, Shader};
 use crate::math::Mat4;
 use crate::utils::macros::logger::*;
@@ -134,11 +134,33 @@ macro_rules! check_gl_call {
     };
 }
 
+impl From<EnumRendererBlendingFactor> for GLenum {
+  fn from(value: EnumRendererBlendingFactor) -> Self {
+    return match value {
+      EnumRendererBlendingFactor::Zero => gl::ZERO,
+      EnumRendererBlendingFactor::One => gl::ONE,
+      EnumRendererBlendingFactor::SrcColor => gl::SRC_COLOR,
+      EnumRendererBlendingFactor::OneMinusSrcColor => gl::ONE_MINUS_SRC_COLOR,
+      EnumRendererBlendingFactor::DstColor => gl::DST_COLOR,
+      EnumRendererBlendingFactor::OneMinusDstColor => gl::ONE_MINUS_DST_COLOR,
+      EnumRendererBlendingFactor::SrcAlpha => gl::SRC_ALPHA,
+      EnumRendererBlendingFactor::OneMinusSrcAlpha => gl::ONE_MINUS_SRC_ALPHA,
+      EnumRendererBlendingFactor::DstAlpha => gl::DST_ALPHA,
+      EnumRendererBlendingFactor::OneMinusDstAlpha => gl::ONE_MINUS_DST_ALPHA,
+      EnumRendererBlendingFactor::ConstantColor => gl::CONSTANT_COLOR,
+      EnumRendererBlendingFactor::OneMinusConstantColor => gl::ONE_MINUS_CONSTANT_COLOR,
+      EnumRendererBlendingFactor::ConstantAlpha => gl::CONSTANT_ALPHA,
+      EnumRendererBlendingFactor::OneMinusConstantAlpha => gl::ONE_MINUS_CONSTANT_ALPHA
+    };
+  }
+}
+
 #[derive(Debug, Clone, Ord, Eq, PartialOrd, PartialEq, Hash)]
 pub enum EnumOpenGLError {
   CStringError,
   ApiFunctionLoadingError,
   UnsupportedApiFunction,
+  InvalidSubPrimitiveIndex,
   InvalidContext,
   InvalidOperation(GLenum),
   MSAAError,
@@ -264,6 +286,7 @@ struct GlPrimitiveInfo {
   m_base_vertex: usize,
   m_base_index: usize,
   m_entity_offset: usize,
+  m_primitive_count: usize,
   m_sub_primitive_index: usize,
   m_visible: bool,  // Make primitive appear or disappear upon request from the user
 }
@@ -412,27 +435,36 @@ impl TraitContext for GlContext {
           ibo_offset_counter = 0;
         }
         
-        if previous_ibo != primitive.m_ibo_index {
+        if primitive.m_ibo_count > 0 && previous_ibo != primitive.m_ibo_index {
           self.m_commands.m_ibo_buffers[primitive.m_ibo_index].bind()?;
           ibo_offset_counter = 0;
-        }
-        
-        if primitive.m_visible && primitive.m_ibo_count == 0 {
-          check_gl_call!("GlContext", gl::DrawArrays(gl::TRIANGLES, primitive.m_base_vertex as i32, primitive.m_vbo_count as GLsizei));
-          continue;
         }
         
         if primitive.m_visible {
           match self.m_batch_mode {
             EnumRendererOptimizationMode::NoOptimizations | EnumRendererOptimizationMode::MinimizeVertexBuffers => {
+              if primitive.m_ibo_count == 0 {
+                check_gl_call!("GlContext", gl::DrawArrays(gl::TRIANGLES, primitive.m_base_vertex as i32, primitive.m_vbo_count as GLsizei));
+                continue;
+              }
               check_gl_call!("GlContext", gl::DrawElementsBaseVertex(gl::TRIANGLES, primitive.m_ibo_count as GLsizei,
-              gl::UNSIGNED_INT, ibo_offset_counter as *const _, primitive.m_base_vertex as i32));
+              gl::UNSIGNED_INT, ibo_offset_counter as *const _, primitive.m_base_index as i32));
             }
             EnumRendererOptimizationMode::MinimizeIndexBuffers => {
+              if primitive.m_ibo_count == 0 {
+                check_gl_call!("GlContext", gl::DrawArrays(gl::TRIANGLES, primitive.m_base_vertex as i32, primitive.m_vbo_count as GLsizei));
+                continue;
+              }
+              
               check_gl_call!("GlContext", gl::DrawElementsBaseVertex(gl::TRIANGLES, primitive.m_ibo_count as GLsizei,
               gl::UNSIGNED_INT, ibo_offset_counter as *const _, 0));
             }
             EnumRendererOptimizationMode::MinimizeDrawCalls | EnumRendererOptimizationMode::All => {
+              if primitive.m_ibo_count == 0 {
+                check_gl_call!("GlContext", gl::DrawArrays(gl::TRIANGLES, 0,
+                  self.m_commands.m_vbo_buffers[primitive.m_vbo_index].m_count as GLsizei));
+                continue;
+              }
               check_gl_call!("GlContext", gl::DrawElements(gl::TRIANGLES,
                 self.m_commands.m_ibo_buffers[primitive.m_ibo_index].m_count as GLsizei,
               gl::UNSIGNED_INT, std::ptr::null() as *const _));
@@ -458,50 +490,50 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, visible: bool) -> Result<(), EnumRendererError> {
-    let primitive_found = self.m_commands.m_primitives.iter_mut()
+  fn toggle_visibility_of(&mut self, entity_uuid: u64, instance_offset: Option<usize>, visible: bool) -> Result<(), EnumRendererError> {
+    let primitives_similar_found = self.m_commands.m_primitives.iter_mut()
       .filter(|primitive| primitive.m_uuid == entity_uuid)
       .collect::<Vec<&mut GlPrimitiveInfo>>();
     
-    if !primitive_found.is_empty() {
+    if !primitives_similar_found.is_empty() {
       // If we want all sub_primitives within the primitive to be hidden as well.
-      if sub_primitive_offset.is_none() {
-        for sub_primitive in primitive_found.into_iter() {
+      if instance_offset.is_none() {
+        for sub_primitive in primitives_similar_found.into_iter() {
           sub_primitive.m_visible = visible;
         }
         return Ok(());
       }
       
-      if sub_primitive_offset.is_some() {
-        for (position, main_primitive) in primitive_found.into_iter().enumerate() {
-          if position == sub_primitive_offset.unwrap() {
+      if instance_offset.is_some() {
+        for (position, main_primitive) in primitives_similar_found.into_iter().enumerate() {
+          if position == instance_offset.unwrap() {
             main_primitive.m_visible = visible;
           }
         }
         return Ok(());
       }
     }
-    log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot toggle visibility of entity {0}, batch is empty!", entity_uuid);
+    log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot toggle visibility of entity {0}, entity not found!", entity_uuid);
     return Err(EnumRendererError::EntityNotFound);
   }
   
-  fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs, entity_uuid: u64, sub_primitive_index: Option<usize>) -> Result<(), EnumRendererError> {
+  fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs, entity_uuid: u64, instance_offset: Option<usize>, instance_count: usize) -> Result<(), EnumRendererError> {
     match mode {
       EnumRendererRenderPrimitiveAs::Filled => {
         check_gl_call!("GlContext", gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL));
-        self.toggle_solid_wireframe(false, entity_uuid, sub_primitive_index)?
+        self.toggle_solid_wireframe(false, entity_uuid, instance_offset, instance_count)?
       }
       EnumRendererRenderPrimitiveAs::Points => {
         check_gl_call!("GlContext", gl::PolygonMode(gl::FRONT_AND_BACK, gl::POINT));
-        self.toggle_solid_wireframe(false, entity_uuid, sub_primitive_index)?
+        self.toggle_solid_wireframe(false, entity_uuid, instance_offset, instance_count)?
       }
       EnumRendererRenderPrimitiveAs::Wireframe => {
         check_gl_call!("GlContext", gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE));
-        self.toggle_solid_wireframe(false, entity_uuid, sub_primitive_index)?
+        self.toggle_solid_wireframe(false, entity_uuid, instance_offset, instance_count)?
       }
       EnumRendererRenderPrimitiveAs::SolidWireframe => {
         check_gl_call!("GlContext", gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL));
-        self.toggle_solid_wireframe(true, entity_uuid, sub_primitive_index)?
+        self.toggle_solid_wireframe(true, entity_uuid, instance_offset, instance_count)?
       }
     }
     return Ok(());
@@ -574,7 +606,7 @@ impl TraitContext for GlContext {
               gl::DebugMessageControl(gl::DONT_CARE, gl::DONT_CARE, gl::DONT_CARE, 0, std::ptr::null(), gl::TRUE);
             }
           }
-          log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Debug mode {0}",
+          log!("INFO", "[GlContext] -->\t Debug mode {0}",
           (debug_type != EnumRendererCallCheckingMode::None).then(|| return "enabled").unwrap_or("disabled"));
         }
         EnumRendererHint::DepthTest(enabled) => {
@@ -583,7 +615,7 @@ impl TraitContext for GlContext {
           } else {
             check_gl_call!("GlContext", gl::Disable(gl::DEPTH_TEST));
           }
-          log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Depth test {0}",
+          log!("INFO", "[GlContext] -->\t Depth test {0}",
           enabled.then(|| return "enabled").unwrap_or("disabled"));
         }
         EnumRendererHint::MSAA(sample_count) => {
@@ -602,24 +634,24 @@ impl TraitContext for GlContext {
           } else {
             check_gl_call!("GlContext", gl::Disable(gl::MULTISAMPLE));
           }
-          log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t MSAA {0}",
+          log!("INFO", "[GlContext] -->\t MSAA {0}",
           sample_count.is_some().then(|| return format!("enabled (X{0})", max_sample_count))
           .unwrap_or("disabled".to_string()));
         }
-        EnumRendererHint::Blending(enabled, opt_factors) => {
-          if enabled {
+        EnumRendererHint::Blending(opt_factors) => {
+          if opt_factors.is_some() {
             check_gl_call!("GlContext", gl::Enable(gl::BLEND));
           } else {
             check_gl_call!("GlContext", gl::Disable(gl::BLEND));
           }
           
           if opt_factors.is_some() {
-            check_gl_call!("GlContext", gl::BlendFunc(opt_factors.unwrap().0 as GLenum, opt_factors.unwrap().1 as GLenum));
+            check_gl_call!("GlContext", gl::BlendFunc(GLenum::from(opt_factors.unwrap().0), GLenum::from(opt_factors.unwrap().1)));
           }
           
-          log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Blending {0}", enabled
-          .then(|| return "enabled")
-          .unwrap_or("disabled"));
+          log!("INFO", "[GlContext] -->\t Blending {0}", opt_factors.is_some()
+          .then(|| return format!("enabled: Blend function -> ({0}, {1})", opt_factors.unwrap().0, opt_factors.unwrap().1))
+          .unwrap_or("disabled".to_string()));
         }
         EnumRendererHint::SRGB(enabled) => {
           if enabled {
@@ -627,7 +659,7 @@ impl TraitContext for GlContext {
           } else {
             check_gl_call!("GlContext", gl::Disable(gl::FRAMEBUFFER_SRGB));
           }
-          log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t SRGB framebuffer {0}", enabled
+          log!("INFO", "[GlContext] -->\t SRGB framebuffer {0}", enabled
           .then(|| return "enabled")
           .unwrap_or("disabled"));
         }
@@ -648,7 +680,7 @@ impl TraitContext for GlContext {
           } else {
             check_gl_call!("GlContext", gl::Disable(gl::CULL_FACE));
           }
-          log!(EnumLogColor::Blue, "INFO", "[GlContext] -->\t Cull facing {0}", face.is_some()
+          log!("INFO", "[GlContext] -->\t Cull facing {0}", face.is_some()
           .then(|| return format!("enabled: {0}", face.unwrap()))
           .unwrap_or("disabled".to_string()));
         }
@@ -658,6 +690,8 @@ impl TraitContext for GlContext {
         EnumRendererHint::ContextApi(_api) => {
           // TODO
         }
+        EnumRendererHint::SplitLargeVertexBuffers(_vertex_limit) => {}
+        EnumRendererHint::SplitLargeIndexBuffers(_index_limit) => {}
       }
     }
     return Ok(());
@@ -690,9 +724,13 @@ impl TraitContext for GlContext {
       self.alloc_buffers(r_asset, shader_associated)?;
     }
     
+    let mut ibo_index = 0;
+    if !self.m_commands.m_ibo_buffers.is_empty() {
+      ibo_index = self.m_commands.m_ibo_buffers.len() - 1;
+    }
+    
     let mut vao_index = self.m_commands.m_vao_buffers.len() - 1;
     let mut vbo_index = self.m_commands.m_vbo_buffers.len() - 1;
-    let mut ibo_index = self.m_commands.m_ibo_buffers.len() - 1;
     let mut base_vertex = 0;
     let mut base_index = 0;
     let mut last_primitive_offset = 0;
@@ -713,21 +751,19 @@ impl TraitContext for GlContext {
         base_index = primitive.m_base_index;
         last_primitive_offset += primitive.m_entity_offset;
         
-        let mut sub_primitive_count = 0;
         for sub_primitive in previous_primitives_found.into_iter() {
           base_vertex += sub_primitive.m_vbo_count;
-          base_index += sub_primitive.m_ibo_count;
-          sub_primitive_count += 1;
+          base_index += sub_primitive.m_vbo_count;
+          last_primitive_offset += sub_primitive.m_primitive_count;
         }
-        
-        last_primitive_offset += sub_primitive_count;
       }
     }
     
     let mut total_vertex_count: usize = 0;
     let mut total_index_count: usize = 0;
     
-    if self.m_batch_mode == EnumRendererOptimizationMode::MinimizeVertexBuffers || self.m_batch_mode == EnumRendererOptimizationMode::All {
+    if self.m_batch_mode == EnumRendererOptimizationMode::MinimizeVertexBuffers ||
+      self.m_batch_mode == EnumRendererOptimizationMode::MinimizeDrawCalls || self.m_batch_mode == EnumRendererOptimizationMode::All {
       let main_primitive = GlPrimitiveInfo {
         m_uuid: r_asset.get_uuid(),
         m_linked_shader: GlShaderInfo {
@@ -741,6 +777,7 @@ impl TraitContext for GlContext {
         m_base_vertex: base_vertex,
         m_base_index: base_index,
         m_entity_offset: last_primitive_offset,
+        m_primitive_count: r_asset.m_sub_meshes.len(),
         m_sub_primitive_index: 0,
         m_visible: false,
       };
@@ -752,7 +789,7 @@ impl TraitContext for GlContext {
       total_vertex_count += sub_mesh.get_vertices().len();
       total_index_count += sub_mesh.get_indices().len();
       
-      let mut new_sub_primitive = GlPrimitiveInfo {
+      let new_sub_primitive = GlPrimitiveInfo {
         m_uuid: r_asset.get_uuid(),
         m_linked_shader: GlShaderInfo {
           m_id: shader_associated.get_id(),
@@ -765,20 +802,19 @@ impl TraitContext for GlContext {
         m_base_vertex: base_vertex,
         m_base_index: base_index,
         m_entity_offset: last_primitive_offset,
+        m_primitive_count: 1,
         m_sub_primitive_index: position,
         m_visible: false,
       };
       
-      let ubo_wireframe = self.m_commands.m_ubo_buffers.iter_mut()
-        .find(|ubo| ubo.get_name() == Some("ubo_wireframe"))
-        .unwrap();
-      ubo_wireframe.push(EnumUboType::Wireframe(r_asset.m_wireframe_mode, new_sub_primitive.m_entity_offset + position))?;
+      self.push_buffers(&new_sub_primitive, r_asset)?;
       
-      self.push_buffers(&mut new_sub_primitive, r_asset)?;
-      if self.m_batch_mode != EnumRendererOptimizationMode::MinimizeVertexBuffers &&
-        self.m_batch_mode != EnumRendererOptimizationMode::All {
+      if self.m_batch_mode == EnumRendererOptimizationMode::MinimizeIndexBuffers ||
+        self.m_batch_mode == EnumRendererOptimizationMode::NoOptimizations {
         self.push_primitive(new_sub_primitive);
       }
+      
+      base_vertex += sub_mesh.get_vertices().len();
     }
     
     // If we already have a perspective camera ubo bound, skip.
@@ -798,12 +834,21 @@ impl TraitContext for GlContext {
     // log!(EnumLogColor::Blue, "DEBUG", "[GlContext] -->\t Current Vbo bound to Vao at index 0 : {0}", result);
     #[cfg(feature = "debug")]
     {
+      let ibo_id: String;
+      let ibo_len: String;
+      
+      if self.m_commands.m_ibo_buffers.is_empty() {
+        ibo_id = String::from("N/A");
+        ibo_len = String::from("N/A");
+      } else {
+        ibo_id = format!("{0}", self.m_commands.m_ibo_buffers.get(ibo_index).unwrap().m_buffer_id);
+        ibo_len = format!("{0}", self.m_commands.m_ibo_buffers.get(ibo_index).unwrap().m_length);
+      }
+      
       log!(EnumLogColor::Yellow, "INFO", "[GlContext] -->\t Enqueued {0} vertices in vbo {1} and {2} indices in ibo {3}\
     \n{6:115}Total vbo size: {4}\n{6:115}Total ibo size: {5}", total_vertex_count,
-        self.m_commands.m_vbo_buffers.get(vbo_index).unwrap().m_buffer_id, total_index_count,
-        self.m_commands.m_ibo_buffers.get(ibo_index).unwrap().m_buffer_id,
-        self.m_commands.m_vbo_buffers.get(vbo_index).unwrap().m_length,
-        self.m_commands.m_ibo_buffers.get(ibo_index).unwrap().m_length, "");
+        self.m_commands.m_vbo_buffers.get(vbo_index).unwrap().m_buffer_id, total_index_count, ibo_id,
+        self.m_commands.m_vbo_buffers.get(vbo_index).unwrap().m_length, ibo_len, "");
     }
     return Ok(());
   }
@@ -825,8 +870,8 @@ impl TraitContext for GlContext {
     return Ok(());
   }
   
-  fn update_ubo_model(&mut self, model_transform: Mat4, entity_uuid: u64, instance_offset: Option<usize>) -> Result<(), EnumRendererError> {
-    let mut ubo_model_index_found = self.m_commands.m_ubo_buffers.iter_mut()
+  fn update_ubo_model(&mut self, model_transform: Mat4, entity_uuid: u64, instance_offset: Option<usize>, instance_count: usize) -> Result<(), EnumRendererError> {
+    let ubo_model_index_found = self.m_commands.m_ubo_buffers.iter_mut()
       .find(|ubo| ubo.get_name() == Some("ubo_model"));
     
     if ubo_model_index_found.is_none() {
@@ -834,16 +879,22 @@ impl TraitContext for GlContext {
       return Err(EnumRendererError::UboNotFound);
     }
     
-    if instance_offset.is_none() {
-      for (position, primitive) in self.m_commands.m_primitives.iter()
-        .filter(|p| p.m_uuid == entity_uuid).enumerate() {
-        ubo_model_index_found.as_mut().unwrap().push(EnumUboType::Transform(model_transform, primitive.m_entity_offset + position))?;
+    let ubo = ubo_model_index_found.unwrap();
+    if self.m_batch_mode == EnumRendererOptimizationMode::MinimizeDrawCalls || self.m_batch_mode == EnumRendererOptimizationMode::All {
+      for instance_index in 0..instance_count {
+        ubo.push(EnumUboType::Transform(model_transform, entity_uuid as usize + instance_index))?;
       }
       return Ok(());
     }
     
     if let Some(primitive) = self.m_commands.m_primitives.iter().find(|p| p.m_uuid == entity_uuid) {
-      ubo_model_index_found.unwrap().push(EnumUboType::Transform(model_transform, primitive.m_entity_offset + instance_offset.unwrap()))?;
+      if instance_count == 0 {
+        ubo.push(EnumUboType::Transform(model_transform, primitive.m_entity_offset + instance_offset.unwrap_or(0)))?;
+        return Ok(());
+      }
+      for instance_index in 0..instance_count {
+        ubo.push(EnumUboType::Transform(model_transform, primitive.m_entity_offset + instance_offset.unwrap_or(0) + instance_index))?;
+      }
     }
     return Ok(());
   }
@@ -910,7 +961,7 @@ impl GlContext {
     return Ok(gl_extensions_available);
   }
   
-  fn toggle_solid_wireframe(&mut self, value: bool, entity_uuid: u64, sub_primitive_index: Option<usize>) -> Result<(), EnumRendererError> {
+  fn toggle_solid_wireframe(&mut self, value: bool, entity_uuid: u64, instance_offset: Option<usize>, instance_count: usize) -> Result<(), EnumRendererError> {
     // Find ubo.
     let wireframe_ubo_found = self.m_commands.m_ubo_buffers.iter_mut()
       .find(|ubo| ubo.get_name() == Some("ubo_wireframe"));
@@ -921,21 +972,23 @@ impl GlContext {
     }
     
     let ubo = wireframe_ubo_found.unwrap();
-    let primitives_found = self.m_commands.m_primitives.iter()
-      .filter(|p| p.m_uuid == entity_uuid)
-      .collect::<Vec<&GlPrimitiveInfo>>();
     
-    // If we want to toggle every sub primitive.
-    if sub_primitive_index.is_none() {
-      for (position, sub_primitive) in primitives_found.iter().enumerate() {
-        let primitive_index = sub_primitive.m_entity_offset + position;
-        ubo.push(EnumUboType::Wireframe(value, primitive_index))?;
+    if self.m_batch_mode == EnumRendererOptimizationMode::All || self.m_batch_mode == EnumRendererOptimizationMode::MinimizeDrawCalls {
+      for instance_index in 0..instance_count {
+        ubo.push(EnumUboType::Wireframe(value, entity_uuid as usize + instance_index))?;
       }
       return Ok(());
     }
     
-    if let Some(primitive) = primitives_found.get(entity_uuid as usize) {
-      ubo.push(EnumUboType::Wireframe(value, primitive.m_entity_offset + sub_primitive_index.unwrap()))?;
+    if let Some(primitive) = self.m_commands.m_primitives.iter().find(|p| p.m_uuid == entity_uuid) {
+      if instance_count == 0 {
+        ubo.push(EnumUboType::Wireframe(value, primitive.m_entity_offset + instance_offset.unwrap_or(0)))?;
+        return Ok(());
+      }
+      for instance_index in 0..instance_count {
+        let primitive_index = primitive.m_entity_offset + instance_offset.unwrap_or(0) + instance_index;
+        ubo.push(EnumUboType::Wireframe(value, primitive_index))?;
+      }
     }
     return Ok(());
   }
@@ -951,96 +1004,129 @@ impl GlContext {
     
     Self::set_attributes(sendable_entity, &mut new_vao)?;
     
-    let mut model_ubo = GlUbo::new(Some("ubo_model"), EnumUboTypeSize::Transform(255), 1)?;
-    let mut wireframe_ubo = GlUbo::new(Some("ubo_wireframe"), EnumUboTypeSize::Wireframe(255), 7)?;
+    let mut model_ubo = GlUbo::new(Some("ubo_model"), EnumUboTypeSize::Transform(1024), 1)?;
+    let mut texture_ubo = GlUbo::new(Some("ubo_texture"), EnumUboTypeSize::Texture(1024), 7)?;
+    let mut wireframe_ubo = GlUbo::new(Some("ubo_wireframe"), EnumUboTypeSize::Wireframe(1024), 8)?;
     // If glsl version is lower than 420, then we cannot bind blocks in shaders and have to encode them here instead.
     if shader.get_version() < 420 && shader.get_lang() == EnumShaderLanguage::Glsl {
       model_ubo.bind_block(shader.get_id(), 1)?;
-      wireframe_ubo.bind_block(shader.get_id(), 7)?;
+      texture_ubo.bind_block(shader.get_id(), 7)?;
+      wireframe_ubo.bind_block(shader.get_id(), 8)?;
     }
     
     self.m_commands.m_vao_buffers.push(new_vao);
     self.m_commands.m_vbo_buffers.push(new_vbo);
     self.m_commands.m_ubo_buffers.push(model_ubo);
+    self.m_commands.m_ubo_buffers.push(texture_ubo);
     self.m_commands.m_ubo_buffers.push(wireframe_ubo);
     return Ok(());
   }
   
-  fn push_buffers(&mut self, new_primitive: &mut GlPrimitiveInfo, sendable_entity: &REntity) -> Result<(), EnumOpenGLError> {
-    self.push_data(new_primitive, sendable_entity)?;
+  fn push_buffers(&mut self, new_primitive: &GlPrimitiveInfo, r_asset: &REntity) -> Result<(), EnumOpenGLError> {
+    if r_asset.m_sub_meshes.get(new_primitive.m_sub_primitive_index).is_none() {
+      log!(EnumLogColor::Red, "ERROR", "[GlContext] -->\t Cannot push buffers for sub primitive index {0}, index out of bounds!",
+        new_primitive.m_sub_primitive_index);
+      
+      return Err(EnumOpenGLError::InvalidSubPrimitiveIndex);
+    }
+    self.push_data(new_primitive, r_asset.m_sub_meshes.get(new_primitive.m_sub_primitive_index).unwrap())?;
     
     // If we had to reallocate our vbo to append more data to it, thus migrating over to a new buffer
     // and as a result, leaving our old vbo id that linked to the vao attrib array binding behind.
     // It is important to 'rebind' the vao's attrib buffer binding by re-enabling vertex attributes.
     // God OpenGL is so obscure sometimes...
     if self.m_commands.m_vbo_buffers.get_mut(new_primitive.m_vbo_index).unwrap().has_migrated() {
-      Self::set_attributes(sendable_entity, self.m_commands.m_vao_buffers.get_mut(new_primitive.m_vao_index).unwrap())?;
+      Self::set_attributes(r_asset, self.m_commands.m_vao_buffers.get_mut(new_primitive.m_vao_index).unwrap())?;
     }
     
-    return Ok(());
-  }
-  
-  fn push_data(&mut self, new_primitive: &mut GlPrimitiveInfo, sendable_entity: &REntity) -> Result<(), EnumOpenGLError> {
-    let model_transform = sendable_entity.get_matrix();
+    let model_transform = r_asset.get_matrix();
     
-    let vbo: &mut GlVbo = self.m_commands.m_vbo_buffers.get_mut(new_primitive.m_vbo_index).unwrap();
-    let ibo: &mut GlIbo = self.m_commands.m_ibo_buffers.get_mut(new_primitive.m_ibo_index).unwrap();
-    let ubo_model: &mut GlUbo = self.m_commands.m_ubo_buffers.iter_mut().find(|ubo| ubo.get_name() == Some("ubo_model"))
+    // Push wireframe flag.
+    let ubo_wireframe = self.m_commands.m_ubo_buffers.iter_mut()
+      .find(|ubo| ubo.get_name() == Some("ubo_wireframe"))
+      .unwrap();
+    ubo_wireframe.push(EnumUboType::Wireframe(r_asset.m_primitive_mode == EnumRendererRenderPrimitiveAs::Wireframe ||
+      r_asset.m_primitive_mode == EnumRendererRenderPrimitiveAs::SolidWireframe,
+      new_primitive.m_entity_offset + new_primitive.m_sub_primitive_index))?;
+    
+    // Push texture depth.
+    let ubo_texture = self.m_commands.m_ubo_buffers.iter_mut()
+      .find(|ubo| ubo.get_name() == Some("ubo_texture"))
       .unwrap();
     
-    if let Some(sub_mesh) = sendable_entity.m_sub_meshes.get(new_primitive.m_sub_primitive_index) {
-      log!("INFO", "[GlContext] -->\t Enqueuing {0}: '{1}'...", (new_primitive.m_sub_primitive_index == 1)
-        .then( | | "primitive".to_string())
-        .unwrap_or(format ! ("sub primitive {0}", new_primitive.m_sub_primitive_index)), sub_mesh.get_name());
-      log!("INFO", "[GlContext] -->\t Info:\n{0:115}{1}", "", sub_mesh);
-      
-      let indices = sub_mesh.get_indices();
-      if self.m_batch_mode != EnumRendererOptimizationMode::NoOptimizations &&
-        self.m_batch_mode != EnumRendererOptimizationMode::MinimizeVertexBuffers {
-        if indices.len() > 0 {
-          let indices_offset = indices.iter()
-            .map(|index| *index + new_primitive.m_base_vertex as u32)
-            .collect::<Vec<u32>>();
-          
-          ibo.push(&indices_offset)?;
-        }
-      } else {
-        ibo.push(&indices)?;
-      }
-      vbo.push(sub_mesh.get_vertices())?;
-      ubo_model.push(EnumUboType::Transform(model_transform, sub_mesh.get_entity_id() as usize))?;
+    let mut texture_depth = -1;
+    // If this sub primitive even contains any textures, otherwise don't push depth to ubo.
+    if !r_asset.m_sub_meshes.get(new_primitive.m_sub_primitive_index).unwrap().get_textures().is_empty() {
+      texture_depth = new_primitive.m_sub_primitive_index as i32;
     }
+    
+    ubo_texture.push(EnumUboType::Texture(texture_depth, new_primitive.m_entity_offset + new_primitive.m_sub_primitive_index))?;
+    
+    // Push model transform.
+    let ubo_model: &mut GlUbo = self.m_commands.m_ubo_buffers.iter_mut().find(|ubo| ubo.get_name() == Some("ubo_model"))
+      .unwrap();
+    ubo_model.push(EnumUboType::Transform(model_transform, new_primitive.m_entity_offset + new_primitive.m_sub_primitive_index))?;
+    
     return Ok(());
   }
   
-  fn push_primitive(&mut self, new_primitive: GlPrimitiveInfo) {
+  fn push_data(&mut self, primitive_info: &GlPrimitiveInfo, primitive: &Box<dyn TraitPrimitive>) -> Result<(), EnumOpenGLError> {
+    let vbo: &mut GlVbo = self.m_commands.m_vbo_buffers.get_mut(primitive_info.m_vbo_index).unwrap();
+    
+    log!("INFO", "[GlContext] -->\t Enqueuing {0}: '{1}'...", (primitive_info.m_sub_primitive_index == 1)
+        .then( | | "primitive".to_string())
+        .unwrap_or(format ! ("sub primitive {0}", primitive_info.m_sub_primitive_index)), primitive.get_name());
+    log!("INFO", "[GlContext] -->\t Info:\n{0:115}{1}", "", primitive);
+    
+    let indices = primitive.get_indices();
+    if self.m_batch_mode != EnumRendererOptimizationMode::NoOptimizations &&
+      self.m_batch_mode != EnumRendererOptimizationMode::MinimizeVertexBuffers {
+      if indices.len() > 0 {
+        let ibo: &mut GlIbo = self.m_commands.m_ibo_buffers.get_mut(primitive_info.m_ibo_index).unwrap();
+        
+        let indices_offset = indices.iter()
+          .map(|index| *index + primitive_info.m_base_index as u32)
+          .collect::<Vec<u32>>();
+        
+        ibo.push(&indices_offset)?;
+      }
+    } else if indices.len() > 0 {
+      let ibo: &mut GlIbo = self.m_commands.m_ibo_buffers.get_mut(primitive_info.m_ibo_index).unwrap();
+      
+      ibo.push(&indices)?;
+    }
+    vbo.push(primitive.get_vertices())?;
+    return Ok(());
+  }
+  
+  fn push_primitive(&mut self, primitive_info: GlPrimitiveInfo) {
     // Check if we have the feature toggle on.
     if self.m_batch_mode == EnumRendererOptimizationMode::MinimizeDrawCalls || self.m_batch_mode == EnumRendererOptimizationMode::All {
       // Find first primitive that shares the same shader, thus the same material type.
       // Keep adding its ibo count to the base primitive to increase the draw count (glDrawElementBaseVertex).
       let matched_primitives = self.m_commands.m_primitives.iter_mut()
-        .filter(|p| new_primitive.m_linked_shader.m_id == p.m_linked_shader.m_id &&
-          p.m_uuid != new_primitive.m_uuid)
+        .filter(|p| primitive_info.m_linked_shader.m_id == p.m_linked_shader.m_id &&
+          p.m_uuid != primitive_info.m_uuid)
         .collect::<Vec<&mut GlPrimitiveInfo>>();
       
       if matched_primitives.is_empty() {
-        self.m_commands.m_primitives.push(new_primitive);
+        self.m_commands.m_primitives.push(primitive_info);
         return;
       }
       
       for _ in 0..matched_primitives.len() {
         if let Some(matched_primitive) = self.m_commands.m_primitives.iter()
-          .position(|p| p.m_linked_shader.m_id == new_primitive.m_linked_shader.m_id &&
-            p.m_uuid != new_primitive.m_uuid) {
+          .position(|p| p.m_linked_shader.m_id == primitive_info.m_linked_shader.m_id &&
+            p.m_uuid != primitive_info.m_uuid) {
           self.m_commands.m_primitives.remove(matched_primitive);
         }
       }
     }
     
-    if self.m_batch_mode == EnumRendererOptimizationMode::MinimizeVertexBuffers && new_primitive.m_sub_primitive_index != 0 {
+    if self.m_batch_mode == EnumRendererOptimizationMode::MinimizeVertexBuffers && primitive_info.m_sub_primitive_index != 0 {
       return;
     }
-    self.m_commands.m_primitives.push(new_primitive);
+    self.m_commands.m_primitives.push(primitive_info);
   }
   
   fn set_attributes(entity: &REntity, vao: &mut GlVao) -> Result<(), EnumOpenGLError> {

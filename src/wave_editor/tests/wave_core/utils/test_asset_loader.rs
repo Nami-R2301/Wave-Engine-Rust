@@ -27,5 +27,5 @@ use wave_editor::wave_core::assets::r_assets::REntity;
 #[test]
 fn test_obj_loader() {
   let cube = REntity::default();
-  assert!(cube.is_ok());
+  assert!(!cube.is_empty());
 }

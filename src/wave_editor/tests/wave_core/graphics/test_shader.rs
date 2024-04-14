@@ -23,9 +23,9 @@
 */
 
 use wave_core::graphics::shader;
-use wave_core::graphics::shader::EnumShaderHint;
+use wave_core::{TraitApply};
 use wave_editor::wave_core::{EmptyApp, Engine, EnumEngineError};
-use wave_editor::wave_core::graphics::renderer::{EnumRendererApi, Renderer};
+use wave_editor::wave_core::graphics::renderer::{Renderer};
 use wave_editor::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStageType, ShaderStage};
 use wave_editor::wave_core::layers::Layer;
 
@@ -46,9 +46,7 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
   let fragment_shader = ShaderStage::new(EnumShaderStageType::Fragment,
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
-  let mut shader = shader::Shader::new();
-  shader.set_hint(EnumShaderHint::Api(EnumRendererApi::OpenGL));
-  shader.set_hint(EnumShaderHint::GlslVersion(420));
+  let mut shader = shader::Shader::default();
   
   shader.push_stage(vertex_shader)?;
   shader.push_stage(fragment_shader)?;
@@ -76,9 +74,7 @@ fn test_load_uniforms() -> Result<(), EnumEngineError> {
   let fragment_shader = ShaderStage::new(EnumShaderStageType::Fragment,
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
-  let mut shader = shader::Shader::new();
-  shader.set_hint(EnumShaderHint::Api(EnumRendererApi::OpenGL));
-  shader.set_hint(EnumShaderHint::GlslVersion(420));
+  let mut shader = shader::Shader::default();
   
   shader.push_stage(vertex_shader)?;
   shader.push_stage(fragment_shader)?;

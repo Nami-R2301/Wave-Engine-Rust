@@ -316,8 +316,10 @@ impl TraitShader for GlShader {
   }
   
   fn free(&mut self) -> Result<(), shader::EnumShaderError> {
-    check_gl_call!("GlShader", gl::UseProgram(0));
-    check_gl_call!("GlShader", gl::DeleteProgram(self.m_program_id));
+    if gl::UseProgram::is_loaded() {
+      check_gl_call!("GlShader", gl::UseProgram(0));
+      check_gl_call!("GlShader", gl::DeleteProgram(self.m_program_id));
+    }
     return Ok(());
   }
 }
