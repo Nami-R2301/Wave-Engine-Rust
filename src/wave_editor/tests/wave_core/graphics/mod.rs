@@ -25,3 +25,4 @@
 pub mod test_shader;
 pub mod test_vulkan;
 pub mod test_color;
+mod test_normal;

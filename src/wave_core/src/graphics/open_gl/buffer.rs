@@ -352,7 +352,7 @@ impl GlVbo {
     let mut new_vbo: GLuint = 0;
     
     if capacity == 0 || capacity >= C_VBO_SIZE_LIMIT {
-      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot reserve size of {0} bytes for vbo, size is either 0 \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot reserve size of {0} bytes for vbo, size is either 0 \
       or size exceeds the custom limit enforced (5 Megabytes) per Vertex buffer!", capacity);
       return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferSize));
     }
@@ -374,7 +374,7 @@ impl GlVbo {
   #[allow(unused)]
   pub(crate) fn resize(&mut self, to_size: usize) -> Result<(), EnumOpenGLError> {
     if to_size == 0 {
-      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot resize vbo, size is either 0 \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot resize vbo, size is either 0 \
       or size exceeds the custom limit enforced (5 Megabytes) per Vertex buffer!");
       return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferSize));
     }
@@ -412,7 +412,7 @@ impl GlVbo {
   
   pub(crate) fn push<T>(&mut self, data: &Vec<T>) -> Result<(), EnumOpenGLError> {
     if data.len() == 0 {
-      log!(EnumLogColor::Yellow, "WARN", "[GlVbo] -->\t Cannot append data in vbo {0}, data is empty!", self.m_buffer_id);
+      log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Cannot append data in vbo {0}, data is empty!", self.m_buffer_id);
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidBufferSize));
     }
     
@@ -420,7 +420,7 @@ impl GlVbo {
     let old_size: usize = self.m_length;
     
     if self.m_length + vec_size > self.m_capacity {
-      log!(EnumLogColor::Yellow, "WARN", "[GlVbo] -->\t Cannot append additional data in current vbo {0}, Vbo full, \
+      log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Cannot append additional data in current vbo {0}, Vbo full, \
       expanding it...", self.m_buffer_id);
       self.expand(vec_size)?;
     }
@@ -437,7 +437,7 @@ impl GlVbo {
   #[allow(unused)]
   pub(crate) fn strip(&mut self, buffer_offset: usize, size: usize, count: usize) -> Result<(), EnumOpenGLError> {
     if size * count == 0 || size * count > self.m_length {
-      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot strip data from vbo, size is either 0 or exceeds buffer length!");
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot strip data from vbo, size is either 0 or exceeds buffer length!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidBufferSize));
     }
     self.bind()?;
@@ -457,12 +457,12 @@ impl GlVbo {
   
   pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), EnumOpenGLError> {
     if alloc_size == 0 || alloc_size + self.m_capacity > C_VBO_SIZE_LIMIT {
-      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot resize vbo, size is either 0 \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot resize vbo, size is either 0 \
       or size exceeds the custom limit enforced (5 Megabytes) per Vertex buffer!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidCapacitySize));
     }
     
-    log!(EnumLogColor::Yellow, "WARN", "[GlVbo] -->\t Expanding Vbo {0} from {1} bytes to {2} bytes...",
+    log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Expanding Vbo {0} from {1} bytes to {2} bytes...",
       self.m_buffer_id, self.m_capacity, alloc_size + self.m_capacity);
     
     check_gl_call!("GlVbo", gl::BindBuffer(gl::COPY_READ_BUFFER, self.m_buffer_id));
@@ -481,13 +481,13 @@ impl GlVbo {
     check_gl_call!("GlVbo", gl::GetBufferParameteriv(gl::COPY_WRITE_BUFFER, gl::BUFFER_MAPPED, &mut dest_result));
     
     if src_result == gl::TRUE as i32 {
-      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot expand vbo, the source buffer to read data from for copying is mapped \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot expand vbo, the source buffer to read data from for copying is mapped \
       or you forgot to bind GL_COPY_READ_BUFFER to current vbo before expanding!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidReadBuffer));
     }
     
     if dest_result == gl::TRUE as i32 {
-      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot expand vbo, the destination buffer to write data to for copying is mapped \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot expand vbo, the destination buffer to write data to for copying is mapped \
       or you forgot to bind GL_COPY_WRITE_BUFFER to current vbo before expanding!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidWriteBuffer));
     }
@@ -531,13 +531,13 @@ impl GlVbo {
     check_gl_call!("GlVbo", gl::GetBufferParameteriv(gl::COPY_WRITE_BUFFER, gl::BUFFER_MAPPED, &mut dest_result));
     
     if src_result == gl::TRUE as i32 {
-      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot shrink vbo, the source buffer to read data from for copying is mapped \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot shrink vbo, the source buffer to read data from for copying is mapped \
       or you forgot to bind GL_COPY_READ_BUFFER to current vbo before expanding!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidReadBuffer));
     }
     
     if dest_result == gl::TRUE as i32 {
-      log!(EnumLogColor::Red, "ERROR", "[GlVbo] -->\t Cannot shrink vbo, the destination buffer to write data to for copying is mapped \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot shrink vbo, the destination buffer to write data to for copying is mapped \
       or you forgot to bind GL_COPY_WRITE_BUFFER to current vbo before expanding!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidWriteBuffer));
     }
@@ -576,13 +576,13 @@ impl GlVbo {
     self.unbind()?;
     
     if self.m_state == EnumBufferState::Deleted || self.m_state == EnumBufferState::NotCreated {
-      log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Cannot delete GlVao : Already deleted \
+      log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Cannot delete GlVbo : Already deleted \
       or not created in the first place!");
       return Ok(());
     }
     
     if gl::DeleteBuffers::is_loaded() {
-      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVbo...");
+      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlVbo {0}...", self.m_buffer_id);
       check_gl_call!("GlVbo", gl::DeleteBuffers(1, &self.m_buffer_id));
       log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlVbo successfully");
     }
@@ -620,7 +620,7 @@ impl GlIbo {
     let mut new_ibo: GLuint = 0;
     
     if capacity == 0 || capacity > C_IBO_SIZE_LIMIT {
-      log!(EnumLogColor::Red, "ERROR", "[GlIbo] -->\t Cannot reserve size of {0} bytes for ibo, size is either 0 \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot reserve size of {0} bytes for ibo, size is either 0 \
       or size exceeds the custom limit enforced (10 Megabytes) per index buffer!", capacity);
       return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferSize));
     }
@@ -665,7 +665,7 @@ impl GlIbo {
     let old_size: usize = self.m_length;
     
     if self.m_length + vec_size > self.m_capacity {
-      log!(EnumLogColor::Yellow, "WARN", "[GlIbo] -->\t Cannot append additional data in current ibo {0}, Ibo full, \
+      log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Cannot append additional data in current ibo {0}, Ibo full, \
       expanding it...", self.m_buffer_id);
       self.expand(vec_size)?;
     }
@@ -702,12 +702,12 @@ impl GlIbo {
   
   pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), EnumOpenGLError> {
     if alloc_size == 0 || alloc_size + self.m_capacity > C_IBO_SIZE_LIMIT {
-      log!(EnumLogColor::Red, "ERROR", "[GlIbo] -->\t Cannot resize ibo, size is either 0 \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot resize ibo, size is either 0 \
       or size exceeds the custom limit enforced (10 Megabytes) per Index buffer!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidCapacitySize));
     }
     
-    log!(EnumLogColor::Yellow, "WARN", "[GlIbo] -->\t Expanding Ibo {0} from {1} bytes to {2} bytes...",
+    log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Expanding Ibo {0} from {1} bytes to {2} bytes...",
       self.m_buffer_id, self.m_capacity, alloc_size + self.m_capacity);
     
     check_gl_call!("GlIbo", gl::BindBuffer(gl::COPY_READ_BUFFER, self.m_buffer_id));
@@ -726,13 +726,13 @@ impl GlIbo {
     check_gl_call!("GlIbo", gl::GetBufferParameteriv(gl::COPY_WRITE_BUFFER, gl::BUFFER_MAPPED, &mut dest_result));
     
     if src_result == gl::TRUE as i32 {
-      log!(EnumLogColor::Red, "ERROR", "[GlIbo] -->\t Cannot expand ibo, the source buffer to read data from for copying is mapped \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot expand ibo, the source buffer to read data from for copying is mapped \
       or you forgot to bind GL_COPY_READ_BUFFER to current vbo before expanding!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidReadBuffer));
     }
     
     if dest_result == gl::TRUE as i32 {
-      log!(EnumLogColor::Red, "ERROR", "[GlIbo] -->\t Cannot expand ibo, the destination buffer to write data to for copying is mapped \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot expand ibo, the destination buffer to write data to for copying is mapped \
       or you forgot to bind GL_COPY_WRITE_BUFFER to current vbo before expanding!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidWriteBuffer));
     }
@@ -775,13 +775,13 @@ impl GlIbo {
     check_gl_call!("GlIbo", gl::GetBufferParameteriv(gl::COPY_WRITE_BUFFER, gl::BUFFER_MAPPED, &mut dest_result));
     
     if src_result == gl::TRUE as i32 {
-      log!(EnumLogColor::Red, "ERROR", "[GlIbo] -->\t Cannot shrink ibo, the source buffer to read data from for copying is mapped \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot shrink ibo, the source buffer to read data from for copying is mapped \
       or you forgot to bind GL_COPY_READ_BUFFER to current vbo before expanding!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidReadBuffer));
     }
     
     if dest_result == gl::TRUE as i32 {
-      log!(EnumLogColor::Red, "ERROR", "[GlIbo] -->\t Cannot shrink ibo, the destination buffer to write data to for copying is mapped \
+      log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot shrink ibo, the destination buffer to write data to for copying is mapped \
       or you forgot to bind GL_COPY_WRITE_BUFFER to current vbo before expanding!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidWriteBuffer));
     }
@@ -818,13 +818,13 @@ impl GlIbo {
     self.unbind()?;
     
     if self.m_state == EnumBufferState::Deleted || self.m_state == EnumBufferState::NotCreated {
-      log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Cannot delete GlVao : Already deleted \
+      log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Cannot delete GlIbo : Already deleted \
       or not created in the first place!");
       return Ok(());
     }
     
     if gl::DeleteBuffers::is_loaded() {
-      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlIbo...");
+      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlIbo {0}...", self.m_buffer_id);
       check_gl_call!("GlIbo", gl::DeleteBuffers(1, &self.m_buffer_id));
       log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlIbo successfully");
     }
@@ -841,7 +841,6 @@ pub(crate) enum EnumUboType {
   ViewProjection(Mat4, Mat4),
   MVP(Mat4, Mat4, Mat4),
   Wireframe(bool, usize),
-  Texture(i32, usize)
 }
 
 #[allow(unused)]
@@ -857,7 +856,6 @@ pub(crate) enum EnumUboTypeSize {
   Double,
   Long,
   Wireframe(usize),
-  Texture(usize)
 }
 
 #[allow(unused)]
@@ -890,7 +888,7 @@ impl GlUbo {
         alloc_size = Mat4::get_size() * 3;
         data_count = 3;
       }
-      EnumUboTypeSize::Wireframe(count) | EnumUboTypeSize::Texture(count) => {
+      EnumUboTypeSize::Wireframe(count) => {
         alloc_size = 16 * count;
         data_count = count;
       }
@@ -994,7 +992,7 @@ impl GlUbo {
     match ubo_type {
       EnumUboType::Transform(transform, instance_index) => {
         if instance_index > self.m_count {
-          log!(EnumLogColor::Red, "ERROR", "[GlUbo] -->\t Cannot push transform data for instance {0}, instance index \
+          log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot push transform data for instance {0}, instance index \
            exceeds buffer capacity!", instance_index);
           return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferOffset));
         }
@@ -1027,7 +1025,7 @@ impl GlUbo {
       }
       EnumUboType::Wireframe(enabled, instance_index) => {
         if instance_index > self.m_count {
-          log!(EnumLogColor::Red, "ERROR", "[GlUbo] -->\t Cannot push wireframe data for instance {0}, instance index \
+          log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot push wireframe data for instance {0}, instance index \
            exceeds buffer capacity!", instance_index);
           return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferOffset));
         }
@@ -1037,17 +1035,6 @@ impl GlUbo {
         let convert_to_number = enabled.then(|| 1).unwrap_or(0);
         let c_void = &convert_to_number as *const _ as *const std::ffi::c_void;
         
-        check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, instance_offset as GLintptr, 4 as GLsizeiptr, c_void));
-      }
-      EnumUboType::Texture(depth, instance_index) => {
-        if instance_index > self.m_count {
-          log!(EnumLogColor::Red, "ERROR", "[GlUbo] -->\t Cannot push wireframe data for instance {0}, instance index \
-           exceeds buffer capacity!", instance_index);
-          return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferOffset));
-        }
-        let instance_offset = 16 * instance_index;  // Add offset of vec4 for std140 alignment reasons.
-        
-        let c_void = &depth as *const _ as *const std::ffi::c_void;
         check_gl_call!("GlUbo", gl::BufferSubData(gl::UNIFORM_BUFFER, instance_offset as GLintptr, 4 as GLsizeiptr, c_void));
       }
     }
@@ -1066,13 +1053,13 @@ impl GlUbo {
     self.unbind()?;
     
     if self.m_state == EnumBufferState::Deleted || self.m_state == EnumBufferState::NotCreated {
-      log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Cannot delete GlVao : Already deleted \
+      log!(EnumLogColor::Yellow, "WARN", "[GlBuffer] -->\t Cannot delete GlUbo : Already deleted \
       or not created in the first place!");
       return Ok(());
     }
     
     if gl::DeleteBuffers::is_loaded() {
-      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlUbo...");
+      log!(EnumLogColor::Purple, "INFO", "[GlBuffer] -->\t Freeing GlUbo {0}...", self.m_buffer_id);
       check_gl_call!("GlUbo", gl::DeleteBuffers(1, &self.m_buffer_id));
       log!(EnumLogColor::Green, "INFO", "[GlBuffer] -->\t Freed GlUbo successfully");
     }

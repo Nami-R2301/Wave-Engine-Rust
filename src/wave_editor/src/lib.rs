@@ -36,7 +36,7 @@ use wave_core::events::{EnumEvent, EnumEventMask};
 use wave_core::graphics::renderer::{Renderer, EnumRendererRenderPrimitiveAs, EnumRendererHint, EnumRendererOptimizationMode};
 use wave_core::graphics::{shader};
 use wave_core::graphics::shader::EnumShaderHint;
-use wave_core::graphics::texture::TextureLoader;
+use wave_core::utils::texture_loader::TextureLoader;
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 #[allow(unused)]
 use wave_core::layers::imgui_layer::ImguiLayer;

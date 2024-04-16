@@ -340,10 +340,10 @@ impl VkContext {
     
     let _vk_vertex_attributes: Vec<VkVertexAttribute> = vec![
       VkVertexAttribute::new(0, 0, vk::Format::R32_UINT, 0)?,
-      VkVertexAttribute::new(0, 1, vk::Format::R32G32B32_SFLOAT, EnumVertexMemberOffset::AtPos as u32)?,
-      VkVertexAttribute::new(0, 2, vk::Format::R32G32B32_SFLOAT, EnumVertexMemberOffset::AtNormal as u32)?,
-      VkVertexAttribute::new(0, 3, vk::Format::R32G32B32A32_SFLOAT, EnumVertexMemberOffset::AtColor as u32)?,
-      VkVertexAttribute::new(0, 4, vk::Format::R32G32_SFLOAT, EnumVertexMemberOffset::AtTexCoords as u32)?,
+      VkVertexAttribute::new(0, 1, vk::Format::R32G32B32_SFLOAT, EnumVertexMemberOffset::PositionOffset as u32)?,
+      VkVertexAttribute::new(0, 2, vk::Format::R32G32B32_SFLOAT, EnumVertexMemberOffset::NormalOffset as u32)?,
+      VkVertexAttribute::new(0, 3, vk::Format::R32G32B32A32_SFLOAT, EnumVertexMemberOffset::ColorOffset as u32)?,
+      VkVertexAttribute::new(0, 4, vk::Format::R32G32_SFLOAT, EnumVertexMemberOffset::TexCoordsOffset as u32)?,
     ];
     
     // Setup vertex input.

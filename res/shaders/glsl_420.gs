@@ -5,19 +5,21 @@ layout (triangle_strip, max_vertices = 3) out;
 
 // Inputs.
 layout (location = 0) flat in uint vout_vertex_entity_ID[];
-layout (location = 1) in struct Frag_data_s
+layout (location = 1) flat in int vout_texture_info[];
+layout (location = 2) in struct Frag_data_s
 {
     vec3 vout_normal;
     vec4 vout_frag_color;
     vec2 vout_tex_coords;
     vec3 vout_wireframe_distances;
 } vd_in[];
-layout (location = 5) in vec3 vout_frag_pos[];
+layout (location = 6) in vec3 vout_frag_pos[];
 
 // Outputs.
 layout (location = 0) flat out uint gout_entity_ID;
-layout (location = 1) out Frag_data_s gout_geo_data;
-layout (location = 5) out vec3 gout_frag_pos;
+layout (location = 1) flat out int gout_texture_info;
+layout (location = 2) out Frag_data_s gout_geo_data;
+layout (location = 6) out vec3 gout_frag_pos;
 
 
 void main() {
@@ -26,6 +28,7 @@ void main() {
         gout_geo_data.vout_normal = vd_in[i].vout_normal;
         gout_geo_data.vout_tex_coords = vd_in[i].vout_tex_coords;
         gout_entity_ID = vout_vertex_entity_ID[i];
+        gout_texture_info = vout_texture_info[i];
         gout_frag_pos = vout_frag_pos[i];
         gl_Position = gl_in[i].gl_Position;
 

@@ -303,16 +303,3 @@ impl<T> TraitTexture for GlTexture<T> {
     return Ok(());
   }
 }
-
-impl<T> Drop for GlTexture<T> {
-  fn drop(&mut self) {
-    match self.free() {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[GlTexture] -->\t Freed texture {0} successfully", self.m_id);
-      }
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[GlTexture] -->\t Error while freeing texture {0}, Error => {1}", self.m_id, err);
-      }
-    }
-  }
-}

@@ -1004,20 +1004,17 @@ impl GlContext {
     
     Self::set_attributes(sendable_entity, &mut new_vao)?;
     
-    let mut model_ubo = GlUbo::new(Some("ubo_model"), EnumUboTypeSize::Transform(1024), 1)?;
-    let mut texture_ubo = GlUbo::new(Some("ubo_texture"), EnumUboTypeSize::Texture(1024), 7)?;
-    let mut wireframe_ubo = GlUbo::new(Some("ubo_wireframe"), EnumUboTypeSize::Wireframe(1024), 8)?;
+    let mut model_ubo = GlUbo::new(Some("ubo_model"), EnumUboTypeSize::Transform(255), 1)?;
+    let mut wireframe_ubo = GlUbo::new(Some("ubo_wireframe"), EnumUboTypeSize::Wireframe(255), 7)?;
     // If glsl version is lower than 420, then we cannot bind blocks in shaders and have to encode them here instead.
     if shader.get_version() < 420 && shader.get_lang() == EnumShaderLanguage::Glsl {
       model_ubo.bind_block(shader.get_id(), 1)?;
-      texture_ubo.bind_block(shader.get_id(), 7)?;
-      wireframe_ubo.bind_block(shader.get_id(), 8)?;
+      wireframe_ubo.bind_block(shader.get_id(), 7)?;
     }
     
     self.m_commands.m_vao_buffers.push(new_vao);
     self.m_commands.m_vbo_buffers.push(new_vbo);
     self.m_commands.m_ubo_buffers.push(model_ubo);
-    self.m_commands.m_ubo_buffers.push(texture_ubo);
     self.m_commands.m_ubo_buffers.push(wireframe_ubo);
     return Ok(());
   }
@@ -1048,19 +1045,6 @@ impl GlContext {
     ubo_wireframe.push(EnumUboType::Wireframe(r_asset.m_primitive_mode == EnumRendererRenderPrimitiveAs::Wireframe ||
       r_asset.m_primitive_mode == EnumRendererRenderPrimitiveAs::SolidWireframe,
       new_primitive.m_entity_offset + new_primitive.m_sub_primitive_index))?;
-    
-    // Push texture depth.
-    let ubo_texture = self.m_commands.m_ubo_buffers.iter_mut()
-      .find(|ubo| ubo.get_name() == Some("ubo_texture"))
-      .unwrap();
-    
-    let mut texture_depth = -1;
-    // If this sub primitive even contains any textures, otherwise don't push depth to ubo.
-    if !r_asset.m_sub_meshes.get(new_primitive.m_sub_primitive_index).unwrap().get_textures().is_empty() {
-      texture_depth = new_primitive.m_sub_primitive_index as i32;
-    }
-    
-    ubo_texture.push(EnumUboType::Texture(texture_depth, new_primitive.m_entity_offset + new_primitive.m_sub_primitive_index))?;
     
     // Push model transform.
     let ubo_model: &mut GlUbo = self.m_commands.m_ubo_buffers.iter_mut().find(|ubo| ubo.get_name() == Some("ubo_model"))
@@ -1137,28 +1121,32 @@ impl GlContext {
       EnumPrimitive::Mesh(material) => {
         // IDs.
         attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1), false,
-          0, 0)?);
+          EnumVertexMemberOffset::EntityIDOffset as usize, 0)?);
+        
+        // Texture info.
+        attributes.push(GlVertexAttribute::new(EnumAttributeType::Int(1), false,
+          EnumVertexMemberOffset::TextureInfoOffset as usize, 0)?);
         
         // Positions.
         attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3, false,
-          EnumVertexMemberOffset::AtPos as usize, 0)?);
+          EnumVertexMemberOffset::PositionOffset as usize, 0)?);
         
         // Normals.
         if material == EnumMaterial::Flat {
-          attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3, false,
-            EnumVertexMemberOffset::AtNormal as usize, 1)?);
+          attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1), false,
+            EnumVertexMemberOffset::NormalOffset as usize, 1)?);
         } else {
-          attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec3, false,
-            EnumVertexMemberOffset::AtNormal as usize, 0)?);
+          attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1), false,
+            EnumVertexMemberOffset::NormalOffset as usize, 0)?);
         }
         
         // Colors.
         attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1), false,
-          EnumVertexMemberOffset::AtColor as usize, 0)?);
+          EnumVertexMemberOffset::ColorOffset as usize, 0)?);
         
         // Texture coordinates.
-        attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec2, false,
-          EnumVertexMemberOffset::AtTexCoords as usize, 0)?);
+        attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1), false,
+          EnumVertexMemberOffset::TexCoordsOffset as usize, 0)?);
       }
       _ => todo!()
     };

@@ -22,6 +22,8 @@
  SOFTWARE.
 */
 
+pub mod texture_loader;
+
 use chrono::DateTime;
 
 pub mod macros {

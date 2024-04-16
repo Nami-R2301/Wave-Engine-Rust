@@ -24,15 +24,15 @@
 
 use std::fmt::{Display, Formatter};
 use std::mem::size_of;
-use std::ops::Index;
 
 use crate::{Engine, TraitFree};
 use crate::assets::asset_loader::AssetInfo;
-use crate::graphics::color::Color;
 use crate::graphics::renderer::{EnumRendererError, EnumRendererHint, EnumRendererOptimizationMode, EnumRendererRenderPrimitiveAs};
 use crate::graphics::shader::Shader;
-use crate::graphics::texture::{Texture, TextureLoader};
+use crate::graphics::color::Color;
+use crate::graphics::texture::Texture;
 use crate::math::{Mat4, Vec2, Vec3};
+use crate::utils::texture_loader::TextureLoader;
 use crate::utils::macros::logger::*;
 
 static mut S_ENTITY_ID_COUNTER: u32 = 0;
@@ -40,11 +40,12 @@ static mut S_ENTITY_ID_COUNTER: u32 = 0;
 #[repr(usize)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
 pub enum EnumVertexMemberOffset {
-  AtEntityID = 0,
-  AtPos = (EnumVertexMemberOffset::AtEntityID as usize) + size_of::<u32>(),
-  AtNormal = (EnumVertexMemberOffset::AtPos as usize) + (size_of::<f32>() * 3),
-  AtColor = (EnumVertexMemberOffset::AtNormal as usize) + (size_of::<f32>() * 3),
-  AtTexCoords = (EnumVertexMemberOffset::AtColor as usize) + size_of::<Color>(),
+  EntityIDOffset = 0,
+  TextureInfoOffset = (EnumVertexMemberOffset::EntityIDOffset as usize) + size_of::<u32>(),
+  PositionOffset = (EnumVertexMemberOffset::TextureInfoOffset as usize) + size_of::<i32>(),
+  NormalOffset = (EnumVertexMemberOffset::PositionOffset as usize) + (size_of::<f32>() * 3),
+  ColorOffset = (EnumVertexMemberOffset::NormalOffset as usize) + size_of::<u32>(),
+  TexCoordsOffset = (EnumVertexMemberOffset::ColorOffset as usize) + size_of::<Color>(),
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
@@ -98,22 +99,24 @@ pub trait TraitPrimitive {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct Vertex {
-  pub m_entity_id: u32,
   // ID to differentiate instances in shaders to apply different textures for example or different transformations.
+  pub m_entity_id: u32,
+  pub m_texture_info: i32,
   pub m_position: Vec3<f32>,
-  pub m_normal: Vec3<f32>,
+  pub m_normal: u32,
   pub m_color: Color,
-  pub m_texture_coords: Vec2<f32>,
+  pub m_texture_coords: u32,
 }
 
 impl Vertex {
   pub fn default() -> Self {
     return Self {
       m_entity_id: 0,
+      m_texture_info: -1,
       m_position: Vec3::default(),
-      m_normal: Vec3::new(&[0.0, 0.0, 1.0]),
+      m_normal: 0,
       m_color: Color::default(),
-      m_texture_coords: Vec2::default(),
+      m_texture_coords: 0,
     };
   }
   
@@ -127,8 +130,9 @@ impl Vertex {
   
   pub fn clear(&mut self) {
     self.m_position = Vec3::default();
-    self.m_normal = Vec3::default();
-    self.m_texture_coords = Vec2::default();
+    self.m_texture_info = -1;
+    self.m_normal = 0;
+    self.m_texture_coords = 0;
     self.m_color = Color::default();
   }
 }
@@ -243,23 +247,11 @@ impl Default for REntity {
   fn default() -> Self {
     let mut vertices: [Vertex; 36] = [Vertex {
       m_entity_id: 0,
-      m_position: Vec3 {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-      },
-      m_normal: Vec3 {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-      },
-      m_color: Color {
-        m_rgba: 0xFFFFFF,
-      },
-      m_texture_coords: Vec2 {
-        x: 0.0,
-        y: 0.0,
-      },
+      m_texture_info: 0,
+      m_position: Vec3::default(),
+      m_normal: 0,
+      m_color: Color::default(),
+      m_texture_coords: 0,
     }; 36];
     
     let positions =
@@ -268,7 +260,7 @@ impl Default for REntity {
         Vec3::new(&[0.5, 0.5, -0.5]), Vec3::new(&[0.5, 0.5, 0.5]),
         Vec3::new(&[-0.5, 0.5, 0.5]), Vec3::new(&[-0.5, 0.5, -0.5])];
     
-    let normals =
+    let normals: [Vec3<f32>; 7] =
       [Vec3::new(&[0.0, -1.0, 0.0]), Vec3::new(&[0.0, 1.0, 0.0]),
         Vec3::new(&[1.0, 0.0, 0.00001]), Vec3::new(&[0.0, 0.0, 1.0]),
         Vec3::new(&[-1.0, 0.0, 0.0]), Vec3::new(&[0.0, 0.0, -1.0]),
@@ -283,11 +275,39 @@ impl Default for REntity {
     }
     
     for index in 0..normals.len() {
-      vertices[index].m_normal = normals[index];
+      let x_sign = normals[index].x.is_sign_negative().then(|| 1)
+        .unwrap_or(0);
+      let y_sign = normals[index].y.is_sign_negative().then(|| 2)
+        .unwrap_or(0);
+      let z_sign = normals[index].z.is_sign_negative().then(|| 8)
+        .unwrap_or(0);
+      
+      let x_normal_f = normals[index].x.is_sign_negative().then(|| normals[index].x * -100.0)
+        .unwrap_or(normals[index].x * 100.0);
+      let y_normal_f = normals[index].y.is_sign_negative().then(|| normals[index].y * -100.0)
+        .unwrap_or(normals[index].y * 100.0);
+      let z_normal_f = normals[index].z.is_sign_negative().then(|| normals[index].z * -100.0)
+        .unwrap_or(normals[index].z * 100.0);
+      
+      let x_normal = (x_normal_f as u32) << 24;
+      let y_normal = (y_normal_f as u32) << 16;
+      let z_normal = (z_normal_f as u32) << 8;
+      
+      vertices[index].m_normal = x_normal + y_normal + x_sign + y_sign + z_sign + z_normal;
     }
     
     for index in 0..tex_coords.len() {
-      vertices[index].m_texture_coords = tex_coords[index];
+      let x_sign = (tex_coords[index].x >= 0.0).then(|| 0)
+        .unwrap_or(1) << 31;
+      let y_sign = (tex_coords[index].y >= 0.0).then(|| 0)
+        .unwrap_or(1) << 15;
+      
+      let x_tex_coord = ((tex_coords[index].x * 1000.0) as u32) << 29;
+      let y_tex_coord = ((tex_coords[index].y * 1000.0) as u32) << 14;
+      
+      vertices[index].m_texture_coords =
+        (x_sign + x_tex_coord) +
+          (y_sign + y_tex_coord);
     }
     
     let faces = [1, 0, 0,
@@ -355,9 +375,9 @@ impl REntity {
       
       if asset_info.m_is_indexed {
         for face in mesh.face_iter() {
-          indices.push(*face.index(0) + base_index as u32);
-          indices.push(*face.index(1) + base_index as u32);
-          indices.push(*face.index(2) + base_index as u32);
+          indices.push(face[0] + base_index as u32);
+          indices.push(face[1] + base_index as u32);
+          indices.push(face[2] + base_index as u32);
         }
         base_index += vertices.len();
       }
@@ -368,11 +388,37 @@ impl REntity {
       }
       
       for (position, normal) in mesh.normal_iter().enumerate() {
-        vertices[position].m_normal = Vec3::new(&[normal.x, normal.y, normal.z]);
+        let x_sign = normal.x.is_sign_negative().then(|| 1)
+          .unwrap_or(0);
+        let y_sign = normal.y.is_sign_negative().then(|| 2)
+          .unwrap_or(0);
+        let z_sign = normal.z.is_sign_negative().then(|| 8)
+          .unwrap_or(0);
+        
+        let x_normal_f = normal.x.is_sign_negative().then(|| normal.x * -100.0)
+          .unwrap_or(normal.x * 100.0);
+        let y_normal_f = normal.y.is_sign_negative().then(|| normal.y * -100.0)
+          .unwrap_or(normal.y * 100.0);
+        let z_normal_f = normal.z.is_sign_negative().then(|| normal.z * -100.0)
+          .unwrap_or(normal.z * 100.0);
+        
+        let x_normal = (x_normal_f as u32) << 24;
+        let y_normal = (y_normal_f as u32) << 16;
+        let z_normal = (z_normal_f as u32) << 8;
+        
+        vertices[position].m_normal = x_normal + y_normal + x_sign + y_sign + z_sign + z_normal;
       }
       
       for (position, texture_coord) in mesh.texture_coords_iter(0).enumerate() {
-        vertices[position].m_texture_coords = Vec2::new(&[texture_coord.x, texture_coord.y]);
+        let x_sign = texture_coord.x.is_sign_negative().then(|| 0x1)
+          .unwrap_or(0);
+        let y_sign = texture_coord.y.is_sign_negative().then(|| 0x10)
+          .unwrap_or(0);
+        
+        let x_tex_coord = ((texture_coord.x * 1000.0) as u32) << 20;
+        let y_tex_coord = ((texture_coord.y * 1000.0) as u32) << 4;
+        
+        vertices[position].m_texture_coords = (x_sign + x_tex_coord) + (y_sign + y_tex_coord);
       }
       
       unsafe { S_ENTITY_ID_COUNTER += 1 };
@@ -416,13 +462,7 @@ impl REntity {
       EnumPrimitive::Sprite | EnumPrimitive::Quad => {
         size_of::<u32>() + (size_of::<f32>() * 2) + size_of::<u32>() + (size_of::<f32>() * 2)
       }
-      EnumPrimitive::Mesh(_) => {
-        size_of::<u32>()                // Entity ID (uint)
-          + (size_of::<f32>() * 3)      // Position (Vec3<f32>)
-          + (size_of::<f32>() * 3)      // Normal (Vec3<f32>)
-          + size_of::<u32>()            // Color (uint)
-          + (size_of::<f32>() * 2)      // Vec2<f32
-      }
+      EnumPrimitive::Mesh(_) => size_of::<Vertex>()
     };
   }
   
