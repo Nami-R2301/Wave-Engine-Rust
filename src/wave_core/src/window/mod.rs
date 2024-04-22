@@ -51,7 +51,6 @@ pub enum EnumWindowState {
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum EnumWindowHint {
-  WindowApi(EnumRendererApi),
   WindowMode(EnumWindowMode),
   Resolution(u32, u32),
   Visible(bool),
@@ -71,6 +70,12 @@ pub enum EnumWindowMode {
   Windowed,
   Borderless,
   Fullscreen,
+}
+
+impl Default for EnumWindowMode {
+  fn default() -> Self {
+    return EnumWindowMode::Windowed;
+  }
 }
 
 impl Display for EnumWindowMode {
@@ -123,12 +128,12 @@ pub struct Window {
   pub(crate) m_api_window: Option<glfw::PWindow>,
   pub(crate) m_vsync: bool,
   pub(crate) m_refresh_count_desired: Option<u32>,
-  pub(crate) m_samples: Option<u32>,
+  pub(crate) m_samples: u32,
   pub(crate) m_window_resolution: Option<(u32, u32)>,
-  pub(crate) m_window_pos: Option<(i32, i32)>,
+  pub(crate) m_window_pos: (i32, i32),
   pub(crate) m_is_windowed: bool,
-  m_window_mode: Option<EnumWindowMode>,
-  m_render_api: Option<EnumRendererApi>,
+  m_window_mode: EnumWindowMode,
+  m_render_api: EnumRendererApi,
 }
 
 impl Default for Window {
@@ -166,12 +171,12 @@ impl Default for Window {
       m_api_window: None,
       m_vsync: true,
       m_refresh_count_desired: None,
-      m_samples: Some(4),
+      m_samples: 1,
       m_window_resolution: None,
-      m_window_pos: None,
+      m_window_pos: (0, 0),
       m_is_windowed: true,
-      m_window_mode: Some(EnumWindowMode::Fullscreen),  // Default to Fullscreen.
-      m_render_api: Some(EnumRendererApi::default()),
+      m_window_mode: EnumWindowMode::default(),  // Default to Fullscreen.
+      m_render_api: EnumRendererApi::default(),
       m_state: EnumWindowState::ContextReady,
     };
   }
@@ -181,7 +186,7 @@ impl TraitHint<EnumWindowHint> for Window {
   fn set_hint(&mut self, hint: EnumWindowHint) {
     match hint {
       EnumWindowHint::WindowMode(window_mode) => {
-        self.m_window_mode = Some(window_mode);
+        self.m_window_mode = window_mode;
         self.m_is_windowed = window_mode == EnumWindowMode::Windowed;
       }
       EnumWindowHint::Resolution(x_res, y_res) => {
@@ -191,29 +196,17 @@ impl TraitHint<EnumWindowHint> for Window {
         (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Visible(flag));
       }
       EnumWindowHint::Resizable(flag) => unsafe {
-        if self.m_window_mode == Some(EnumWindowMode::Borderless) {
+        if self.m_window_mode == EnumWindowMode::Borderless {
           (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Resizable(false));
           (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Decorated(false));
-        } else if self.m_window_mode == Some(EnumWindowMode::Fullscreen) {
+        } else if self.m_window_mode == EnumWindowMode::Fullscreen {
           (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Resizable(false));
         } else {
           (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Resizable(flag));
         }
       }
-      EnumWindowHint::WindowApi(api) => unsafe {
-        match api {
-          EnumRendererApi::OpenGL => {
-            // OpenGL hints.
-            (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::OpenGl));
-          }
-          EnumRendererApi::Vulkan => {
-            (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
-          }
-        }
-        self.m_render_api = Some(api);
-      }
       EnumWindowHint::Position(x_pos, y_pos) => {
-        self.m_window_pos = Some((x_pos as i32, y_pos as i32));
+        self.m_window_pos = (x_pos as i32, y_pos as i32);
       }
       EnumWindowHint::Focused(flag) => unsafe {
         (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Focused(flag));
@@ -229,7 +222,7 @@ impl TraitHint<EnumWindowHint> for Window {
       }
       EnumWindowHint::MSAA(sample_rate_desired) => unsafe {
         (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::Samples(sample_rate_desired));
-        self.m_samples = sample_rate_desired;
+        self.m_samples = sample_rate_desired.unwrap_or(1);
       }
       EnumWindowHint::DebugApi(flag) => unsafe {
         (*S_WINDOW_CONTEXT.as_mut().unwrap()).window_hint(glfw::WindowHint::OpenGlDebugContext(flag));
@@ -258,25 +251,17 @@ impl TraitHint<EnumWindowHint> for Window {
     context_ref.window_hint(glfw::WindowHint::Samples(Some(4)));
     
     self.m_vsync = true;
-    self.m_render_api = None;
+    self.m_render_api = EnumRendererApi::default();
     self.m_window_resolution = None;
-    self.m_window_mode = None;
+    self.m_window_mode = EnumWindowMode::default();
     self.m_refresh_count_desired = None;
-    self.m_window_pos = None;
+    self.m_window_pos = (0, 0);
     self.m_is_windowed = false;
   }
 }
 
 impl TraitApply<EnumWindowError> for Window {
   fn apply(&mut self) -> Result<(), EnumWindowError> {
-    if self.m_render_api.is_none() {
-      #[cfg(not(feature = "vulkan"))]
-      self.hint(EnumWindowHint::WindowApi(EnumRendererApi::OpenGL));
-      
-      #[cfg(feature = "vulkan")]
-      self.set_hint(EnumWindowHint::WindowApi(EnumRendererApi::Vulkan));
-    }
-    
     unsafe {
       (*S_WINDOW_CONTEXT.as_mut().unwrap()).with_primary_monitor(|_, monitor| -> Result<(), EnumWindowError> {
         let primary_monitor = monitor.expect("Cannot apply window context, cannot retrieve primary monitor!");
@@ -285,22 +270,11 @@ impl TraitApply<EnumWindowError> for Window {
         
         match (*S_WINDOW_CONTEXT.as_mut().unwrap()).create_window(vid_mode.width, vid_mode.height,
           "Wave Engine (Rust)",
-          self.m_window_mode.is_some().then(|| {
-            return match self.m_window_mode.unwrap() {
-              EnumWindowMode::Fullscreen => {
-                self.m_window_mode = Some(EnumWindowMode::Fullscreen);
-                glfw::WindowMode::FullScreen(&primary_monitor)
-              },
-              EnumWindowMode::Windowed => {
-                self.m_window_mode = Some(EnumWindowMode::Windowed);
-                glfw::WindowMode::Windowed
-              },
-              EnumWindowMode::Borderless => {
-                self.m_window_mode = Some(EnumWindowMode::Borderless);
-                glfw::WindowMode::Windowed
-              },
-            };
-          }).unwrap_or(glfw::WindowMode::Windowed)) {
+          match self.m_window_mode {
+            EnumWindowMode::Fullscreen => glfw::WindowMode::FullScreen(&primary_monitor),
+            EnumWindowMode::Windowed => glfw::WindowMode::Windowed,
+            EnumWindowMode::Borderless => glfw::WindowMode::Windowed
+          }) {
           None => {
             log!(EnumLogColor::Red, "ERROR", "[Window] -->\t Unable to create GLFW window");
             return Err(EnumWindowError::InitError);
@@ -317,18 +291,18 @@ impl TraitApply<EnumWindowError> for Window {
             window.set_aspect_ratio(bounds.0 as u32, bounds.1 as u32);
             
             self.m_state = EnumWindowState::Created;
-            self.m_window_pos = Some(window.get_pos());
-            self.m_is_windowed = self.m_window_mode != Some(EnumWindowMode::Fullscreen);
+            self.m_window_pos = window.get_pos();
+            self.m_is_windowed = self.m_window_mode != EnumWindowMode::Fullscreen;
             self.m_api_window = Some(window);
             self.m_api_window_events = Some(events);
             self.m_window_resolution = Some((bounds.0 as u32, bounds.1 as u32));
           }
         };
         return Ok(());
-      }).map_err(|err| return err)?;
+      }).map_err(|err| return err)?
     }
     // Toggle on fullscreen if requested.
-    if self.m_window_mode != Some(EnumWindowMode::Windowed) {
+    if self.m_window_mode != EnumWindowMode::Windowed {
       unsafe {
         (*S_WINDOW_CONTEXT.as_mut().unwrap()).with_primary_monitor(|_, monitor| {
           if monitor.is_none() {
@@ -339,16 +313,15 @@ impl TraitApply<EnumWindowError> for Window {
           let mode: glfw::VidMode = monitor.as_ref().unwrap().get_video_mode().unwrap();
           
           match self.m_window_mode {
-            Some(EnumWindowMode::Windowed) => {}
-            Some(EnumWindowMode::Borderless) => {
+            EnumWindowMode::Windowed => {}
+            EnumWindowMode::Borderless => {
               self.m_api_window.as_mut().unwrap().set_monitor(glfw::WindowMode::Windowed,
-                self.m_window_pos.unwrap().0, self.m_window_pos.unwrap().1, mode.width, mode.height, self.m_refresh_count_desired);
+                self.m_window_pos.0, self.m_window_pos.1, mode.width, mode.height, self.m_refresh_count_desired);
             }
-            Some(EnumWindowMode::Fullscreen) => {
+            EnumWindowMode::Fullscreen => {
               self.m_api_window.as_mut().unwrap().set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
-                self.m_window_pos.unwrap().0, self.m_window_pos.unwrap().1, mode.width, mode.height, Some(mode.refresh_rate));
+                self.m_window_pos.0, self.m_window_pos.1, mode.width, mode.height, Some(mode.refresh_rate));
             }
-            None => {}
           }
         });
       }
@@ -369,7 +342,7 @@ impl TraitFree<EnumWindowError> for Window {
 }
 
 impl<'a> Window {
-  pub fn new() -> Self {
+  pub fn new(context_api_chosen: EnumRendererApi) -> Self {
     let result = glfw::init(glfw::fail_on_errors);
     
     match result {
@@ -392,12 +365,12 @@ impl<'a> Window {
       m_api_window: None,
       m_vsync: true,
       m_refresh_count_desired: None,
-      m_samples: None,
+      m_samples: 1,
       m_window_resolution: None,
-      m_window_pos: None,
+      m_window_pos: (0, 0),
       m_is_windowed: true,
-      m_window_mode: None,
-      m_render_api: None,
+      m_window_mode: EnumWindowMode::default(),
+      m_render_api: context_api_chosen,
       m_state: EnumWindowState::ContextReady,
     };
   }
@@ -466,7 +439,7 @@ impl<'a> Window {
         };
       }
       EnumEvent::FramebufferEvent(width, height) => {
-        log!(EnumLogColor::Blue, "EVENT", "[Window] -->\t Framebuffer size: ({0}, {1})", width, height);
+        log!(EnumLogColor::Blue, "EVENT", "[Window] -->\t Framebuffer resized to: ({0}, {1})", width, height);
         unsafe {
           S_PREVIOUS_WIDTH = self.m_window_resolution.unwrap().0;
           S_PREVIOUS_HEIGHT = self.m_window_resolution.unwrap().1;
@@ -486,7 +459,7 @@ impl<'a> Window {
       }
       EnumEvent::WindowPosEvent(pos_x, pos_y) => {
         if self.m_is_windowed {
-          self.m_window_pos = Some((*pos_x, *pos_y));
+          self.m_window_pos = (*pos_x, *pos_y);
         }
         true
       }
@@ -721,7 +694,7 @@ impl<'a> Window {
   }
   
   pub fn refresh(&mut self) {
-    if self.m_render_api == Some(EnumRendererApi::OpenGL) {
+    if self.m_render_api == EnumRendererApi::OpenGL {
       self.m_api_window.as_mut().unwrap().swap_buffers();
     }
   }
@@ -779,20 +752,19 @@ impl<'a> Window {
         if !self.m_is_windowed {
           self.m_api_window.as_mut().unwrap().set_resizable(true);
           
-          if self.m_window_mode == Some(EnumWindowMode::Borderless) {
+          if self.m_window_mode == EnumWindowMode::Borderless {
             self.m_api_window.as_mut().unwrap().set_decorated(true);
             self.m_api_window.as_mut().unwrap().set_size(S_PREVIOUS_WIDTH as i32, S_PREVIOUS_HEIGHT as i32);
           } else {
             self.m_api_window.as_mut().unwrap().set_decorated(true);
             self.m_api_window.as_mut().unwrap().set_resizable(true);
             self.m_api_window.as_mut().unwrap().set_monitor(glfw::WindowMode::Windowed,
-              self.m_window_pos.unwrap().0, self.m_window_pos.unwrap().1,
-              S_PREVIOUS_WIDTH, S_PREVIOUS_HEIGHT, None);
+              self.m_window_pos.0, self.m_window_pos.1, S_PREVIOUS_WIDTH, S_PREVIOUS_HEIGHT, None);
           }
           log!(EnumLogColor::Blue, "EVENT", "[Window] -->\t Window mode : Windowed");
         } else {
           match self.m_window_mode {
-            Some(EnumWindowMode::Borderless) => {
+            EnumWindowMode::Borderless => {
               self.m_api_window.as_mut().unwrap().set_decorated(false);
               self.m_api_window.as_mut().unwrap().set_size(mode.width as i32, mode.height as i32);
               log!(EnumLogColor::Blue, "EVENT", "[Window] -->\t Window mode : Borderless");
@@ -800,7 +772,7 @@ impl<'a> Window {
             _ => {
               self.m_api_window.as_mut().unwrap().set_resizable(false);
               self.m_api_window.as_mut().unwrap().set_monitor(glfw::WindowMode::FullScreen(monitor.unwrap()),
-                self.m_window_pos.unwrap().0, self.m_window_pos.unwrap().1, mode.width, mode.height,
+                self.m_window_pos.0, self.m_window_pos.1, mode.width, mode.height,
                 Some(mode.refresh_rate));
               log!(EnumLogColor::Blue, "EVENT", "[Window] -->\t Window mode : Fullscreen");
             }
@@ -812,7 +784,7 @@ impl<'a> Window {
   }
   
   pub fn get_framebuffer_size(&mut self) -> (u32, u32) {
-    if self.m_window_mode != Some(EnumWindowMode::Windowed) {
+    if self.m_window_mode != EnumWindowMode::Windowed {
       return self.m_api_window.as_mut().unwrap().glfw.with_primary_monitor(|_, primary_monitor| {
         let mode: glfw::VidMode = primary_monitor.as_ref().unwrap().get_video_mode().unwrap();
         return (mode.width, mode.height);

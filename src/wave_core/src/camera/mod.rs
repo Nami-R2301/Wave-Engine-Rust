@@ -22,8 +22,11 @@
  SOFTWARE.
 */
 
+use crate::{Engine, EnumEngineError, input};
+use crate::events::EnumEvent;
 use crate::math::Mat4;
 use crate::math::Vec3;
+use crate::utils::macros::logger::*;
 
 pub enum EnumError {
   InvalidDimensions,
@@ -40,9 +43,10 @@ pub trait TraitCamera {
   fn get_view_matrix(&self) -> Mat4;
   fn has_changed(&self) -> bool;
   fn set_up_vector(&mut self, to_this: Vec3<f32>);
-  fn translate(&mut self, by: Vec3<f32>);
-  fn rotate(&mut self, by: Vec3<f32>);
-  fn scale(&mut self, by: Vec3<f32>);
+  fn translate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32);
+  fn rotate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32);
+  fn scale(&mut self, amount_x: f32, amount_y: f32, amount_z: f32);
+  fn on_event(&mut self, event: &EnumEvent) -> Result<bool, EnumEngineError>;
   fn on_update(&mut self, time_step: f64);
   fn to_string(&self) -> String;
 }
@@ -87,6 +91,7 @@ impl Camera {
   pub fn get_view_matrix(&self) -> Mat4 {
     return self.m_api.get_view_matrix();
   }
+  pub fn on_event(&mut self, event: &EnumEvent) -> Result<bool, EnumEngineError> { return self.m_api.on_event(event); }
   pub fn on_update(&mut self, time_step: f64) {
     return self.m_api.on_update(time_step);
   }
@@ -96,14 +101,17 @@ impl Camera {
   pub fn set_up_vector(&mut self, to_this: Vec3<f32>) {
     return self.m_api.set_up_vector(to_this);
   }
+  
   pub fn translate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
-    return self.m_api.translate(Vec3::new(&[amount_x, amount_y, -amount_z]));
+    return self.m_api.translate(amount_x, amount_y, -amount_z);
   }
+  
   pub fn rotate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
-    return self.m_api.rotate(Vec3::new(&[amount_y, amount_x, -amount_z]));
+    return self.m_api.rotate(amount_y, amount_x, -amount_z);
   }
+  
   pub fn scale(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
-    return self.m_api.scale(Vec3::new(&[amount_x, amount_y, amount_z]));
+    return self.m_api.scale(amount_x, amount_y, amount_z);
   }
 }
 
@@ -141,17 +149,21 @@ impl TraitCamera for OrthographicCamera {
   }
   
   #[allow(unused)]
-  fn translate(&mut self, by: Vec3<f32>) {
+  fn translate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
     todo!()
   }
   
   #[allow(unused)]
-  fn rotate(&mut self, by: Vec3<f32>) {
+  fn rotate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
     todo!()
   }
   
   #[allow(unused)]
-  fn scale(&mut self, by: Vec3<f32>) {
+  fn scale(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
+    todo!()
+  }
+  
+  fn on_event(&mut self, _event: &EnumEvent) -> Result<bool, EnumEngineError> {
     todo!()
   }
   
@@ -233,30 +245,58 @@ impl TraitCamera for PerspectiveCamera {
     self.m_up_vector = to_this;
   }
   
-  fn translate(&mut self, by: Vec3<f32>) {
-    self.m_transforms[0] += by;
+  fn translate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
+    // Inverse z.
+    self.m_transforms[0] += Vec3::new(&[amount_x, amount_y, -amount_z]);
     self.m_has_changed = true;
   }
   
-  fn rotate(&mut self, by: Vec3<f32>) {
-    let mut copy = Vec3::default();
-    
+  fn rotate(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
     // Inverse x and y to correspond to the right orientation.
-    copy.x = by.y;
-    copy.y = by.x;
-    copy.z = -by.z;
+    self.m_transforms[1] += Vec3::new(&[amount_y, amount_x, -amount_z]);
+    self.m_has_changed = true;
+  }
+  
+  fn scale(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
+    // Inverse z.
+    self.m_transforms[2] += Vec3::new(&[amount_x, amount_y, amount_z]);
+    self.m_has_changed = true;
+  }
+  
+  fn on_event(&mut self, event: &EnumEvent) -> Result<bool, EnumEngineError> {
+    return match event {
+      EnumEvent::FramebufferEvent(new_size_x, new_size_y) => {
+        self.m_has_changed = true;
+        if *new_size_x != 0 && *new_size_y != 0 {
+          log!(EnumLogColor::Blue, "EVENT", "[Camera] -->\t Framebuffer change detected, updating aspect ratio...");
+          self.m_aspect_ratio = *new_size_x as f32 / *new_size_y as f32;
+        }
+        Ok(true)
+      }
+      // EnumEvent::KeyEvent(_, _, _, _) => todo!(),
+      // EnumEvent::MouseBtnEvent(_, _, _) => todo!(),
+      // EnumEvent::MouseScrollEvent(_, _) => todo!(),
+      _ => Ok(false)
+    }
+  }
+  
+  fn on_update(&mut self, time_step: f64) {
+    if Engine::is_key(input::EnumKey::W, input::EnumAction::Held) {
+      self.translate(0.0, 0.0, -10.0 * time_step as f32);
+    }
+    if Engine::is_key(input::EnumKey::A, input::EnumAction::Held) {
+      self.translate(-10.0 * time_step as f32, 0.0, 0.0);
+    }
+    if Engine::is_key(input::EnumKey::S, input::EnumAction::Held) {
+      self.translate(0.0, 0.0, 10.0 * time_step as f32);
+    }
+    if Engine::is_key(input::EnumKey::D, input::EnumAction::Held) {
+      self.translate(10.0 * time_step as f32, 0.0, 0.0);
+    }
     
-    self.m_transforms[1] += by;
-    self.m_has_changed = true;
-  }
-  
-  fn scale(&mut self, by: Vec3<f32>) {
-    self.m_transforms[2] += by;
-    self.m_has_changed = true;
-  }
-  
-  fn on_update(&mut self, _time_step: f64) {
     if self.m_has_changed {
+      let renderer = Engine::get_active_renderer();
+      renderer.update_ubo_camera(self.get_view_matrix(), self.get_projection_matrix()).expect("Error while updating ubo camera!");
       self.m_has_changed = false;  // Reset state.
     }
   }
@@ -275,7 +315,7 @@ impl PerspectiveCamera {
       m_z_far: 0.0,
       m_up_vector: Vec3::new(&[0.0, 1.0, 0.0]),  // Default to Y-coordinate.
       m_transforms: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
-      m_has_changed: false,
+      m_has_changed: true,
     };
   }
   
@@ -287,7 +327,7 @@ impl PerspectiveCamera {
       m_z_far: z_far,
       m_up_vector: Vec3::new(&[0.0, 1.0, 0.0]),  // Default to Y-coordinate.
       m_transforms: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
-      m_has_changed: false,
+      m_has_changed: true,
     };
   }
   

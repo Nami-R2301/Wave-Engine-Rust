@@ -24,15 +24,17 @@
 
 
 use gl::types::{GLint, GLsizei};
+use num::Integer;
 use stb_image::image::Image;
 use crate::check_gl_call;
 use crate::graphics::open_gl::renderer::EnumOpenGLError;
-use crate::graphics::texture::{EnumTextureDataAlignment, EnumTextureFormat, EnumTextureTarget, EnumTexture, TraitTexture};
+use crate::graphics::texture::{EnumTextureDataAlignment, EnumTextureFormat, EnumTextureTarget, EnumTextureInfo, TraitTexture};
 use crate::utils::macros::logger::*;
 #[cfg(feature = "debug")]
 use crate::Engine;
 use crate::{S_ENGINE};
 use crate::graphics::renderer::EnumRendererError;
+use crate::utils::texture_loader::TextureInfo;
 
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -96,9 +98,8 @@ enum EnumGlTextureInternalFormat {
 
 pub(crate) struct GlTexture<T> {
   m_id: u32,
-  #[cfg(feature = "debug")]
-  m_type_debug: EnumTexture,
-  m_data: Image<T>,
+  m_slot: u16,
+  m_texture: TextureInfo<T>,
   m_level: u32,
   m_ms: Option<u32>,
   m_format: u32,
@@ -111,39 +112,41 @@ impl<T> Default for GlTexture<T> {
   fn default() -> Self {
     return Self {
       m_id: 0,
-      #[cfg(feature = "debug")]
-      m_type_debug: EnumTexture::Texture2D(EnumTextureTarget::default(), 0, EnumTextureFormat::default(), 0, 0,
-        EnumTextureDataAlignment::default()),
-      m_data: Image {
-        width: 0,
-        height: 0,
-        depth: 0,
-        data: vec![],
+      m_slot: 7,
+      m_texture: TextureInfo {
+        m_type: Default::default(),
+        m_data: Image {
+          width: 0,
+          height: 0,
+          depth: 0,
+          data: vec![],
+        },
       },
       m_level: 0,
       m_ms: None,
       m_format: gl::RGBA,
-      m_internal_target: gl::TEXTURE_2D,
+      m_internal_target: gl::TEXTURE_2D_ARRAY,
       m_internal_type: gl::UNSIGNED_BYTE,
-      m_internal_format: 0x83f2,
+      m_internal_format: gl::RGBA8,
     };
   }
 }
 
 impl<T> GlTexture<T> {
-  pub(crate) fn new(texture_type: EnumTexture, data: Image<T>) -> Self {
-    let (target, sample_count) = Self::convert_target_to_internal_target(texture_type.get_target());
-    let (format, internal_format) = Self::convert_format_to_internal_format(texture_type.get_format());
+  pub(crate) fn new(texture_info: TextureInfo<T>) -> Self {
+    let (target, sample_count) = Self::convert_target_to_internal_target(texture_info.m_type.get_target());
+    let (format, internal_format) = Self::convert_format_to_internal_format(texture_info.m_type.get_format());
+    
+    let texture_slot: u16 = texture_info.m_type.get_slot();
     
     return Self {
       m_id: 0,
-      m_level: texture_type.get_mipmap_level(),
+      m_slot: texture_slot,
+      m_level: texture_info.m_type.get_mipmap_level(),
       m_internal_target: target,
       m_internal_format: internal_format,
-      m_internal_type: Self::convert_type_to_internal_type(texture_type.get_data_type()),
-      #[cfg(feature = "debug")]
-      m_type_debug: texture_type,
-      m_data: data,
+      m_internal_type: Self::convert_type_to_internal_type(texture_info.m_type.get_data_type()),
+      m_texture: texture_info,
       m_ms: sample_count,
       m_format: format,
     };
@@ -208,70 +211,95 @@ impl<T> GlTexture<T> {
 }
 
 impl<T> TraitTexture for GlTexture<T> {
+  fn get_depth(&self) -> u16 {
+    return self.m_texture.m_type.get_depth();
+  }
+  
+  fn get_size(&self) -> (usize, usize) {
+    return (self.m_texture.m_data.width, self.m_texture.m_data.height);
+  }
+  
+  fn set_depth(&mut self, depth: u16) {
+    self.m_texture.m_data.depth = depth as usize;
+  }
+  
   fn convert_to(&mut self, _format: EnumTextureFormat) -> Result<(), EnumRendererError> {
     todo!()
   }
   
   fn apply(&mut self) -> Result<(), EnumRendererError> {
     #[cfg(feature = "debug")]
-    log!(EnumLogColor::Blue, "DEBUG", "[GlTexture] -->\t Storing texture {0}", self.m_type_debug);
+    log!(EnumLogColor::Blue, "DEBUG", "[GlTexture] -->\t Storing {0}", self.m_texture.m_type);
     
     check_gl_call!("GlTexture", gl::GenTextures(1, &mut self.m_id));
+    check_gl_call!("GlTexture", gl::ActiveTexture(gl::TEXTURE0 + self.m_slot as u32));
     check_gl_call!("GlTexture", gl::BindTexture(self.m_internal_target, self.m_id));
     
     match self.m_internal_target {
-      gl::TEXTURE_2D_MULTISAMPLE => {
+      gl::TEXTURE_2D_MULTISAMPLE | gl::TEXTURE_2D_MULTISAMPLE_ARRAY => {
         check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint));
         check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint));
         
-        check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as GLint));
-        check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as GLint));
-      }
-      gl::TEXTURE_2D_MULTISAMPLE_ARRAY => {
-        check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D_MULTISAMPLE, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint));
-        check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D_MULTISAMPLE, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint));
-        
-        check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D_MULTISAMPLE, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as GLint));
-        check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D_MULTISAMPLE, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as GLint));
+        check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_BORDER as GLint));
+        check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_BORDER as GLint));
+        check_gl_call!("GlTexture", gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_BORDER as GLint));
       }
       _ => {
         check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint));
-        check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint));
+        check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_MIN_FILTER,
+          gl::LINEAR_MIPMAP_NEAREST as GLint));
         
-        check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as GLint));
-        check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as GLint));
+        check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_WRAP_S, gl::REPEAT as GLint));
+        check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_WRAP_T, gl::REPEAT as GLint));
+        check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_WRAP_R, gl::REPEAT as GLint));
       }
     }
     
-    
-    // Make alignment work for odd color channels or odd dimensions.
-    check_gl_call!("GlTexture", gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1));
-    check_gl_call!("GlTexture", gl::PixelStorei(gl::UNPACK_ROW_LENGTH, 0));
-    check_gl_call!("GlTexture", gl::PixelStorei(gl::UNPACK_SKIP_PIXELS, 0));
-    check_gl_call!("GlTexture", gl::PixelStorei(gl::UNPACK_SKIP_ROWS, 0));
+    if self.m_texture.m_data.depth.is_odd() {
+      // Make alignment work for odd color channels or odd dimensions.
+      check_gl_call!("GlTexture", gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1));
+    }
     
     match self.m_internal_target {
       gl::TEXTURE_2D | gl::TEXTURE_CUBE_MAP | gl::TEXTURE_RECTANGLE | gl::TEXTURE_1D_ARRAY | gl::TEXTURE_2D_MULTISAMPLE => {
         // Check if texture is multi-sampled.
         if self.m_ms.is_some() && self.m_ms.unwrap() > 1 {
           check_gl_call!("GlTexture", gl::TexImage2DMultisample(self.m_internal_target, self.m_ms.unwrap() as GLsizei,
-            self.m_internal_format, self.m_data.width as GLsizei, self.m_data.height as GLsizei, 0));
+            self.m_internal_format, self.m_texture.m_data.width as GLsizei, self.m_texture.m_data.height as GLsizei, 0));
         }
         
         check_gl_call!("GlTexture", gl::TexImage2D(self.m_internal_target, self.m_level as GLint, self.m_internal_format as GLint,
-        self.m_data.width as GLsizei, self.m_data.height as GLsizei, 0, self.m_format, self.m_internal_type,
-          self.m_data.data.as_ptr() as *const _));
+        self.m_texture.m_data.width as GLsizei, self.m_texture.m_data.height as GLsizei, 0, self.m_format, self.m_internal_type,
+          self.m_texture.m_data.data.as_ptr() as *const _));
       }
       gl::TEXTURE_2D_ARRAY | gl::TEXTURE_3D | gl::TEXTURE_2D_MULTISAMPLE_ARRAY => {
         // Check if texture is multi-sampled.
         if self.m_ms.is_some() && self.m_ms.unwrap() > 1 {
           check_gl_call!("GlTexture", gl::TexImage3DMultisample(self.m_internal_target, self.m_ms.unwrap() as GLsizei,
-            self.m_internal_format, self.m_data.width as GLsizei, self.m_data.height as GLsizei, self.m_data.depth as GLsizei, 0));
+            self.m_internal_format, self.m_texture.m_data.width as GLsizei, self.m_texture.m_data.height as GLsizei,
+            self.m_texture.m_type.get_depth() as GLsizei, 0));
         }
         
-        check_gl_call!("GlTexture", gl::TexImage3D(self.m_internal_target, self.m_level as GLint, self.m_internal_format as GLint,
-        self.m_data.width as GLsizei, self.m_data.height as GLsizei, self.m_data.depth as GLsizei, 0, self.m_format,
-          self.m_internal_type, self.m_data.data.as_ptr() as *const _));
+        match &self.m_texture.m_type {
+          EnumTextureInfo::Texture3D(_, _, _, _, _, depth, _, _) => {
+            check_gl_call!("GlTexture", gl::TexImage3D(self.m_internal_target, self.m_level as GLint, self.m_internal_format as GLint,
+        self.m_texture.m_data.width as GLsizei, self.m_texture.m_data.height as GLsizei, *depth as GLsizei, 0, self.m_format,
+          self.m_internal_type, self.m_texture.m_data.data.as_ptr() as *const _));
+          }
+          EnumTextureInfo::TextureArray(vec) => {
+            check_gl_call!("GlTexture", gl::TexImage3D(self.m_internal_target, self.m_level as GLint, self.m_internal_format as GLint,
+              self.m_texture.m_data.width as GLsizei, self.m_texture.m_data.height as GLsizei,
+              (vec.last().unwrap().0.get_depth() + 1) as GLsizei, 0, self.m_format, self.m_internal_type, std::ptr::null() as *const _));
+            
+            for texture in vec {
+              check_gl_call!("GlTexture", gl::TexSubImage3D(self.m_internal_target, self.m_level as GLint, 0, 0,
+                texture.0.get_depth() as GLint, self.m_texture.m_data.width as GLsizei, self.m_texture.m_data.height as GLsizei,
+                1 as GLsizei, self.m_format, self.m_internal_type, texture.1.clone().as_ptr() as *const _));
+            }
+          }
+          _ => {}
+        }
+        check_gl_call!("GlTexture", gl::GenerateMipmap(self.m_internal_target));
       }
       _ => todo!()
     }
@@ -284,13 +312,23 @@ impl<T> TraitTexture for GlTexture<T> {
     
     match self.m_internal_target {
       gl::TEXTURE_2D | gl::TEXTURE_2D_MULTISAMPLE | gl::TEXTURE_CUBE_MAP | gl::TEXTURE_RECTANGLE | gl::TEXTURE_1D_ARRAY => {
-        check_gl_call!("GlTexture", gl::TexSubImage2D(self.m_internal_target, self.m_level as GLint, 0, 0, self.m_data.width as GLsizei,
-          self.m_data.height as GLsizei, self.m_format, self.m_internal_type, std::ptr::null() as *const _));
+        check_gl_call!("GlTexture", gl::TexSubImage2D(self.m_internal_target, self.m_level as GLint, 0, 0, self.m_texture.m_data.width as GLsizei,
+          self.m_texture.m_data.height as GLsizei, self.m_format, self.m_internal_type, std::ptr::null() as *const _));
       }
       gl::TEXTURE_2D_ARRAY | gl::TEXTURE_3D => {
-        check_gl_call!("GlTexture", gl::TexSubImage3D(self.m_internal_target, self.m_level as GLint, 0, 0, 0,
-        self.m_data.width as GLsizei, self.m_data.height as GLsizei, self.m_data.depth as GLsizei, self.m_format,
+        match &self.m_texture.m_type {
+          EnumTextureInfo::Texture3D(_, _, _, _, _, depth, _, _) => {
+            check_gl_call!("GlTexture", gl::TexImage3D(self.m_internal_target, self.m_level as GLint, self.m_internal_format as GLint,
+        self.m_texture.m_data.width as GLsizei, self.m_texture.m_data.height as GLsizei, *depth as GLsizei, 0, self.m_format,
           self.m_internal_type, std::ptr::null() as *const _));
+          }
+          EnumTextureInfo::TextureArray(vec) => {
+            check_gl_call!("GlTexture", gl::TexImage3D(self.m_internal_target, self.m_level as GLint, self.m_internal_format as GLint,
+              self.m_texture.m_data.width as GLsizei, self.m_texture.m_data.height as GLsizei,
+              (vec.last().unwrap().0.get_depth() + 1) as GLsizei, 0, self.m_format, self.m_internal_type, std::ptr::null() as *const _));
+          }
+          _ => {}
+        }
       }
       _ => todo!()
     }
@@ -298,8 +336,10 @@ impl<T> TraitTexture for GlTexture<T> {
   }
   
   fn free(&mut self) -> Result<(), EnumRendererError> {
-    check_gl_call!("GlTexture", gl::BindTexture(self.m_internal_target, 0));
-    check_gl_call!("GlTexture", gl::DeleteTextures(1, &mut self.m_id));
+    if gl::BindTexture::is_loaded() {
+      check_gl_call!("GlTexture", gl::BindTexture(self.m_internal_target, 0));
+      check_gl_call!("GlTexture", gl::DeleteTextures(1, &mut self.m_id));
+    }
     return Ok(());
   }
 }

@@ -87,21 +87,13 @@ pub struct VkShader {
 
 #[cfg(feature = "vulkan")]
 impl TraitShader for VkShader {
-  fn default() -> Self where Self: Sized {
-    return Self {
-      m_id: 0,
-      m_shader_stages: Vec::with_capacity(3),
-      m_vk_shader_modules: Vec::with_capacity(3),
-    };
-  }
-  
-  fn new(shader_stages: Vec<ShaderStage>) -> Result<Self, shader::EnumShaderError> where Self: Sized {
+  fn new(shader_stages: Vec<ShaderStage>) -> Self {
     let shader_stages_len = shader_stages.len();
-    return Ok(VkShader {
+    return VkShader {
       m_id: 0,
       m_shader_stages: shader_stages,
       m_vk_shader_modules: Vec::with_capacity(shader_stages_len),
-    });
+    };
   }
   
   fn from(_other_shader: Self) -> Self where Self: Sized {

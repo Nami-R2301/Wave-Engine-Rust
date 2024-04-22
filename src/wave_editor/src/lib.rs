@@ -29,21 +29,22 @@ use std::collections::HashMap;
 use wave_core::{camera, Engine, EnumEngineError, input, layers, TraitApply, TraitFree, TraitHint};
 use wave_core::assets::asset_loader::{AssetLoader, EnumAssetHint, EnumAssetPrimitiveMode};
 use wave_core::assets::r_assets;
-use wave_core::assets::r_assets::EnumSubPrimitivePortion;
+use wave_core::assets::r_assets::{EnumPrimitiveMapMethod, EnumSubPrimitivePortion};
 #[allow(unused)]
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
-use wave_core::graphics::renderer::{Renderer, EnumRendererRenderPrimitiveAs, EnumRendererHint, EnumRendererOptimizationMode};
+use wave_core::graphics::renderer::{Renderer, EnumRendererRenderPrimitiveAs, EnumRendererHint, EnumRendererOptimizationMode, EnumRendererApi, EnumRendererCallCheckingMode};
 use wave_core::graphics::{shader};
 use wave_core::graphics::shader::EnumShaderHint;
-use wave_core::utils::texture_loader::TextureLoader;
+use wave_core::graphics::texture::{Texture, TextureArray};
+use wave_core::utils::texture_loader::{TextureLoader};
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 #[allow(unused)]
 use wave_core::layers::imgui_layer::ImguiLayer;
 #[allow(unused)]
 use wave_core::ui::ui_imgui::Imgui;
 use wave_core::utils::macros::logger::*;
-use wave_core::window::{EnumWindowHint, EnumWindowMode, Window};
+use wave_core::window::{EnumWindowHint, Window};
 
 static mut S_EDITOR: Option<*mut Editor> = None;
 
@@ -119,6 +120,7 @@ pub struct Editor {
   m_engine: Engine,
   m_r_assets: HashMap<&'static str, (shader::Shader, Vec<r_assets::REntity>)>,
   m_cameras: Vec<camera::Camera>,
+  m_textures: Vec<Texture>,
 }
 
 impl Default for Editor {
@@ -126,19 +128,20 @@ impl Default for Editor {
     let mut window = Window::default();  // Apply default window hints.
     let mut renderer = Renderer::default();  // Apply default renderer hints.
     
-    window.set_hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));  // Force window to start in windowed mode.
     // window.set_hint(EnumWindowHint::WindowApi(EnumRendererApi::Vulkan));  // Select Vulkan client api.
-    window.set_hint(EnumWindowHint::MSAA(None));  // Force MSAA to be off.
+    window.set_hint(EnumWindowHint::MSAA(Some(4)));  // Enable MSAA.
     
-    // Force each sub primitive to be drawn separately.
+    // Enable all optimizations.
+    renderer.set_hint(EnumRendererHint::ApiCallChecking(EnumRendererCallCheckingMode::SyncAndAsync));
     renderer.set_hint(EnumRendererHint::Optimization(EnumRendererOptimizationMode::All));
+    renderer.set_hint(EnumRendererHint::MSAA(Some(4)));  // Enable MSAA.
     // renderer.set_hint(EnumRendererHint::ContextApi(EnumRendererApi::Vulkan));  // Select Vulkan context api.
-    renderer.set_hint(EnumRendererHint::MSAA(None));  // Force MSAA to be off.
     
     return Editor {
       m_engine: Engine::new(window, renderer, vec![]),
       m_r_assets: HashMap::with_capacity(5),
-      m_cameras: Vec::new(),
+      m_cameras: Vec::with_capacity(1),
+      m_textures: Vec::with_capacity(5),
     };
   }
 }
@@ -147,8 +150,9 @@ impl Editor {
   pub fn new(window: Window, renderer: Renderer, app_layers: Vec<Layer>) -> Self {
     return Editor {
       m_engine: Engine::new(window, renderer, app_layers),
-      m_r_assets: HashMap::with_capacity(5),
+      m_r_assets: HashMap::new(),
       m_cameras: Vec::new(),
+      m_textures: Vec::new(),
     };
   }
   
@@ -156,7 +160,7 @@ impl Editor {
     let mut editor_layer = Layer::new("Editor Layer", EditorLayer::new(self));
     
     // Making editor poll input events during async call.
-    editor_layer.enable_async_polling_for(EnumEventMask::Input | EnumEventMask::WindowClose);
+    editor_layer.enable_async_polling_for(EnumEventMask::Input | EnumEventMask::WindowClose | EnumEventMask::WindowSize);
     // Make editor synchronously poll on each frame interval (after async), for movement and spontaneous event handling.
     editor_layer.enable_sync_polling();
     editor_layer.set_sync_interval(EnumSyncInterval::EveryFrame)?;
@@ -180,53 +184,66 @@ impl TraitLayer for Editor {
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
-    let vertex_shader = shader::ShaderStage::default_for(shader::EnumShaderStageType::Vertex);
-    let fragment_shader = shader::ShaderStage::default_for(shader::EnumShaderStageType::Fragment);
-    let geometry_shader = shader::ShaderStage::default_for(shader::EnumShaderStageType::Geometry);
-    
-    let mut shader = shader::Shader::default();  // Apply default shader hints.
-    shader.set_hint(EnumShaderHint::GlslVersion(420));
+    let mut shader = shader::Shader::default();  // Get default smooth shader with 3 stages (vertex, geometry, and fragment).
+    shader.set_hint(EnumShaderHint::ForceGlslVersion(420));
     // shader.set_hint(EnumShaderHint::Api(EnumRendererApi::Vulkan));
     
-    shader.push_stage(vertex_shader)?;
-    shader.push_stage(geometry_shader)?;
-    shader.push_stage(fragment_shader)?;
-    
-    shader.apply()?;  // Source and compile the shader program.
+    // Source and compile the shader program.
+    shader.apply()?;
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
+    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending textures to GPU...");
+    
+    let texture_preset = TextureLoader::new();
+    // texture_preset.set_hint(EnumTextureLoaderHint::FlipPixels(true));
+    
+    // Load all textures in folders.
+    let mario_textures_info = texture_preset.load_from_folder("res/textures/mario")?;
+    let n64_logo_textures_info = texture_preset.load_from_folder("res/textures/n64_logo")?;
+    
+    // Batch all textures from assets that share the same shader to fit them in an appropriate 'texture array bucket' in the shader
+    let mario_texture_array = TextureArray::new(EnumRendererApi::OpenGL, mario_textures_info);
+    let n64_logo_texture_array = TextureArray::new(EnumRendererApi::OpenGL, n64_logo_textures_info);
+    
+    let mut mario_texture = mario_texture_array.as_texture();  // Get texture.
+    let mut n64_logo_texture = n64_logo_texture_array.as_texture();  // Get texture.
+    
+    mario_texture.apply()?;
+    n64_logo_texture.apply()?;
+    
+    self.m_textures.push(mario_texture);
+    self.m_textures.push(n64_logo_texture);
+    
+    log!(EnumLogColor::Green, "INFO", "[App] -->\t Textures sent to GPU...");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
     
-    let asset_loader = AssetLoader::default(); // Apply default asset loader hints.
+    let asset_loader = AssetLoader::new();
     // asset_loader.set_hint(EnumAssetHint::VertexDataIs(EnumAssetPrimitiveMode::Plain));
     
-    let texture_preset = TextureLoader::default();
+    let awp_asset = asset_loader.load("res/assets/awp/awp.obj")?;
+    let mario_asset = asset_loader.load("res/assets/mario/mario.obj")?;
+    let logo_asset = asset_loader.load("res/assets/n64_logo/n64_logo.obj")?;
     
-    let awp_asset = asset_loader.load("awp/awp.obj")?;
-    let mario_asset = asset_loader.load("mario/mario.obj")?;
-    let logo_asset = asset_loader.load("n64_logo/n64_logo.obj")?;
-    
-    let mut awp = r_assets::REntity::new(awp_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth),
-      "Awp Sniper");
+    let mut awp = r_assets::REntity::new(awp_asset, r_assets::EnumPrimitive::default(), "Awp Sniper");
     
     awp.translate(10.0, -10.0, 50.0);
     awp.rotate(90.0, -90.0, 0.0);
     awp.apply(&mut shader)?;  // Bake and send the asset.
     awp.show(EnumSubPrimitivePortion::Everything);
     
-    let mut mario = r_assets::REntity::new(mario_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth),
-      "Mario");
+    let mut mario = r_assets::REntity::new(mario_asset, r_assets::EnumPrimitive::default(), "Mario");
     
+    // Map all textures in folder to sub primitives in 1-1 ratio in order.
+    mario.map_texture_array(&mario_texture_array, EnumPrimitiveMapMethod::OnePerSubPrimitive);
     mario.translate(-5.0, -5.0, 15.0);
-    mario.add_textures_from("res/textures/mario", &texture_preset)?;  // Add all textures in folder.
     mario.apply(&mut shader)?;  // Bake and send the asset.
     mario.show(EnumSubPrimitivePortion::Everything);
     
-    let mut logo = r_assets::REntity::new(logo_asset, r_assets::EnumPrimitive::Mesh(r_assets::EnumMaterial::Smooth),
-      "N64 Logo");
+    let mut logo = r_assets::REntity::new(logo_asset, r_assets::EnumPrimitive::default(), "N64 Logo");
     
+    // Map all textures in folder to sub primitives in a randomized fashion.
+    logo.map_texture_array(&n64_logo_texture_array, EnumPrimitiveMapMethod::OnePerSubPrimitive);
     logo.translate(3.0, 0.0, 7.0);
-    logo.add_textures_from("res/textures/n64_logo", &texture_preset)?;  // Add all textures in folder.
     logo.apply(&mut shader)?;  // Bake and send the asset.
     logo.show(EnumSubPrimitivePortion::Everything);
     
@@ -234,9 +251,9 @@ impl TraitLayer for Editor {
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
     
-    let renderer = self.m_engine.get_renderer_mut();
-    self.m_cameras.push(camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None));
-    renderer.update_ubo_camera(self.m_cameras[0].get_view_matrix(), self.m_cameras[0].get_projection_matrix())?;
+    let mut main_camera = camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None);
+    main_camera.on_update(self.m_engine.get_time_step());
+    self.m_cameras.push(main_camera);
     
     // let mut imgui_layer: Layer = Layer::new("Imgui",
     //   ImguiLayer::new(Imgui::new(self.m_engine.get_renderer_mut().get_type(), self.m_engine.get_window_mut())));
@@ -253,18 +270,6 @@ impl TraitLayer for Editor {
     // Process synchronous events.
     let time_step = self.m_engine.get_time_step();
     
-    if Engine::is_key(input::EnumKey::W, input::EnumAction::Held) {
-      self.m_cameras[0].translate(0.0, 0.0, -10.0 * time_step as f32);
-    }
-    if Engine::is_key(input::EnumKey::A, input::EnumAction::Held) {
-      self.m_cameras[0].translate(-10.0 * time_step as f32, 0.0, 0.0);
-    }
-    if Engine::is_key(input::EnumKey::S, input::EnumAction::Held) {
-      self.m_cameras[0].translate(0.0, 0.0, 10.0 * time_step as f32);
-    }
-    if Engine::is_key(input::EnumKey::D, input::EnumAction::Held) {
-      self.m_cameras[0].translate(10.0 * time_step as f32, 0.0, 0.0);
-    }
     if Engine::is_key(input::EnumKey::Up, input::EnumAction::Held) {
       for asset in self.m_r_assets.values_mut() {
         for primitive in asset.1.iter_mut() {
@@ -302,6 +307,8 @@ impl TraitLayer for Editor {
   
   fn on_async_event(&mut self, event: &EnumEvent) -> Result<bool, EnumEngineError> {
     // Process asynchronous events.
+    self.m_cameras[0].on_event(event)?;
+    
     return match event {
       EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
         match (key, action, repeat_count, modifiers) {
@@ -364,11 +371,6 @@ impl TraitLayer for Editor {
   }
   
   fn on_update(&mut self, time_step: f64) -> Result<(), EnumEngineError> {
-    if self.m_cameras[0].has_changed() {
-      let new_camera_view = self.m_cameras[0].get_view_matrix();
-      let new_camera_projection = self.m_cameras[0].get_projection_matrix();
-      self.m_engine.get_renderer_mut().update_ubo_camera(new_camera_view, new_camera_projection)?;
-    }
     self.m_cameras[0].on_update(time_step);
     return Ok(());
   }

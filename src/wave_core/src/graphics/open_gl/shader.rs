@@ -71,22 +71,13 @@ pub struct GlShader {
 }
 
 impl TraitShader for GlShader {
-  fn default() -> Self {
-    return Self {
-      m_program_id: 0,
-      m_shader_ids: HashMap::with_capacity(3),
-      m_shader_stages: HashSet::with_capacity(3),
-      m_uniform_cache: Default::default(),
-    };
-  }
-  
-  fn new(shader_stages: Vec<ShaderStage>) -> Result<Self, shader::EnumShaderError> {
-    return Ok(GlShader {
+  fn new(shader_stages: Vec<ShaderStage>) -> Self {
+    return GlShader {
       m_program_id: 0,
       m_shader_ids: HashMap::with_capacity(shader_stages.len()),
       m_shader_stages: HashSet::from_iter(shader_stages.into_iter()),
       m_uniform_cache: Default::default(),
-    });
+    };
   }
   
   fn from(_other_shader: Self) -> Self where Self: Sized {

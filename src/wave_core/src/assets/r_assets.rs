@@ -24,15 +24,15 @@
 
 use std::fmt::{Display, Formatter};
 use std::mem::size_of;
+use rand::Rng;
 
-use crate::{Engine, TraitFree};
+use crate::{Engine, log, TraitFree};
 use crate::assets::asset_loader::AssetInfo;
 use crate::graphics::renderer::{EnumRendererError, EnumRendererHint, EnumRendererOptimizationMode, EnumRendererRenderPrimitiveAs};
 use crate::graphics::shader::Shader;
 use crate::graphics::color::Color;
-use crate::graphics::texture::Texture;
+use crate::graphics::texture::{TextureArray};
 use crate::math::{Mat4, Vec2, Vec3};
-use crate::utils::texture_loader::TextureLoader;
 use crate::utils::macros::logger::*;
 
 static mut S_ENTITY_ID_COUNTER: u32 = 0;
@@ -65,11 +65,32 @@ pub enum EnumMaterial {
   Matte,
 }
 
+#[derive(Debug, PartialEq, Hash)]
+pub enum EnumPrimitiveMapMethod {
+  OnePerSubPrimitive,
+  OnePerSubPrimitiveWithOffset(u16),
+  OnePerSubPrimitiveReversed,
+  Randomized,
+  Custom(Vec<(usize, u16)>),
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Hash)]
 pub enum EnumSubPrimitivePortion {
   Nothing,
   Some(usize),
   Everything,
+}
+
+impl Default for EnumPrimitive {
+  fn default() -> Self {
+    return EnumPrimitive::Mesh(EnumMaterial::default());
+  }
+}
+
+impl Default for EnumPrimitiveMapMethod {
+  fn default() -> Self {
+    return EnumPrimitiveMapMethod::OnePerSubPrimitive;
+  }
 }
 
 impl Default for EnumMaterial {
@@ -78,20 +99,11 @@ impl Default for EnumMaterial {
   }
 }
 
-impl Default for EnumPrimitive {
-  fn default() -> Self {
-    return EnumPrimitive::Sprite;
-  }
-}
-
 pub trait TraitPrimitive {
   fn get_name(&self) -> &str;
-  fn get_vertices(&self) -> &Vec<Vertex>;
+  fn get_vertices_ref(&self) -> &Vec<Vertex>;
+  fn get_vertices_mut(&mut self) -> &mut Vec<Vertex>;
   fn get_indices(&self) -> &Vec<u32>;
-  fn get_textures(&self) -> &Vec<Texture>;
-  fn add_texture(&mut self, texture: Texture);
-  fn remove_texture(&mut self, texture_index: usize);
-  fn clear_textures(&mut self);
   fn get_entity_id(&self) -> u32;
   fn is_empty(&self) -> bool;
 }
@@ -105,7 +117,7 @@ pub struct Vertex {
   pub m_position: Vec3<f32>,
   pub m_normal: u32,
   pub m_color: Color,
-  pub m_texture_coords: u32,
+  pub m_texture_coords: Vec2<f32>,
 }
 
 impl Vertex {
@@ -116,7 +128,7 @@ impl Vertex {
       m_position: Vec3::default(),
       m_normal: 0,
       m_color: Color::default(),
-      m_texture_coords: 0,
+      m_texture_coords: Vec2::default(),
     };
   }
   
@@ -132,7 +144,7 @@ impl Vertex {
     self.m_position = Vec3::default();
     self.m_texture_info = -1;
     self.m_normal = 0;
-    self.m_texture_coords = 0;
+    self.m_texture_coords = Vec2::default();
     self.m_color = Color::default();
   }
 }
@@ -141,37 +153,23 @@ pub struct Sprite {
   m_name: String,
   m_vertices: Vec<Vertex>,
   m_indices: Vec<u32>,
-  m_textures: Vec<Texture>,
 }
 
 impl TraitPrimitive for Sprite {
   fn get_name(&self) -> &str {
     return &self.m_name;
   }
-  fn get_vertices(&self) -> &Vec<Vertex> {
+  
+  fn get_vertices_ref(&self) -> &Vec<Vertex> {
     return &self.m_vertices;
   }
+  
+  fn get_vertices_mut(&mut self) -> &mut Vec<Vertex> {
+    return &mut self.m_vertices;
+  }
+  
   fn get_indices(&self) -> &Vec<u32> {
     return &self.m_indices;
-  }
-  fn get_textures(&self) -> &Vec<Texture> {
-    return &self.m_textures;
-  }
-  
-  fn add_texture(&mut self, texture: Texture) {
-    self.m_textures.push(texture);
-  }
-  
-  fn remove_texture(&mut self, texture_index: usize) {
-    if texture_index > self.m_textures.len() {
-      return;
-    }
-    
-    self.m_textures.remove(texture_index);
-  }
-  
-  fn clear_textures(&mut self) {
-    self.m_textures.clear();
   }
   
   fn get_entity_id(&self) -> u32 {
@@ -188,37 +186,22 @@ pub struct Mesh {
   m_name: String,
   m_vertices: Vec<Vertex>,
   m_indices: Vec<u32>,
-  m_textures: Vec<Texture>,
 }
 
 impl TraitPrimitive for Mesh {
   fn get_name(&self) -> &str {
     return &self.m_name;
   }
-  fn get_vertices(&self) -> &Vec<Vertex> {
+  fn get_vertices_ref(&self) -> &Vec<Vertex> {
     return &self.m_vertices;
   }
+  
+  fn get_vertices_mut(&mut self) -> &mut Vec<Vertex> {
+    return &mut self.m_vertices;
+  }
+  
   fn get_indices(&self) -> &Vec<u32> {
     return &self.m_indices;
-  }
-  fn get_textures(&self) -> &Vec<Texture> {
-    return &self.m_textures;
-  }
-  
-  fn add_texture(&mut self, texture: Texture) {
-    self.m_textures.push(texture);
-  }
-  
-  fn remove_texture(&mut self, texture_index: usize) {
-    if texture_index > self.m_textures.len() {
-      return;
-    }
-    
-    self.m_textures.remove(texture_index);
-  }
-  
-  fn clear_textures(&mut self) {
-    self.m_textures.clear();
   }
   
   fn get_entity_id(&self) -> u32 {
@@ -251,7 +234,7 @@ impl Default for REntity {
       m_position: Vec3::default(),
       m_normal: 0,
       m_color: Color::default(),
-      m_texture_coords: 0,
+      m_texture_coords: Vec2::default(),
     }; 36];
     
     let positions =
@@ -275,11 +258,11 @@ impl Default for REntity {
     }
     
     for index in 0..normals.len() {
-      let x_sign = normals[index].x.is_sign_negative().then(|| 1)
+      let x_sign = normals[index].x.is_sign_negative().then(|| 0x1)
         .unwrap_or(0);
-      let y_sign = normals[index].y.is_sign_negative().then(|| 2)
+      let y_sign = normals[index].y.is_sign_negative().then(|| 0x2)
         .unwrap_or(0);
-      let z_sign = normals[index].z.is_sign_negative().then(|| 8)
+      let z_sign = normals[index].z.is_sign_negative().then(|| 0x8)
         .unwrap_or(0);
       
       let x_normal_f = normals[index].x.is_sign_negative().then(|| normals[index].x * -100.0)
@@ -297,17 +280,16 @@ impl Default for REntity {
     }
     
     for index in 0..tex_coords.len() {
-      let x_sign = (tex_coords[index].x >= 0.0).then(|| 0)
-        .unwrap_or(1) << 31;
-      let y_sign = (tex_coords[index].y >= 0.0).then(|| 0)
-        .unwrap_or(1) << 15;
-      
-      let x_tex_coord = ((tex_coords[index].x * 1000.0) as u32) << 29;
-      let y_tex_coord = ((tex_coords[index].y * 1000.0) as u32) << 14;
-      
-      vertices[index].m_texture_coords =
-        (x_sign + x_tex_coord) +
-          (y_sign + y_tex_coord);
+      // let x_sign = (tex_coords[index].x >= 0.0).then(|| 0)
+      //   .unwrap_or(1) << 31;
+      // let y_sign = (tex_coords[index].y >= 0.0).then(|| 0)
+      //   .unwrap_or(1) << 15;
+      //
+      // let x_tex_coord = ((tex_coords[index].x * 100.0) as u32) << 12;
+      // let y_tex_coord = ((tex_coords[index].y * 100.0) as u32) << 4;
+      //
+      // vertices[index].m_texture_coords = x_tex_coord + y_tex_coord + x_sign + y_sign;
+      vertices[index].m_texture_coords = Vec2::new(&[tex_coords[index].x, tex_coords[index].y]);
     }
     
     let faces = [1, 0, 0,
@@ -329,7 +311,6 @@ impl Default for REntity {
         m_name: "Default Cube".to_string(),
         m_vertices: Vec::from(vertices),
         m_indices: Vec::from(faces),
-        m_textures: Vec::with_capacity(1),
       })],
       m_renderer_id: u64::MAX,
       m_name: "Default Cube",
@@ -388,11 +369,11 @@ impl REntity {
       }
       
       for (position, normal) in mesh.normal_iter().enumerate() {
-        let x_sign = normal.x.is_sign_negative().then(|| 1)
+        let x_sign = normal.x.is_sign_negative().then(|| 0x1)
           .unwrap_or(0);
-        let y_sign = normal.y.is_sign_negative().then(|| 2)
+        let y_sign = normal.y.is_sign_negative().then(|| 0x2)
           .unwrap_or(0);
-        let z_sign = normal.z.is_sign_negative().then(|| 8)
+        let z_sign = normal.z.is_sign_negative().then(|| 0x8)
           .unwrap_or(0);
         
         let x_normal_f = normal.x.is_sign_negative().then(|| normal.x * -100.0)
@@ -410,15 +391,19 @@ impl REntity {
       }
       
       for (position, texture_coord) in mesh.texture_coords_iter(0).enumerate() {
-        let x_sign = texture_coord.x.is_sign_negative().then(|| 0x1)
-          .unwrap_or(0);
-        let y_sign = texture_coord.y.is_sign_negative().then(|| 0x10)
-          .unwrap_or(0);
+        // let x_sign = texture_coord.x.is_sign_negative().then(|| 0x1)
+        //   .unwrap_or(0);
+        // let y_sign = texture_coord.y.is_sign_negative().then(|| 0x2)
+        //   .unwrap_or(0);
+        //
+        // let x_tex_coord = texture_coord.x.is_sign_negative().then(|| ((texture_coord.x * -100.0) as u32) << 16)
+        //   .unwrap_or(((texture_coord.x * 1000.0) as u32) << 16);
+        // let y_tex_coord = texture_coord.y.is_sign_negative().then(|| ((texture_coord.y * -1000.0) as u32) << 4)
+        //   .unwrap_or(((texture_coord.y * 1000.0) as u32) << 4);
+        //
+        // vertices[position].m_texture_coords = x_sign + x_tex_coord + y_sign + y_tex_coord;
         
-        let x_tex_coord = ((texture_coord.x * 1000.0) as u32) << 20;
-        let y_tex_coord = ((texture_coord.y * 1000.0) as u32) << 4;
-        
-        vertices[position].m_texture_coords = (x_sign + x_tex_coord) + (y_sign + y_tex_coord);
+        vertices[position].m_texture_coords = Vec2::new(&[texture_coord.x, texture_coord.y]);
       }
       
       unsafe { S_ENTITY_ID_COUNTER += 1 };
@@ -429,7 +414,6 @@ impl REntity {
             m_name: String::from(mesh.name.as_ref()),
             m_vertices: vertices,
             m_indices: indices,
-            m_textures: Vec::new(),
           }));
         }
         EnumPrimitive::Mesh(_) => {
@@ -437,7 +421,6 @@ impl REntity {
             m_name: String::from(mesh.name.as_ref()),
             m_vertices: vertices,
             m_indices: indices,
-            m_textures: Vec::new(),
           }));
         }
         _ => todo!()
@@ -474,10 +457,14 @@ impl REntity {
     return self.m_primitive_mode;
   }
   
+  pub fn get_primitive_count(&self) -> usize {
+    return self.m_sub_meshes.len();
+  }
+  
   pub fn get_total_vertex_count(&self) -> usize {
     let mut count = 0;
     for sub_mesh in self.m_sub_meshes.iter() {
-      count += sub_mesh.get_vertices().len()
+      count += sub_mesh.get_vertices_ref().len()
     }
     return count;
   }
@@ -488,58 +475,6 @@ impl REntity {
       count += sub_mesh.get_indices().len()
     }
     return count;
-  }
-  
-  pub fn add_texture(&mut self, texture: Texture, sub_primitive_index: usize) {
-    if sub_primitive_index >= self.m_sub_meshes.len() {
-      log!(EnumLogColor::Red, "ERROR", "[Asset] -->\t Cannot add texture at index {0}, index out of bounds!", sub_primitive_index);
-      return;
-    }
-    
-    self.m_sub_meshes.get_mut(sub_primitive_index).unwrap().add_texture(texture);
-  }
-  
-  pub fn add_textures_from(&mut self, folder_path_str: &str, texture_preset: &TextureLoader) -> std::io::Result<()> {
-    let folder_path = std::path::Path::new(folder_path_str);
-    
-    if !folder_path.exists() || !folder_path.is_dir() {
-      log!(EnumLogColor::Red, "ERROR", "[Asset] -->\t Cannot add textures from folder {0}, folder either doesn't exist \
-      or is not a folder!", folder_path.to_str().unwrap());
-      return Err(std::io::Error::from(std::io::ErrorKind::NotFound));
-    }
-    
-    let folder_read_result = folder_path.read_dir()?;
-    
-    for (entry_index, entry_result) in folder_read_result.enumerate() {
-      if let Ok(entry) = entry_result {
-        log!(EnumLogColor::Purple, "ERROR", "[Asset] -->\t Adding texture {0:?} from folder {1:?}...",
-          entry.file_name(), folder_path);
-        
-        if let Ok(texture) = texture_preset.load(entry.path().to_str().unwrap()) {
-          self.add_texture(texture, entry_index);
-        }
-      }
-    }
-    return Ok(());
-  }
-  
-  pub fn remove_texture(&mut self, sub_primitive_index: Option<usize>, texture_index: usize) {
-    if sub_primitive_index.is_none() {
-      for sub_primitive in self.m_sub_meshes.iter_mut() {
-        if texture_index >= sub_primitive.get_textures().len() {
-          continue;
-        }
-        sub_primitive.remove_texture(texture_index);
-      }
-      return;
-    }
-    
-    if let Some(sub_primitive) = self.m_sub_meshes.get_mut(sub_primitive_index.unwrap()) {
-      if texture_index >= sub_primitive.get_textures().len() {
-        return;
-      }
-      sub_primitive.remove_texture(texture_index);
-    }
   }
   
   pub fn toggle_primitive_mode(&mut self, view_as: EnumRendererRenderPrimitiveAs) {
@@ -567,6 +502,140 @@ impl REntity {
   pub fn scale(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
     self.m_transform[2] += Vec3::new(&[amount_y, amount_x, amount_z]);
     self.m_changed = true;
+  }
+  
+  pub fn map_texture_array(&mut self, texture_array: &TextureArray, primitive_mapping_method: EnumPrimitiveMapMethod) {
+    return match primitive_mapping_method {
+      EnumPrimitiveMapMethod::OnePerSubPrimitive => {
+        for texture in texture_array.m_textures.iter() {
+          let texture_size = texture.m_data.width;
+          let texture_depth = texture.m_type.get_depth();
+          
+          let shifted_texture_size: i32 = (texture_size as i32) << 16;
+          let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
+          let mut shifted_start_depth: i32 = texture_depth as i32;
+          
+          if let Some(primitive) = self.m_sub_meshes.get_mut(texture_depth as usize) {
+            for vertex in primitive.get_vertices_mut() {
+              if vertex.m_texture_info != -1 {
+                shifted_start_depth = vertex.m_texture_info & 0x000000FF;
+              }
+              vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
+            }
+            log!(EnumLogColor::Blue, "DEBUG", "[RAsset] -->\t Texture size: {0}, texture depth: {1}\n{2:115}Texture shift: {3}",
+        texture_size, texture_depth, "", shifted_texture_size + shifted_end_depth + shifted_start_depth);
+          }
+        }
+      }
+      EnumPrimitiveMapMethod::OnePerSubPrimitiveWithOffset(offset) => {
+        for (position, texture) in texture_array.m_textures.iter().enumerate() {
+          let texture_size = texture.m_data.width;
+          let texture_depth = texture.m_type.get_depth() + offset;
+          
+          let shifted_texture_size: i32 = (texture_size as i32) << 16;
+          let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
+          let mut shifted_start_depth: i32 = texture_depth as i32;
+          
+          if let Some(primitive) = self.m_sub_meshes.get_mut(position) {
+            for vertex in primitive.get_vertices_mut() {
+              if vertex.m_texture_info != -1 {
+                shifted_start_depth = vertex.m_texture_info & 0x000000FF;
+              }
+              vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
+            }
+            log!(EnumLogColor::Blue, "DEBUG", "[RAsset] -->\t Texture size: {0}, texture depth: {1}\n{2:115}Texture shift: {3}",
+        texture_size, texture_depth, "", shifted_texture_size + shifted_end_depth + shifted_start_depth);
+          }
+        }
+      }
+      EnumPrimitiveMapMethod::OnePerSubPrimitiveReversed => {
+        for (position, texture) in texture_array.m_textures.iter().rev().enumerate() {
+          let texture_size = texture.m_data.width;
+          let texture_depth = texture.m_type.get_depth();
+          
+          let shifted_texture_size: i32 = (texture_size as i32) << 16;
+          let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
+          let mut shifted_start_depth: i32 = texture_depth as i32;
+          
+          if let Some(primitive) = self.m_sub_meshes.get_mut(position) {
+            for vertex in primitive.get_vertices_mut() {
+              if vertex.m_texture_info != -1 {
+                shifted_start_depth = vertex.m_texture_info & 0x000000FF;
+              }
+              vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
+            }
+            log!(EnumLogColor::Blue, "DEBUG", "[RAsset] -->\t Texture size: {0}, texture depth: {1}\n{2:115}Texture shift: {3}",
+        texture_size, texture_depth, "", shifted_texture_size + shifted_end_depth + shifted_start_depth);
+          }
+        }
+      }
+      EnumPrimitiveMapMethod::Randomized => {
+        let mut range = rand::thread_rng();
+        
+        for texture in texture_array.m_textures.iter() {
+          let texture_size = texture.m_data.width;
+          let texture_depth = range.gen_range(0..texture_array.m_max_depth);
+          
+          let shifted_texture_size: i32 = (texture_size as i32) << 16;
+          let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
+          let mut shifted_start_depth: i32 = texture_depth as i32;
+          
+          if let Some(primitive) = self.m_sub_meshes.get_mut(texture.m_type.get_depth() as usize) {
+            for vertex in primitive.get_vertices_mut() {
+              if vertex.m_texture_info != -1 {
+                shifted_start_depth = vertex.m_texture_info & 0x000000FF;
+              }
+              vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
+            }
+            log!(EnumLogColor::Blue, "DEBUG", "[RAsset] -->\t Texture size: {0}, texture depth: {1}\n{2:115}Texture shift: {3}",
+        texture_size, texture_depth, "", shifted_texture_size + shifted_end_depth + shifted_start_depth);
+          }
+        }
+      }
+      EnumPrimitiveMapMethod::Custom(map) => {
+        for (primitive_index, texture_index) in map.into_iter() {
+          let texture_size = texture_array.m_textures[texture_index as usize].m_data.width;
+          let texture_depth = texture_array.m_textures[texture_index as usize].m_type.get_depth();
+          
+          let shifted_texture_size: i32 = (texture_size as i32) << 20;
+          let shifted_end_depth: i32 = (texture_depth as i32) << 8;
+          let mut shifted_start_depth: i32 = texture_depth as i32;
+          
+          if let Some(primitive) = self.m_sub_meshes.get_mut(primitive_index) {
+            for vertex in primitive.get_vertices_mut() {
+              if vertex.m_texture_info != -1 {
+                shifted_start_depth = vertex.m_texture_info & 0x000003FF;
+              }
+              vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
+            }
+            return;
+          }
+          log!(EnumLogColor::Red, "ERROR", "[Asset] -->\t Cannot add texture at index {0}, index out of bounds!", primitive_index);
+        }
+      }
+    };
+  }
+  
+  pub fn unmap_texture_at(&mut self, primitive_mapping: Option<Vec<usize>>) {
+    if primitive_mapping.is_none() {
+      for primitive in self.m_sub_meshes.iter_mut() {
+        for vertex in primitive.get_vertices_mut() {
+          vertex.m_texture_info = -1;
+        }
+      }
+      return;
+    }
+    
+    for primitive_index in primitive_mapping.unwrap() {
+      if let Some(sub_primitive) = self.m_sub_meshes.get_mut(primitive_index) {
+        for vertex in sub_primitive.get_vertices_mut() {
+          vertex.m_texture_info = -1;
+        }
+        return;
+      }
+      log!(EnumLogColor::Red, "ERROR", "[Asset] -->\t Cannot add texture at index {0}, index out of bounds!", primitive_index);
+      return;
+    }
   }
   
   pub fn apply(&mut self, shader_associated: &mut Shader) -> Result<(), EnumRendererError> {
@@ -665,7 +734,7 @@ impl REntity {
 
 impl Display for dyn TraitPrimitive {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "Vertices:\t{1}\n{0:115}Indices:\t{2}", "", self.get_vertices().len(), self.get_indices().len())
+    write!(f, "Vertices:\t{1}\n{0:115}Indices:\t{2}", "", self.get_vertices_ref().len(), self.get_indices().len())
   }
 }
 
@@ -688,7 +757,8 @@ impl PartialEq for REntity {
       return self.m_type == other.m_type && self.get_total_vertex_count() == other.get_total_vertex_count()
         && self.get_total_index_count() == other.get_total_index_count();
     }
-    return self.m_type == other.m_type && self.m_sub_meshes[0].get_vertices()[0].get_id() == other.m_sub_meshes[0].get_vertices()[0].get_id();
+    return self.m_type == other.m_type &&
+      self.m_sub_meshes[0].get_vertices_ref()[0].get_id() == other.m_sub_meshes[0].get_vertices_ref()[0].get_id();
   }
   
   fn ne(&self, other: &Self) -> bool {

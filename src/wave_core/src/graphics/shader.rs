@@ -22,6 +22,7 @@
  SOFTWARE.
 */
 
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use crate::{Engine, TraitApply, TraitFree, TraitHint};
@@ -33,7 +34,7 @@ use crate::graphics::vulkan;
 #[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::shader::VkShader;
 use crate::utils::macros::logger::*;
-use crate::window::S_WINDOW_CONTEXT;
+use crate::window::{EnumWindowState, S_WINDOW_CONTEXT};
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub enum EnumShaderState {
@@ -114,9 +115,8 @@ impl Default for EnumShaderProfile {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumShaderHint {
-  Api(EnumRendererApi),
-  Profile(EnumShaderProfile),
-  GlslVersion(u32),
+  ForceProfile(EnumShaderProfile),
+  ForceGlslVersion(u32),
 }
 
 impl EnumShaderHint {
@@ -214,8 +214,7 @@ impl From<EnumShaderSource> for String {
 }
 
 pub trait TraitShader {
-  fn default() -> Self where Self: Sized;
-  fn new(shader_module: Vec<ShaderStage>) -> Result<Self, EnumShaderError> where Self: Sized;
+  fn new(shader_module: Vec<ShaderStage>) -> Self where Self: Sized;
   fn from(other_shader: Self) -> Self where Self: Sized;
   fn get_name(&self) -> EnumRendererApi;
   fn source(&mut self) -> Result<(), EnumShaderError>;
@@ -292,24 +291,12 @@ impl Eq for ShaderStage {}
 
 pub struct Shader {
   m_state: EnumShaderState,
+  m_api: EnumRendererApi,
   m_version: u16,
   m_shader_lang: EnumShaderLanguage,
   m_api_data: Box<dyn TraitShader>,
   m_hints: Vec<EnumShaderHint>,
   m_stages: Vec<ShaderStage>,
-}
-
-impl Default for Shader {
-  fn default() -> Self {
-    return Self {
-      m_state: EnumShaderState::Created,
-      m_version: 460,
-      m_shader_lang: EnumShaderLanguage::Glsl,
-      m_api_data: Box::new(GlShader::default()),
-      m_hints: vec![EnumShaderHint::Api(EnumRendererApi::default()), EnumShaderHint::GlslVersion(460)],
-      m_stages: Vec::with_capacity(3),
-    };
-  }
 }
 
 impl TraitHint<EnumShaderHint> for Shader {
@@ -322,7 +309,7 @@ impl TraitHint<EnumShaderHint> for Shader {
   }
   
   fn reset_hints(&mut self) {
-    self.m_hints = vec![EnumShaderHint::Api(EnumRendererApi::default()), EnumShaderHint::GlslVersion(420)];
+    self.m_hints = vec![EnumShaderHint::ForceGlslVersion(420)];
   }
 }
 
@@ -336,9 +323,8 @@ impl TraitApply<EnumShaderError> for Shader {
     
     for hint in self.m_hints.iter() {
       match hint {
-        EnumShaderHint::Profile(profile) => Self::load_profile(&mut self.m_stages, *profile)?,
-        EnumShaderHint::GlslVersion(version) => Self::target_version(&mut self.m_stages, *version)?,
-        _ => {}
+        EnumShaderHint::ForceProfile(profile) => Self::load_profile(&mut self.m_stages, *profile)?,
+        EnumShaderHint::ForceGlslVersion(version) => Self::target_version(&mut self.m_stages, *version)?
       }
     }
     
@@ -408,8 +394,8 @@ impl TraitApply<EnumShaderError> for Shader {
     
     self.parse_language()?;
     
-    if self.m_hints.contains(&EnumShaderHint::Api(EnumRendererApi::OpenGL)) {
-      self.m_api_data = Box::new(GlShader::new(self.m_stages.clone())?);
+    if self.m_api == EnumRendererApi::OpenGL {
+      self.m_api_data = Box::new(GlShader::new(self.m_stages.clone()));
       self.m_api_data.apply()?;
       self.m_state = EnumShaderState::Sent;
       return Ok(());
@@ -423,7 +409,7 @@ impl TraitApply<EnumShaderError> for Shader {
     
     #[cfg(feature = "vulkan")]
     {
-      self.m_api_data = Box::new(VkShader::new(self.m_stages.clone())?);
+      self.m_api_data = Box::new(VkShader::new(self.m_stages.clone()));
       self.m_api_data.apply()?;
       self.m_state = EnumShaderState::Sent;
       return Ok(());
@@ -449,27 +435,47 @@ impl TraitFree<EnumShaderError> for Shader {
   }
 }
 
+impl Default for Shader {
+  fn default() -> Self {
+    return Self {
+      m_state: EnumShaderState::Created,
+      m_api: EnumRendererApi::default(),
+      m_version: 460,
+      m_shader_lang: EnumShaderLanguage::Glsl,
+      m_api_data: Box::new(GlShader::new(vec![])),
+      m_hints: Vec::with_capacity(3),
+      m_stages: vec![ShaderStage::default_for(EnumShaderStageType::Vertex),
+        ShaderStage::default_for(EnumShaderStageType::Fragment), ShaderStage::default_for(EnumShaderStageType::Geometry)],
+    };
+  }
+}
+
 impl Shader {
-  pub fn new() -> Self {
-    #[cfg(not(feature = "vulkan"))]
-    return Self {
-      m_state: EnumShaderState::Created,
-      m_version: 460,
-      m_shader_lang: EnumShaderLanguage::Glsl,
-      m_api_data: Box::new(GlShader::default()),
-      m_hints: Vec::with_capacity(3),
-      m_stages: Vec::with_capacity(3),
-    };
-    
-    #[cfg(feature = "vulkan")]
-    return Self {
-      m_state: EnumShaderState::Created,
-      m_version: 460,
-      m_shader_lang: EnumShaderLanguage::Glsl,
-      m_api_data: Box::new(VkShader::default()),
-      m_hints: Vec::with_capacity(3),
-      m_stages: Vec::with_capacity(3),
-    };
+  pub fn new(api_chosen: EnumRendererApi, shader_stages_info: HashSet<ShaderStage>) -> Self {
+    return match api_chosen {
+      EnumRendererApi::OpenGL => {
+        Self {
+          m_state: EnumShaderState::Created,
+          m_api: api_chosen,
+          m_version: 460,
+          m_shader_lang: EnumShaderLanguage::Glsl,
+          m_api_data: Box::new(GlShader::new(vec![])),
+          m_hints: Vec::with_capacity(3),
+          m_stages: Vec::from_iter(shader_stages_info.into_iter()),
+        }
+      }
+      EnumRendererApi::Vulkan => {
+        Self {
+          m_state: EnumShaderState::Created,
+          m_api: api_chosen,
+          m_version: 460,
+          m_shader_lang: EnumShaderLanguage::Glsl,
+          m_api_data: Box::new(VkShader::new(vec![])),
+          m_hints: Vec::with_capacity(3),
+          m_stages: Vec::from_iter(shader_stages_info.into_iter()),
+        }
+      }
+    }
   }
   
   pub fn push_stage(&mut self, shader_stage: ShaderStage) -> Result<(), EnumShaderError> {
@@ -766,17 +772,19 @@ impl Shader {
 impl Drop for Shader {
   fn drop(&mut self) {
     log!(EnumLogColor::Purple, "INFO", "[Shader] -->\t Dropping shader...");
-    match self.free() {
-      Ok(_) => {
-        log!(EnumLogColor::Green, "INFO", "[Shader] -->\t Dropped shader successfully...");
-      }
-      #[allow(unused)]
-      Err(err) => {
-        log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error while dropping shader : \
+    if Engine::get_active_window().m_state != EnumWindowState::Closed {
+      match self.free() {
+        #[allow(unused)]
+        Err(err) => {
+          log!(EnumLogColor::Red, "ERROR", "[Shader] -->\t Error while dropping shader : \
         Error => {:?}", err);
-        log!(EnumLogColor::Red, "INFO", "[Shader] -->\t Dropped shader unsuccessfully...");
+          log!(EnumLogColor::Red, "INFO", "[Shader] -->\t Dropped shader unsuccessfully...");
+          return;
+        }
+        _ => {}
       }
     }
+    log!(EnumLogColor::Green, "INFO", "[Shader] -->\t Dropped shader successfully...");
   }
 }
 

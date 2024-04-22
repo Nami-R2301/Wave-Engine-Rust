@@ -50,7 +50,7 @@ use crate::{Engine, events};
 use crate::graphics::{renderer, vulkan};
 #[cfg(feature = "vulkan")]
 use crate::graphics::renderer::{EnumRendererCallCheckingMode, EnumRendererHint, EnumRendererState, TraitContext};
-use crate::graphics::renderer::{EnumRendererApi, EnumRendererError, EnumRendererRenderPrimitiveAs};
+use crate::graphics::renderer::{ EnumRendererError, EnumRendererRenderPrimitiveAs};
 #[cfg(feature = "vulkan")]
 use crate::graphics::shader::Shader;
 #[cfg(feature = "vulkan")]
@@ -1139,11 +1139,6 @@ impl TraitContext for VkContext {
   fn toggle_options(&mut self) -> Result<(), renderer::EnumRendererError> {
     for feature in self.m_features.iter() {
       match feature {
-        EnumRendererHint::ContextApi(api) => {
-          if *api == EnumRendererApi::OpenGL {
-            todo!()
-          }
-        }
         EnumRendererHint::ApiCallChecking(debug_type) => {
           if *debug_type != EnumRendererCallCheckingMode::None {
             // Toggle on debugging.

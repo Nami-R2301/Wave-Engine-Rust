@@ -24,6 +24,7 @@
 
 use wave_core::graphics::shader;
 use wave_core::{TraitApply};
+use wave_core::graphics::renderer::EnumRendererApi;
 use wave_editor::wave_core::{EmptyApp, Engine, EnumEngineError};
 use wave_editor::wave_core::graphics::renderer::{Renderer};
 use wave_editor::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStageType, ShaderStage};
@@ -36,8 +37,8 @@ use wave_editor::wave_core::window::Window;
 #[test]
 fn test_shader_send() -> Result<(), EnumEngineError> {
   let layer = Layer::new("Shader send", EmptyApp::default());
-  let window = Window::new();
-  let renderer = Renderer::new();
+  let window = Window::new(EnumRendererApi::OpenGL);
+  let renderer = Renderer::new(EnumRendererApi::OpenGL);
   let mut engine = Engine::new(window, renderer, vec![layer]);
   engine.apply()?;
   
@@ -64,8 +65,8 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
 #[test]
 fn test_load_uniforms() -> Result<(), EnumEngineError> {
   let layer = Layer::new("Shader load", EmptyApp::default());
-  let window = Window::new();
-  let renderer = Renderer::new();
+  let window = Window::new(EnumRendererApi::OpenGL);
+  let renderer = Renderer::new(EnumRendererApi::OpenGL);
   let mut engine = Engine::new(window, renderer, vec![layer]);
   engine.apply()?;
   

@@ -24,6 +24,7 @@
 
 use std::collections::HashMap;
 use wave_core::{TraitApply, TraitHint};
+use wave_core::graphics::renderer::EnumRendererApi;
 
 use wave_editor::wave_core::EnumEngineError;
 use wave_editor::wave_core::input::{EnumAction, EnumKey, EnumModifiers, EnumMouseButton, Input};
@@ -81,7 +82,7 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
 #[ignore]
 #[test]
 fn test_synchronous_key_inputs() -> Result<(), EnumEngineError> {
-  let mut window = Window::new();
+  let mut window = Window::new(EnumRendererApi::OpenGL);
   window.set_hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));
   window.set_hint(EnumWindowHint::Resolution(1024, 768));
   window.apply()?;
@@ -167,7 +168,7 @@ fn test_synchronous_key_inputs() -> Result<(), EnumEngineError> {
 #[ignore]
 #[test]
 fn test_synchronous_mouse_button_inputs() -> Result<(), EnumEngineError> {
-  let mut window = Window::new();
+  let mut window = Window::new(EnumRendererApi::OpenGL);
   window.set_hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));
   window.set_hint(EnumWindowHint::Resolution(1024, 768));
   window.apply()?;

@@ -208,8 +208,8 @@ pub mod ui_imgui {
           .resizable(true)
           .mouse_inputs(true)
           .size(self.m_imgui_handle.io_mut().display_size, Condition::FirstUseEver)
-          .position([(*self.m_window_handle).m_window_pos.unwrap_or((0, 0)).0 as f32,
-            (*self.m_window_handle).m_window_pos.unwrap_or((0, 0)).1 as f32], Condition::FirstUseEver)
+          .position([(*self.m_window_handle).m_window_pos.0 as f32,
+            (*self.m_window_handle).m_window_pos.1 as f32], Condition::FirstUseEver)
           .build(|| {
             (*self.m_ui_handle).text_colored([1.0, 0.0, 0.0, 1.0], "Example text");
           });

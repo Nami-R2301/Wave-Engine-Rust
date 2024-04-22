@@ -26,7 +26,8 @@ use stb_image::image::Image;
 use crate::graphics::renderer::EnumRendererError;
 #[cfg(feature = "vulkan")]
 use crate::graphics::vulkan::renderer::EnumVkContextError;
-use crate::graphics::texture::{EnumTexture, EnumTextureFormat, TraitTexture};
+use crate::graphics::texture::{EnumTextureFormat, TraitTexture};
+use crate::utils::texture_loader::TextureInfo;
 
 #[allow(unused)]
 #[cfg(feature = "vulkan")]
@@ -57,13 +58,25 @@ impl<T> Default for VkTexture<T> {
 
 #[cfg(feature = "vulkan")]
 impl<T> VkTexture<T> {
-  pub(crate) fn new(_texture_type: EnumTexture, _data: Image<T>) -> Self {
+  pub(crate) fn new(_texture_info: TextureInfo<T>) -> Self {
     todo!()
   }
 }
 
 #[cfg(feature = "vulkan")]
 impl<T> TraitTexture for VkTexture<T> {
+  fn get_depth(&self) -> u16 {
+    todo!()
+  }
+  
+  fn get_size(&self) -> (usize, usize) {
+    todo!()
+  }
+  
+  fn set_depth(&mut self, _depth: u16) {
+    todo!()
+  }
+  
   fn convert_to(&mut self, _format: EnumTextureFormat) -> Result<(), EnumRendererError> {
     todo!()
   }

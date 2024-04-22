@@ -40,13 +40,37 @@ impl Debug for Color {
 
 impl Color {
   pub fn default() -> Self {
-    return Color {
-      m_rgba: 0xFFFFFFFF  // Green.
-    }
+    return Color::from([1.0, 1.0, 1.0, 1.0]);
   }
   
   pub fn reset(&mut self) {
     self.m_rgba = Self::default().m_rgba;
+  }
+  
+  pub fn as_u8(&self) -> [u8; 4] {
+    return [self.m_rgba.bitand(0x000000FF) as u8,
+      (self.m_rgba.bitand(0x0000FF00) >> 8) as u8,
+      (self.m_rgba.bitand(0x00FF0000) >> 16) as u8,
+      (self.m_rgba.bitand(0xFF000000) >> 24) as u8];
+  }
+  
+  pub fn as_f32(&self) -> [f32; 4] {
+    return [self.m_rgba.bitand(0x000000FF) as f32 / 255.0,
+      (self.m_rgba.bitand(0x0000FF00) >> 8) as f32 / 255.0,
+      (self.m_rgba.bitand(0x00FF0000) >> 16) as f32 / 255.0,
+      (self.m_rgba.bitand(0xFF000000) >> 24) as f32 / 255.0];
+  }
+}
+
+impl Into<[u8; 4]> for Color {
+  fn into(self) -> [u8; 4] {
+    return self.as_u8();
+  }
+}
+
+impl Into<[f32; 4]> for Color {
+  fn into(self) -> [f32; 4] {
+    return self.as_f32();
   }
 }
 

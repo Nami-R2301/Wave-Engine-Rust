@@ -484,7 +484,7 @@ impl TraitContext for GlContext {
     
     let window_framebuffer_size = window.get_framebuffer_size();
     check_gl_call!("GlContext", gl::Viewport(0, 0, window_framebuffer_size.0 as i32, window_framebuffer_size.1 as i32));
-    check_gl_call!("GlContext", gl::ClearColor(0.02, 0.02, 0.02, 1.0));
+    check_gl_call!("GlContext", gl::ClearColor(0.025, 0.025, 0.025, 1.0));
     
     self.m_state = EnumRendererState::Submitted;
     return Ok(());
@@ -545,7 +545,7 @@ impl TraitContext for GlContext {
     //
     // return framebuffer_color_sample_count.min(framebuffer_depth_sample_count);
     let window = Engine::get_active_window();
-    return Ok(window.m_samples.unwrap_or(1) as u8);
+    return Ok(window.m_samples as u8);
   }
   
   fn to_string(&self) -> String {
@@ -687,9 +687,6 @@ impl TraitContext for GlContext {
         EnumRendererHint::Optimization(mode) => {
           self.m_batch_mode = mode;
         }
-        EnumRendererHint::ContextApi(_api) => {
-          // TODO
-        }
         EnumRendererHint::SplitLargeVertexBuffers(_vertex_limit) => {}
         EnumRendererHint::SplitLargeIndexBuffers(_index_limit) => {}
       }
@@ -786,7 +783,7 @@ impl TraitContext for GlContext {
     }
     
     for (position, sub_mesh) in r_asset.m_sub_meshes.iter().enumerate() {
-      total_vertex_count += sub_mesh.get_vertices().len();
+      total_vertex_count += sub_mesh.get_vertices_ref().len();
       total_index_count += sub_mesh.get_indices().len();
       
       let new_sub_primitive = GlPrimitiveInfo {
@@ -797,7 +794,7 @@ impl TraitContext for GlContext {
         m_vao_index: vao_index,
         m_vbo_index: vbo_index,
         m_ibo_index: ibo_index,
-        m_vbo_count: sub_mesh.get_vertices().len(),
+        m_vbo_count: sub_mesh.get_vertices_ref().len(),
         m_ibo_count: sub_mesh.get_indices().len(),
         m_base_vertex: base_vertex,
         m_base_index: base_index,
@@ -814,7 +811,7 @@ impl TraitContext for GlContext {
         self.push_primitive(new_sub_primitive);
       }
       
-      base_vertex += sub_mesh.get_vertices().len();
+      base_vertex += sub_mesh.get_vertices_ref().len();
     }
     
     // If we already have a perspective camera ubo bound, skip.
@@ -1005,11 +1002,11 @@ impl GlContext {
     Self::set_attributes(sendable_entity, &mut new_vao)?;
     
     let mut model_ubo = GlUbo::new(Some("ubo_model"), EnumUboTypeSize::Transform(255), 1)?;
-    let mut wireframe_ubo = GlUbo::new(Some("ubo_wireframe"), EnumUboTypeSize::Wireframe(255), 7)?;
+    let mut wireframe_ubo = GlUbo::new(Some("ubo_wireframe"), EnumUboTypeSize::Wireframe(255), 9)?;
     // If glsl version is lower than 420, then we cannot bind blocks in shaders and have to encode them here instead.
     if shader.get_version() < 420 && shader.get_lang() == EnumShaderLanguage::Glsl {
       model_ubo.bind_block(shader.get_id(), 1)?;
-      wireframe_ubo.bind_block(shader.get_id(), 7)?;
+      wireframe_ubo.bind_block(shader.get_id(), 9)?;
     }
     
     self.m_commands.m_vao_buffers.push(new_vao);
@@ -1079,7 +1076,7 @@ impl GlContext {
       
       ibo.push(&indices)?;
     }
-    vbo.push(primitive.get_vertices())?;
+    vbo.push(primitive.get_vertices_ref())?;
     return Ok(());
   }
   
@@ -1145,7 +1142,7 @@ impl GlContext {
           EnumVertexMemberOffset::ColorOffset as usize, 0)?);
         
         // Texture coordinates.
-        attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1), false,
+        attributes.push(GlVertexAttribute::new(EnumAttributeType::Vec2, false,
           EnumVertexMemberOffset::TexCoordsOffset as usize, 0)?);
       }
       _ => todo!()

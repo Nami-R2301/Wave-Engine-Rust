@@ -90,7 +90,7 @@ impl TraitLayer for WindowLayer {
         (*self.m_context).m_state,
         (*self.m_context).m_api_window.as_ref().unwrap().glfw,
         (*self.m_context).m_window_resolution.unwrap().0, (*self.m_context).m_window_resolution.unwrap().1,
-        (*self.m_context).m_vsync, (*self.m_context).m_samples.is_none().then(|| "Disabled").unwrap_or("Enabled"));
+        (*self.m_context).m_vsync, ((*self.m_context).m_samples == 1).then(|| "Disabled").unwrap_or("Enabled"));
     }
   }
 }

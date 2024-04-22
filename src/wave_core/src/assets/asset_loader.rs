@@ -38,6 +38,13 @@ use crate::utils::macros::logger::*;
 ///////////////////////////////////                 ///////////////////////////////////
  */
 
+impl From<std::io::Error> for EnumAssetError {
+  fn from(value: std::io::Error) -> Self {
+    log!(EnumLogColor::Red, "ERROR", "[AssetLoader] -->\t Error while reading directory or file, Error => {0}", value);
+    return EnumAssetError::InvalidRead;
+  }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumAssetError {
   InvalidPath,
@@ -46,10 +53,10 @@ pub enum EnumAssetError {
   InvalidShapeData,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum EnumAssetPrimitiveMode {
   Plain,
-  Indexed
+  Indexed,
 }
 
 impl Default for EnumAssetPrimitiveMode {
@@ -60,13 +67,13 @@ impl Default for EnumAssetPrimitiveMode {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum EnumAssetHint {
-  
   VertexDataIs(EnumAssetPrimitiveMode),
   SplitLargeMeshes(bool, usize),
   GenerateNormals(bool),
+  GenerateUvs(bool),
   Triangulate(bool),
   ReduceMeshes(bool),
-  OnlyTriangles(bool)
+  OnlyTriangles(bool),
 }
 
 impl EnumAssetHint {
@@ -75,11 +82,12 @@ impl EnumAssetHint {
       (EnumAssetHint::VertexDataIs(_), EnumAssetHint::VertexDataIs(_)) => true,
       (EnumAssetHint::SplitLargeMeshes(_, _), EnumAssetHint::SplitLargeMeshes(_, _)) => true,
       (EnumAssetHint::GenerateNormals(_), EnumAssetHint::GenerateNormals(_)) => true,
+      (EnumAssetHint::GenerateUvs(_), EnumAssetHint::GenerateUvs(_)) => true,
       (EnumAssetHint::Triangulate(_), EnumAssetHint::Triangulate(_)) => true,
       (EnumAssetHint::ReduceMeshes(_), EnumAssetHint::ReduceMeshes(_)) => true,
       (EnumAssetHint::OnlyTriangles(_), EnumAssetHint::OnlyTriangles(_)) => true,
       _ => false
-    }
+    };
   }
 }
 
@@ -91,19 +99,14 @@ impl Display for EnumAssetError {
 
 impl std::error::Error for EnumAssetError {}
 
-#[derive(Debug)]
-pub struct AssetLoader {
-  m_hints: Vec<EnumAssetHint>
+pub struct AssetInfo<'a> {
+  pub(crate) m_is_indexed: bool,
+  pub(crate) m_data: assimp::scene::Scene<'a>,
 }
 
-impl Default for AssetLoader {
-  fn default() -> Self {
-    return Self {
-      m_hints: vec![EnumAssetHint::VertexDataIs(Default::default()), EnumAssetHint::GenerateNormals(true),
-        EnumAssetHint::Triangulate(true), EnumAssetHint::SplitLargeMeshes(true, 500_000),
-        EnumAssetHint::ReduceMeshes(false), EnumAssetHint::OnlyTriangles(true)],
-    }
-  }
+#[derive(Debug)]
+pub struct AssetLoader {
+  m_hints: Vec<EnumAssetHint>,
 }
 
 impl TraitHint<EnumAssetHint> for AssetLoader {
@@ -116,83 +119,77 @@ impl TraitHint<EnumAssetHint> for AssetLoader {
   }
   
   fn reset_hints(&mut self) {
-    self.m_hints = vec![EnumAssetHint::VertexDataIs(Default::default()), EnumAssetHint::GenerateNormals(true),
-      EnumAssetHint::Triangulate(true), EnumAssetHint::SplitLargeMeshes(true, 500_000),
-      EnumAssetHint::ReduceMeshes(false), EnumAssetHint::OnlyTriangles(true)];
+    self.m_hints.clear();
   }
-}
-
-pub struct AssetInfo<'a> {
-  pub(crate) m_is_indexed: bool,
-  pub(crate) m_data: assimp::scene::Scene<'a>
 }
 
 impl AssetLoader {
   pub fn new() -> Self {
     return Self {
-      m_hints: Vec::with_capacity(5)
-    }
+      m_hints: Vec::with_capacity(6)
+    };
   }
   
-  pub fn load(&self, file_name: &str) -> Result<AssetInfo, EnumAssetError> {
-    let asset_path = &("res/assets/".to_string() + file_name);
-    let path = std::path::Path::new(asset_path);
+  pub fn load_from_folder(&self, folder_path_str: &str) -> Result<Vec<AssetInfo>, EnumAssetError> {
+    let folder_path = std::path::Path::new(folder_path_str);
+    let mut assets = Vec::with_capacity(5);
+    
+    if !folder_path.exists() || !folder_path.is_dir() {
+      log!(EnumLogColor::Red, "ERROR", "[AssetLoader] -->\t Could not find path {0:?}! Make sure it \
+          exists and you have the appropriate permissions to read it.", folder_path);
+      return Err(EnumAssetError::InvalidPath);
+    }
+    
+    let folder_read_result = folder_path.read_dir()?;
+    
+    for entry_result in folder_read_result {
+      if let Ok(entry) = entry_result {
+        log!(EnumLogColor::Purple, "ERROR", "[AssetLoader] -->\t Loading asset {0:?} from folder {1:?}...",
+          entry.file_name(), folder_path);
+        
+        let asset_file_name = entry.file_name();
+        if let Ok(asset) = self.load(asset_file_name.to_str().unwrap()) {
+          assets.push(asset);
+        }
+      }
+    }
+    return Ok(assets);
+  }
+  
+  pub fn load(&self, file_path: &str) -> Result<AssetInfo, EnumAssetError> {
+    let path = std::path::Path::new(file_path);
     
     if !path.exists() {
       log!(EnumLogColor::Red, "ERROR", "[AssetLoader] -->\t Could not find path {0}! Make sure it \
-          exists and you have the appropriate permissions to read it.", asset_path);
+          exists and you have the appropriate permissions to read it.", file_path);
       return Err(EnumAssetError::InvalidPath);
     }
     
     let mut importer = assimp::import::Importer::new();
     
+    // Default hints.
+    let mut vertex_data_type = EnumAssetHint::VertexDataIs(Default::default());
+    let mut split_large_meshes = EnumAssetHint::SplitLargeMeshes(false, 0);
+    let mut generate_normals = EnumAssetHint::GenerateNormals(false);
+    let mut generate_uvs = EnumAssetHint::GenerateUvs(false);
+    let mut triangulate = EnumAssetHint::Triangulate(true);
+    let mut reduce_meshes = EnumAssetHint::ReduceMeshes(false);
+    let mut only_triangles = EnumAssetHint::OnlyTriangles(true);
+    
     for hint in self.m_hints.iter() {
       match hint {
-        EnumAssetHint::VertexDataIs(primitive_type) => {
-          match primitive_type {
-            EnumAssetPrimitiveMode::Plain => {
-              importer.find_degenerates(|find_degen| find_degen.enable = true);
-              // Don't join indices and let vertices repeat themselves if be, since we want to render without indexing.
-              importer.join_identical_vertices(false);
-            }
-            EnumAssetPrimitiveMode::Indexed => {
-              // Make each index point to a single vertex if possible (turn on indexing).
-              importer.join_identical_vertices(true);
-            }
-          }
-        }
-        EnumAssetHint::SplitLargeMeshes(bool, vertex_limit) => {
-          importer.split_large_meshes(|split_large| {
-            split_large.enable = *bool;
-            if *bool {
-              split_large.vertex_limit = *vertex_limit as i32;
-            }
-          });
-        }
-        EnumAssetHint::ReduceMeshes(bool) => {
-          importer.optimize_meshes(*bool);
-          importer.optimize_graph(|opt_graph| {
-            opt_graph.enable = *bool;
-          })
-        }
-        EnumAssetHint::GenerateNormals(bool) => {
-          importer.generate_normals(|gen_normals| {
-            gen_normals.enable = *bool;
-            gen_normals.smooth = *bool;
-          });
-        }
-        EnumAssetHint::Triangulate(bool) => importer.triangulate(*bool),
-        EnumAssetHint::OnlyTriangles(bool) => {
-          importer.sort_by_primitive_type(|sort_type| {
-            sort_type.enable = *bool;
-            if *bool {
-              sort_type.remove = vec![PrimitiveType::Line, PrimitiveType::Point];
-            }
-          });
-        }
+        EnumAssetHint::VertexDataIs(primitive_type) => vertex_data_type = EnumAssetHint::VertexDataIs(*primitive_type),
+        EnumAssetHint::SplitLargeMeshes(flag, limit) => split_large_meshes = EnumAssetHint::SplitLargeMeshes(*flag, *limit),
+        EnumAssetHint::GenerateNormals(flag) => generate_normals = EnumAssetHint::GenerateNormals(*flag),
+        EnumAssetHint::GenerateUvs(flag) => generate_uvs = EnumAssetHint::GenerateUvs(*flag),
+        EnumAssetHint::Triangulate(flag) => triangulate = EnumAssetHint::Triangulate(*flag),
+        EnumAssetHint::ReduceMeshes(flag) => reduce_meshes = EnumAssetHint::ReduceMeshes(*flag),
+        EnumAssetHint::OnlyTriangles(flag) => only_triangles = EnumAssetHint::OnlyTriangles(*flag),
       }
     }
     
+    self.set_options(&mut importer,
+      vec![vertex_data_type, split_large_meshes, generate_normals, generate_uvs, triangulate, reduce_meshes, only_triangles]);
     
     importer.find_invalid_data(|invalid_data| invalid_data.enable = true);
     importer.fix_infacing_normals(true);
@@ -207,10 +204,10 @@ impl AssetLoader {
     //   logger.attach();
     // }
     
-    let scene = importer.read_file(asset_path);
+    let scene = importer.read_file(file_path);
     
     if scene.is_err() || scene.as_ref().unwrap().is_incomplete() {
-      log!(EnumLogColor::Red, "Error", "[AssetLoader] -->\t Asset file {0} incomplete or corrupted!", asset_path);
+      log!(EnumLogColor::Red, "Error", "[AssetLoader] -->\t Asset file {0} incomplete or corrupted!", file_path);
       return Err(EnumAssetError::InvalidShapeData);
     }
     
@@ -222,9 +219,59 @@ impl AssetLoader {
         return match data_type.unwrap() {
           EnumAssetHint::VertexDataIs(flag) => *flag == EnumAssetPrimitiveMode::Indexed,
           _ => false
-        }
+        };
       }).unwrap_or(EnumAssetPrimitiveMode::default() == EnumAssetPrimitiveMode::Indexed),
       m_data: scene.unwrap(),
     });
+  }
+  
+  fn set_options(&self, importer: &mut assimp::Importer, hints: Vec<EnumAssetHint>) {
+    for hint in hints.into_iter() {
+      match hint {
+        EnumAssetHint::VertexDataIs(primitive_type) => {
+          match primitive_type {
+            EnumAssetPrimitiveMode::Plain => {
+              importer.find_degenerates(|find_degen| find_degen.enable = true);
+              // Don't join indices and let vertices repeat themselves if be, since we want to render without indexing.
+              importer.join_identical_vertices(false);
+            }
+            EnumAssetPrimitiveMode::Indexed => {
+              // Make each index point to a single vertex if possible (turn on indexing).
+              importer.join_identical_vertices(true);
+            }
+          };
+        }
+        EnumAssetHint::SplitLargeMeshes(bool, vertex_limit) => {
+          importer.split_large_meshes(|split_large| {
+            split_large.enable = bool;
+            if bool {
+              split_large.vertex_limit = vertex_limit as i32;
+            }
+          });
+        }
+        EnumAssetHint::GenerateNormals(bool) => {
+          importer.generate_normals(|gen_normals| {
+            gen_normals.enable = bool;
+            gen_normals.smooth = bool;
+          });
+        }
+        EnumAssetHint::GenerateUvs(bool) => importer.gen_uv_coords(bool),
+        EnumAssetHint::Triangulate(bool) => importer.triangulate(bool),
+        EnumAssetHint::ReduceMeshes(bool) => {
+          importer.optimize_meshes(bool);
+          importer.optimize_graph(|opt_graph| {
+            opt_graph.enable = bool;
+          });
+        }
+        EnumAssetHint::OnlyTriangles(bool) => {
+          importer.sort_by_primitive_type(|sort_type| {
+            sort_type.enable = bool;
+            if bool {
+              sort_type.remove = vec![PrimitiveType::Line, PrimitiveType::Point];
+            }
+          });
+        }
+      }
+    }
   }
 }

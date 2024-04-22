@@ -190,13 +190,12 @@ pub enum EnumRendererOptimizationMode {
 
 impl Default for EnumRendererOptimizationMode {
   fn default() -> Self {
-    return EnumRendererOptimizationMode::All;
+    return EnumRendererOptimizationMode::NoOptimizations;
   }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumRendererHint {
-  ContextApi(EnumRendererApi),
   /// Combine primitives with the same material type into a single buffer if possible, both for the vbo and ibo.
   /// ### Argument:
   /// - *true* **Default**: Enables the batching of similar materials from the same shader by appending their vertices in the same vbo,
@@ -280,7 +279,6 @@ impl EnumRendererHint {
   
   pub fn get_value(&self) -> &dyn Any {
     return match self {
-      EnumRendererHint::ContextApi(api) => api,
       EnumRendererHint::Optimization(bool) => bool,
       EnumRendererHint::ApiCallChecking(mode) => mode,
       EnumRendererHint::DepthTest(bool) => bool,
@@ -417,13 +415,12 @@ impl Default for Renderer {
     return Self {
       m_state: EnumRendererState::Created,
       m_type: EnumRendererApi::default(),
-      m_hints: vec![EnumRendererHint::ContextApi(Default::default()),
-        EnumRendererHint::ApiCallChecking(Default::default()),
+      m_hints: vec![EnumRendererHint::ApiCallChecking(Default::default()),
         EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true),
         EnumRendererHint::Blending(Some((EnumRendererBlendingFactor::SrcAlpha, EnumRendererBlendingFactor::default()))),
         EnumRendererHint::Optimization(Default::default()),
         EnumRendererHint::CullFacing(Some(Default::default())),
-       EnumRendererHint::MSAA(Some(4))],
+       EnumRendererHint::MSAA(None)],
       m_ids: Vec::with_capacity(10),
       m_api: Box::new(GlContext::default()),
     };
@@ -440,8 +437,7 @@ impl TraitHint<EnumRendererHint> for Renderer {
   }
   
   fn reset_hints(&mut self) {
-    self.m_hints = vec![EnumRendererHint::ContextApi(Default::default()),
-      EnumRendererHint::ApiCallChecking(Default::default()),
+    self.m_hints = vec![EnumRendererHint::ApiCallChecking(Default::default()),
       EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true),
       EnumRendererHint::Blending(Some((EnumRendererBlendingFactor::SrcAlpha, EnumRendererBlendingFactor::default()))),
       EnumRendererHint::Optimization(Default::default()),
@@ -452,14 +448,13 @@ impl TraitHint<EnumRendererHint> for Renderer {
 impl TraitApply<EnumRendererError> for Renderer {
   fn apply(&mut self) -> Result<(), EnumRendererError> {
     let window = Engine::get_active_window();
-    if self.m_hints.contains(&EnumRendererHint::ContextApi(EnumRendererApi::Vulkan)) {
+    if self.m_type == EnumRendererApi::Vulkan {
       #[cfg(not(feature = "vulkan"))]
       {
         log!(EnumLogColor::Red, "ERROR", "[Renderer] -->\t Cannot apply Vulkan renderer, vulkan feature not enabled!");
         return Err(EnumRendererError::InvalidApi);
       }
       
-      self.m_type = EnumRendererApi::Vulkan;
       self.m_api = Box::new(VkContext::on_new(window, self.m_hints.clone())?);
       return self.m_api.apply(window);
     }
@@ -485,24 +480,27 @@ impl TraitFree<EnumRendererError> for Renderer {
 }
 
 impl<'a> Renderer {
-  pub fn new() -> Self {
-    #[cfg(not(feature = "vulkan"))]
-    return Renderer {
-      m_state: EnumRendererState::Created,
-      m_type: EnumRendererApi::default(),
-      m_hints: vec![],
-      m_ids: Vec::with_capacity(10),
-      m_api: Box::new(GlContext::default()),
-    };
-    
-    #[cfg(feature = "vulkan")]
-    return Renderer {
-      m_state: EnumRendererState::Created,
-      m_type: EnumRendererApi::Vulkan,
-      m_hints: vec![],
-      m_ids: Vec::with_capacity(10),
-      m_api: Box::new(VkContext::default()),
-    };
+  pub fn new(api_chosen: EnumRendererApi) -> Self {
+    return match api_chosen {
+      EnumRendererApi::OpenGL => {
+        Renderer {
+          m_state: EnumRendererState::Created,
+          m_type: EnumRendererApi::OpenGL,
+          m_hints: vec![],
+          m_ids: Vec::with_capacity(10),
+          m_api: Box::new(GlContext::default()),
+        }
+      }
+      EnumRendererApi::Vulkan => {
+        Renderer {
+          m_state: EnumRendererState::Created,
+          m_type: EnumRendererApi::Vulkan,
+          m_hints: vec![],
+          m_ids: Vec::with_capacity(10),
+          m_api: Box::new(VkContext::default()),
+        }
+      }
+    }
   }
   
   pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) -> Result<(), EnumRendererError> {
