@@ -23,11 +23,12 @@
 */
 
 use std::any::Any;
-use crate::graphics::texture::{EnumTextureInfo, EnumTextureDataAlignment, EnumTextureFormat, EnumTextureLoaderError, EnumTextureTarget};
-use crate::{TraitHint};
-use crate::utils::macros::logger::*;
+
 #[cfg(feature = "debug")]
 use crate::Engine;
+use crate::graphics::texture::{EnumTextureDataAlignment, EnumTextureFormat, EnumTextureInfo, EnumTextureLoaderError, EnumTextureTarget};
+use crate::TraitHint;
+use crate::utils::macros::logger::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumTextureLoaderHint {
@@ -64,7 +65,21 @@ impl EnumTextureLoaderHint {
 
 pub struct TextureInfo<T> {
   pub(crate) m_type: EnumTextureInfo,
-  pub(crate) m_data: stb_image::image::Image<T>
+  pub(crate) m_data: stb_image::image::Image<T>,
+}
+
+impl<T: Clone> Clone for TextureInfo<T> {
+  fn clone(&self) -> Self {
+    return Self {
+      m_type: self.m_type.clone(),
+      m_data: stb_image::image::Image {
+        width: self.m_data.width,
+        height: self.m_data.height,
+        depth: self.m_data.depth,
+        data: self.m_data.data.clone(),
+      },
+    }
+  }
 }
 
 impl<T: Clone> TextureInfo<T> {
@@ -79,7 +94,7 @@ impl<T: Clone> TextureInfo<T> {
 
 #[allow(unused)]
 pub struct TextureLoader {
-  m_hints: Vec<EnumTextureLoaderHint>
+  m_hints: Vec<EnumTextureLoaderHint>,
 }
 
 impl TraitHint<EnumTextureLoaderHint> for TextureLoader {
@@ -113,17 +128,17 @@ impl TextureLoader {
       return Err(std::io::Error::from(std::io::ErrorKind::NotFound));
     }
     
-    let folder_read_result = texture_path.read_dir()?;
+    let mut sorted_entries: Vec<_> = std::fs::read_dir(texture_path)?
+      .filter_map(|r| r.ok())
+      .collect();
+    sorted_entries.sort_by_key(|dir| dir.path());
     
-    for entry_result in folder_read_result {
-      if let Ok(entry) = entry_result {
-        log!(EnumLogColor::Purple, "ERROR", "[TexLoader] -->\t Loading texture {0:?} from folder {1:?}...",
+    for entry in sorted_entries {
+      log!(EnumLogColor::Purple, "ERROR", "[TexLoader] -->\t Loading texture {0:?} from folder {1:?}...",
           entry.file_name(), texture_path);
-        
-        let entry_name = entry.path();
-        if let Ok(texture_info) = self.load(entry_name.to_str().unwrap()) {
-          textures.push(texture_info);
-        }
+      let entry_name = entry.path();
+      if let Ok(texture_info) = self.load(entry_name.to_str().unwrap()) {
+        textures.push(texture_info);
       }
     }
     return Ok(textures);
@@ -131,10 +146,10 @@ impl TextureLoader {
   
   pub fn load(&self, file_path: &str) -> Result<TextureInfo<u8>, EnumTextureLoaderError> {
     // If we are dealing with left hand side coordinates for UVs, like in OpenGL.
-    if self.m_hints.contains(&EnumTextureLoaderHint::FlipUvs(true)) {
-      unsafe {
-        stb_image::stb_image::stbi_set_flip_vertically_on_load(1);
-      }
+    unsafe {
+      stb_image::stb_image::stbi_set_flip_vertically_on_load(self.m_hints.contains(&EnumTextureLoaderHint::FlipUvs(true))
+        .then(|| 1)
+        .unwrap_or(0));
     }
     
     let file_loaded = stb_image::image::load(file_path);
@@ -234,7 +249,7 @@ impl TextureLoader {
     
     return Ok(TextureInfo {
       m_type: texture_info.0,
-      m_data: texture_info.1
+      m_data: texture_info.1,
     });
   }
 }

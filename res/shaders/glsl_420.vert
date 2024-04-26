@@ -25,43 +25,14 @@ layout (location = 0) in uint in_entity_ID;
 layout (location = 1) in int in_texture_info;
 layout (location = 2) in vec3 in_position;
 layout (location = 3) in uint in_normal;  // (32 bits): (|3 X 8 bits for floating point| + |8 bit for sign|).
+//layout (location = 3) in vec3 in_normal;
 layout (location = 4) in uint in_color;  // (32 bits): (|8 bits for alpha| + |8 bits for blue| + |8 bits for green| + |8 bits for red|).
-//layout (location = 5) in uint in_tex_coords;  // (32 bits): (|2 X 14 bits for floating point| + |4 bits for sign|).
 layout (location = 5) in vec2 in_tex_coords;
 
 layout (location = 0) flat out uint vout_entity_ID;
 layout (location = 1) flat out int vout_texture_info;
 layout (location = 2) out Frag_data_s vout_vertex_data;
 layout (location = 6) out vec3 vout_frag_pos;
-
-//vec2 unpack_texture_coord()
-//{
-//    uint signs = uint((in_tex_coords & 0x0000000Fu));
-//
-//    vec2 floating_points = vec2(
-//    (in_tex_coords & 0x0FFF0000u) >> 16,
-//    (in_tex_coords & 0x0000FFF0u) >> 4);
-//
-//    vec2 result = vec2(floating_points.r / 1000.0, floating_points.g / 1000.0);
-//
-//    if (signs == 0x1)
-//    {
-//        result.r = result.r * -1;
-//    }
-//
-//    if (signs == 0x2)
-//    {
-//        result.g = result.g * -1;
-//    }
-//
-//    if (signs == 0x3)
-//    {
-//        result.r = result.r * -1;
-//        result.g = result.g * -1;
-//    }
-//
-//    return result;
-//}
 
 vec3 unpack_normal()
 {
@@ -136,9 +107,9 @@ void main() {
     gl_Position = Ubo_camera.m_projection * Ubo_camera.m_view * (Ubo_model.m_matrix[in_entity_ID] * vec4(in_position, 1.0));
     vout_entity_ID = in_entity_ID;
     vout_texture_info = in_texture_info;
-    mat3 model_matrix = mat3(transpose(inverse(Ubo_camera.m_view * Ubo_model.m_matrix[in_entity_ID])));
+    mat3 new_normal_matrix = mat3(transpose(inverse(Ubo_model.m_matrix[in_entity_ID])));
     vec3 normal = unpack_normal();
-    vout_vertex_data.vout_normal = normalize(vec3(vec4(model_matrix * normalize(normal), 0.0)));
+    vout_vertex_data.vout_normal = normalize(vec3(new_normal_matrix * normal));
     vout_vertex_data.vout_tex_coords = in_tex_coords;
     vout_vertex_data.vout_frag_color = unpack_color();
     vout_frag_pos = vec3(Ubo_model.m_matrix[in_entity_ID] * vec4(in_position, 1.0));

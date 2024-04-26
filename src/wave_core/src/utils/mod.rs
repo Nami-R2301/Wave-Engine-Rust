@@ -24,8 +24,6 @@
 
 pub mod texture_loader;
 
-use chrono::DateTime;
-
 pub mod macros {
   ///
   /// Convenience macro for creating custom generic vectors of dynamic sizes without copying
@@ -552,9 +550,31 @@ pub mod macros {
 ///////////////////////////////////           ///////////////////////////////////
  */
 
+#[cfg(feature = "debug")]
+use crate::Engine;
+#[cfg(feature = "debug")]
+use self::macros::logger::*;
+
 const CONST_TIME_NANO: f64 = 1000000000.0;
 const CONST_TIME_MICRO: f64 = 1000000.0;
 const CONST_TIME_MILLI: f64 = 1000.0;
+
+impl From<chrono::DateTime<chrono::Utc>> for Time {
+  fn from(local_time: chrono::DateTime<chrono::Utc>) -> Self {
+    return Time {
+      m_nano_seconds: local_time.timestamp_nanos_opt()
+        .expect("Cannot convert local time to nano seconds") as f64
+    };
+  }
+}
+
+impl From<f64> for Time {
+  fn from(seconds: f64) -> Self {
+    return Time {
+      m_nano_seconds: seconds * CONST_TIME_NANO
+    };
+  }
+}
 
 #[derive(Debug, PartialEq, PartialOrd, Copy, Clone)]
 pub struct Time {
@@ -568,16 +588,63 @@ impl Time {
     };
   }
   
-  pub fn now() -> Self {
+  pub fn from_milli_u64(milli_seconds: u64) -> Self {
     return Time {
-      m_nano_seconds: chrono::Utc::now().timestamp_nanos_opt()
-        .expect("Cannot convert local time to nano seconds") as f64
+      m_nano_seconds: milli_seconds as f64 * 1000.0,
     };
   }
   
-  pub fn from(local_time: DateTime<chrono::Utc>) -> Self {
+  pub fn from_milli_f64(milli_seconds: f64) -> Self {
+    if milli_seconds.is_sign_negative() {
+      log!(EnumLogColor::Red, "ERROR", "[Internal] -->\t Cannot wait for {0} milli secs, invalid time!", milli_seconds);
+      return Time {
+        m_nano_seconds: 0.0,
+      };
+    }
     return Time {
-      m_nano_seconds: local_time.timestamp_nanos_opt()
+      m_nano_seconds: milli_seconds * 1000.0,
+    };
+  }
+  
+  pub fn from_micro_u64(micro_seconds: u64) -> Self {
+    return Time {
+      m_nano_seconds: micro_seconds as f64 * 1000_000.0,
+    };
+  }
+  
+  pub fn from_micro_f64(micro_seconds: f64) -> Self {
+    if micro_seconds.is_sign_negative() {
+      log!(EnumLogColor::Red, "ERROR", "[Internal] -->\t Cannot wait for {0} micro secs, invalid time!", micro_seconds);
+      return Time {
+        m_nano_seconds: 0.0,
+      };
+    }
+    return Time {
+      m_nano_seconds: micro_seconds * 1000_000.0,
+    };
+  }
+  
+  pub fn from_nano_u64(nano_seconds: u64) -> Self {
+    return Time {
+      m_nano_seconds: nano_seconds as f64,
+    };
+  }
+  
+  pub fn from_nano_f64(nano_seconds: f64) -> Self {
+    if nano_seconds.is_sign_negative() {
+      log!(EnumLogColor::Red, "ERROR", "[Internal] -->\t Cannot wait for {0} nano secs, invalid time!", nano_seconds);
+      return Time {
+        m_nano_seconds: 0.0,
+      };
+    }
+    return Time {
+      m_nano_seconds: nano_seconds,
+    };
+  }
+  
+  pub fn now() -> Self {
+    return Time {
+      m_nano_seconds: chrono::Utc::now().timestamp_nanos_opt()
         .expect("Cannot convert local time to nano seconds") as f64
     };
   }
@@ -592,16 +659,7 @@ impl Time {
     if seconds <= 0.0 {
       return;
     }
-    let end_time: f64 = Time::from(chrono::Utc::now()).m_nano_seconds + (seconds * CONST_TIME_NANO);
-    while Time::from(chrono::Utc::now()).m_nano_seconds < end_time {}
-  }
-  
-  pub fn wait_between(start_time: Time, end_time: Time) -> () {
-    if start_time == end_time {
-      return;
-    }
-    while Time::from(chrono::Utc::now()) >= start_time &&
-      Time::from(chrono::Utc::now()) < end_time {}
+    std::thread::sleep(std::time::Duration::from_secs_f64(seconds));
   }
   
   pub fn reset(&mut self) {

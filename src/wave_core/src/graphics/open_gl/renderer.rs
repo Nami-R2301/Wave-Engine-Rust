@@ -31,7 +31,7 @@ use gl46::GlFns;
 use gl::types::{GLint, GLvoid};
 
 use crate::{Engine, S_ENGINE};
-use crate::assets::r_assets::{EnumMaterial, EnumPrimitive, EnumVertexMemberOffset, REntity, TraitPrimitive};
+use crate::assets::r_assets::{EnumMaterialShading, EnumPrimitiveShading, EnumVertexMemberOffset, REntity, TraitPrimitive};
 use crate::events::EnumEvent;
 use crate::graphics::{open_gl, renderer};
 use crate::graphics::open_gl::buffer::{EnumAttributeType, EnumUboType, EnumUboTypeSize, GLchar, GLenum, GlIbo, GLsizei, GlUbo, GLuint, GlVao, GlVbo, GlVertexAttribute};
@@ -1115,7 +1115,7 @@ impl GlContext {
     let mut attributes: Vec<GlVertexAttribute> = Vec::with_capacity(5);
     
     match entity.m_type {
-      EnumPrimitive::Mesh(material) => {
+      EnumPrimitiveShading::Mesh(material) => {
         // IDs.
         attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1), false,
           EnumVertexMemberOffset::EntityIDOffset as usize, 0)?);
@@ -1129,7 +1129,7 @@ impl GlContext {
           EnumVertexMemberOffset::PositionOffset as usize, 0)?);
         
         // Normals.
-        if material == EnumMaterial::Flat {
+        if material == EnumMaterialShading::Flat {
           attributes.push(GlVertexAttribute::new(EnumAttributeType::UnsignedInt(1), false,
             EnumVertexMemberOffset::NormalOffset as usize, 1)?);
         } else {

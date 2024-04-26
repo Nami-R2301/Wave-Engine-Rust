@@ -247,7 +247,7 @@ impl<T> TraitTexture for GlTexture<T> {
       _ => {
         check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint));
         check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_MIN_FILTER,
-          gl::LINEAR_MIPMAP_NEAREST as GLint));
+          gl::LINEAR_MIPMAP_LINEAR as GLint));
         
         check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_WRAP_S, gl::REPEAT as GLint));
         check_gl_call!("GlTexture", gl::TexParameteri(self.m_internal_target, gl::TEXTURE_WRAP_T, gl::REPEAT as GLint));

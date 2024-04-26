@@ -68,7 +68,7 @@ impl Default for EnumAssetPrimitiveMode {
 #[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum EnumAssetHint {
   VertexDataIs(EnumAssetPrimitiveMode),
-  SplitLargeMeshes(bool, usize),
+  SplitLargeMeshes(Option<usize>),
   GenerateNormals(bool),
   GenerateUvs(bool),
   Triangulate(bool),
@@ -80,13 +80,25 @@ impl EnumAssetHint {
   pub fn is(&self, other: &Self) -> bool {
     return match (self, other) {
       (EnumAssetHint::VertexDataIs(_), EnumAssetHint::VertexDataIs(_)) => true,
-      (EnumAssetHint::SplitLargeMeshes(_, _), EnumAssetHint::SplitLargeMeshes(_, _)) => true,
+      (EnumAssetHint::SplitLargeMeshes(_), EnumAssetHint::SplitLargeMeshes(_)) => true,
       (EnumAssetHint::GenerateNormals(_), EnumAssetHint::GenerateNormals(_)) => true,
       (EnumAssetHint::GenerateUvs(_), EnumAssetHint::GenerateUvs(_)) => true,
       (EnumAssetHint::Triangulate(_), EnumAssetHint::Triangulate(_)) => true,
       (EnumAssetHint::ReduceMeshes(_), EnumAssetHint::ReduceMeshes(_)) => true,
       (EnumAssetHint::OnlyTriangles(_), EnumAssetHint::OnlyTriangles(_)) => true,
       _ => false
+    };
+  }
+  
+  pub fn get_value(&self) -> &dyn std::any::Any {
+    return match self {
+      EnumAssetHint::VertexDataIs(flag) => flag,
+      EnumAssetHint::SplitLargeMeshes(vertex_limit) => vertex_limit,
+      EnumAssetHint::GenerateNormals(flag) => flag,
+      EnumAssetHint::GenerateUvs(flag) => flag,
+      EnumAssetHint::Triangulate(flag) => flag,
+      EnumAssetHint::ReduceMeshes(flag) => flag,
+      EnumAssetHint::OnlyTriangles(flag) => flag
     };
   }
 }
@@ -169,7 +181,7 @@ impl AssetLoader {
     
     // Default hints.
     let mut vertex_data_type = EnumAssetHint::VertexDataIs(Default::default());
-    let mut split_large_meshes = EnumAssetHint::SplitLargeMeshes(false, 0);
+    let mut split_large_meshes = EnumAssetHint::SplitLargeMeshes(None);
     let mut generate_normals = EnumAssetHint::GenerateNormals(false);
     let mut generate_uvs = EnumAssetHint::GenerateUvs(false);
     let mut triangulate = EnumAssetHint::Triangulate(true);
@@ -179,7 +191,7 @@ impl AssetLoader {
     for hint in self.m_hints.iter() {
       match hint {
         EnumAssetHint::VertexDataIs(primitive_type) => vertex_data_type = EnumAssetHint::VertexDataIs(*primitive_type),
-        EnumAssetHint::SplitLargeMeshes(flag, limit) => split_large_meshes = EnumAssetHint::SplitLargeMeshes(*flag, *limit),
+        EnumAssetHint::SplitLargeMeshes(limit) => split_large_meshes = EnumAssetHint::SplitLargeMeshes(*limit),
         EnumAssetHint::GenerateNormals(flag) => generate_normals = EnumAssetHint::GenerateNormals(*flag),
         EnumAssetHint::GenerateUvs(flag) => generate_uvs = EnumAssetHint::GenerateUvs(*flag),
         EnumAssetHint::Triangulate(flag) => triangulate = EnumAssetHint::Triangulate(*flag),
@@ -189,38 +201,34 @@ impl AssetLoader {
     }
     
     self.set_options(&mut importer,
-      vec![vertex_data_type, split_large_meshes, generate_normals, generate_uvs, triangulate, reduce_meshes, only_triangles]);
+      vec![vertex_data_type.clone(), split_large_meshes, generate_normals, generate_uvs, triangulate, reduce_meshes, only_triangles]);
     
+    importer.gen_uv_coords(true);
     importer.find_invalid_data(|invalid_data| invalid_data.enable = true);
     importer.fix_infacing_normals(true);
-    importer.remove_redudant_materials(|rm_red_mat| rm_red_mat.enable = true);
+    // importer.remove_redudant_materials(|rm_red_mat| rm_red_mat.enable = true);
     importer.improve_cache_locality(|impv_cache| impv_cache.enable = true);
     importer.measure_time(true);
     
     // #[cfg(feature = "debug")]
     // {
+    //   importer.validate_data_structure(true);
     //   assimp::log::LogStream::set_verbose_logging(true);
     //   let mut logger = assimp::log::LogStream::stdout();
     //   logger.attach();
     // }
     
-    let scene = importer.read_file(file_path);
-    
-    if scene.is_err() || scene.as_ref().unwrap().is_incomplete() {
-      log!(EnumLogColor::Red, "Error", "[AssetLoader] -->\t Asset file {0} incomplete or corrupted!", file_path);
-      return Err(EnumAssetError::InvalidShapeData);
-    }
-    
-    let data_type = self.m_hints.iter()
-      .find(|h| h.is(&EnumAssetHint::VertexDataIs(EnumAssetPrimitiveMode::default())));
+      let scene = importer.read_file(file_path);
+      
+      if scene.is_err() || scene.as_ref().unwrap().is_incomplete() {
+        log!(EnumLogColor::Red, "Error", "[AssetLoader] -->\t Asset file {0} incomplete or corrupted!", file_path);
+        return Err(EnumAssetError::InvalidShapeData);
+      }
     
     return Ok(AssetInfo {
-      m_is_indexed: data_type.is_some().then(|| {
-        return match data_type.unwrap() {
-          EnumAssetHint::VertexDataIs(flag) => *flag == EnumAssetPrimitiveMode::Indexed,
-          _ => false
-        };
-      }).unwrap_or(EnumAssetPrimitiveMode::default() == EnumAssetPrimitiveMode::Indexed),
+      m_is_indexed: vertex_data_type.get_value()
+        .downcast_ref::<EnumAssetPrimitiveMode>()
+        .is_some_and(|mode| *mode == EnumAssetPrimitiveMode::Indexed),
       m_data: scene.unwrap(),
     });
   }
@@ -241,11 +249,11 @@ impl AssetLoader {
             }
           };
         }
-        EnumAssetHint::SplitLargeMeshes(bool, vertex_limit) => {
+        EnumAssetHint::SplitLargeMeshes(vertex_limit) => {
           importer.split_large_meshes(|split_large| {
-            split_large.enable = bool;
-            if bool {
-              split_large.vertex_limit = vertex_limit as i32;
+            split_large.enable = vertex_limit.is_some();
+            if split_large.enable {
+              split_large.vertex_limit = vertex_limit.unwrap() as i32;
             }
           });
         }

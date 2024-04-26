@@ -263,7 +263,10 @@ impl<'a> Engine {
       }
       
       // Sync to engine tick rate.
-      Time::wait_for(self.m_tick_rate as f64);
+      let time_elapsed = Time::now().to_secs() - self.m_time_step;
+      if time_elapsed < self.m_tick_rate as f64 {
+        Time::wait_for(time_elapsed - self.m_tick_rate as f64);
+      }
       frame_counter += 1;
       
       // If a second passed, display fps counter and reset it.

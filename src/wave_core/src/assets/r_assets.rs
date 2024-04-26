@@ -22,16 +22,18 @@
  SOFTWARE.
 */
 
+use std::collections::{HashSet};
 use std::fmt::{Display, Formatter};
 use std::mem::size_of;
+
 use rand::Rng;
 
 use crate::{Engine, log, TraitFree};
 use crate::assets::asset_loader::AssetInfo;
+use crate::graphics::color::Color;
 use crate::graphics::renderer::{EnumRendererError, EnumRendererHint, EnumRendererOptimizationMode, EnumRendererRenderPrimitiveAs};
 use crate::graphics::shader::Shader;
-use crate::graphics::color::Color;
-use crate::graphics::texture::{TextureArray};
+use crate::graphics::texture::TextureArray;
 use crate::math::{Mat4, Vec2, Vec3};
 use crate::utils::macros::logger::*;
 
@@ -49,54 +51,77 @@ pub enum EnumVertexMemberOffset {
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
-pub enum EnumPrimitive {
+pub enum EnumPrimitiveShading {
   Sprite,
-  Mesh(EnumMaterial),
+  Mesh(EnumMaterialShading),
   Quad,
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
-pub enum EnumMaterial {
+pub enum EnumMaterialShading {
+  None,
   Flat,
-  Smooth,
-  Noisy,
-  Shiny,
-  Metallic,
-  Matte,
+  Gouraud,
+  Phong,
+  Blinn,
+  Toon,
+  OrenNayar,
+  Minnaert,
+  CookTorrance,
+  Fresnel
+}
+
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
+pub enum EnumMaterialMapMode {
+  Wrap,
+  Clamp,
+  Mirror,
+  Decal
 }
 
 #[derive(Debug, PartialEq, Hash)]
-pub enum EnumPrimitiveMapMethod {
-  OnePerSubPrimitive,
-  OnePerSubPrimitiveWithOffset(u16),
-  OnePerSubPrimitiveReversed,
+pub enum EnumAssetMapMethod {
+  OneForEach(usize, usize),
+  MultipleForEach(usize, usize, usize),
+  AllForOne(usize),
+  OneForEachWithOffset(usize, usize, u16),
   Randomized,
   Custom(Vec<(usize, u16)>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Hash)]
-pub enum EnumSubPrimitivePortion {
+pub enum EnumAssetPrimitiveSurface {
   Nothing,
   Some(usize),
   Everything,
 }
 
-impl Default for EnumPrimitive {
+impl Default for EnumPrimitiveShading {
   fn default() -> Self {
-    return EnumPrimitive::Mesh(EnumMaterial::default());
+    return EnumPrimitiveShading::Mesh(EnumMaterialShading::default());
   }
 }
 
-impl Default for EnumPrimitiveMapMethod {
+impl Default for EnumAssetMapMethod {
   fn default() -> Self {
-    return EnumPrimitiveMapMethod::OnePerSubPrimitive;
+    return EnumAssetMapMethod::OneForEach(0, 0);
   }
 }
 
-impl Default for EnumMaterial {
+impl Default for EnumMaterialShading {
   fn default() -> Self {
-    return EnumMaterial::Smooth;
+    return EnumMaterialShading::Phong;
   }
+}
+
+pub struct Material {
+  m_diffuse: Color,
+  m_specular: Color,
+  m_shininess: f32,
+  m_opacity: f32,
+  m_transparency: bool,
+  m_shading: EnumMaterialShading,
+  m_texture_map_mode: EnumMaterialMapMode,
 }
 
 pub trait TraitPrimitive {
@@ -217,7 +242,7 @@ pub struct REntity {
   pub(crate) m_renderer_id: u64,
   pub(crate) m_name: &'static str,
   pub(crate) m_sub_meshes: Vec<Box<dyn TraitPrimitive>>,
-  pub(crate) m_type: EnumPrimitive,
+  pub(crate) m_type: EnumPrimitiveShading,
   pub(crate) m_primitive_mode: EnumRendererRenderPrimitiveAs,
   m_last_primitive_mode: EnumRendererRenderPrimitiveAs,
   // Transformations applied to the entity, to be eventually applied to the model matrix.
@@ -277,6 +302,7 @@ impl Default for REntity {
       let z_normal = (z_normal_f as u32) << 8;
       
       vertices[index].m_normal = x_normal + y_normal + x_sign + y_sign + z_sign + z_normal;
+      // vertices[index].m_normal = Vec3::new(&[normals[index].x, normals[index].y, normals[index].z]);
     }
     
     for index in 0..tex_coords.len() {
@@ -314,7 +340,7 @@ impl Default for REntity {
       })],
       m_renderer_id: u64::MAX,
       m_name: "Default Cube",
-      m_type: EnumPrimitive::default(),
+      m_type: EnumPrimitiveShading::default(),
       m_transform: [Vec3::default(), Vec3::default(), Vec3::new(&[1.0, 1.0, 1.0])],
       m_primitive_mode: EnumRendererRenderPrimitiveAs::Filled,
       m_last_primitive_mode: EnumRendererRenderPrimitiveAs::Filled,
@@ -342,7 +368,7 @@ impl TraitFree<EnumRendererError> for REntity {
 }
 
 impl REntity {
-  pub fn new(asset_info: AssetInfo, data_type: EnumPrimitive, name: &'static str) -> Self {
+  pub fn new(asset_info: AssetInfo, data_type: EnumPrimitiveShading, name: &'static str) -> Self {
     let mut data: Vec<Box<dyn TraitPrimitive>> = Vec::with_capacity(asset_info.m_data.num_meshes as usize);
     
     // Offset of indices to shift to the next sub-mesh indices, in order to synchronize indices between sub-meshes
@@ -388,6 +414,7 @@ impl REntity {
         let z_normal = (z_normal_f as u32) << 8;
         
         vertices[position].m_normal = x_normal + y_normal + x_sign + y_sign + z_sign + z_normal;
+        // vertices[position].m_normal = Vec3::new(&[normal.x, normal.y, normal.z]);
       }
       
       for (position, texture_coord) in mesh.texture_coords_iter(0).enumerate() {
@@ -409,14 +436,14 @@ impl REntity {
       unsafe { S_ENTITY_ID_COUNTER += 1 };
       
       match data_type {
-        EnumPrimitive::Sprite => {
+        EnumPrimitiveShading::Sprite => {
           data.push(Box::new(Sprite {
             m_name: String::from(mesh.name.as_ref()),
             m_vertices: vertices,
             m_indices: indices,
           }));
         }
-        EnumPrimitive::Mesh(_) => {
+        EnumPrimitiveShading::Mesh(_) => {
           data.push(Box::new(Mesh {
             m_name: String::from(mesh.name.as_ref()),
             m_vertices: vertices,
@@ -424,6 +451,42 @@ impl REntity {
           }));
         }
         _ => todo!()
+      }
+    }
+    
+    if asset_info.m_data.has_materials() {
+      for material in asset_info.m_data.material_iter() {
+        let mut material_name: assimp_sys::AiString = assimp_sys::AiString {
+          length: 0,
+          data: [0; 1024],
+        };
+        let mut material_diffuse: [f32; 3] = [0.0; 3];
+        let result = unsafe {
+          assimp_sys::aiGetMaterialString(material.to_raw(), (**material.properties).key.data.as_ptr() as *const _,
+            0, (**material.properties).index, &mut material_name)
+        };
+        if result == assimp_sys::AiReturn::Success {
+          log!(EnumLogColor::Red, "DEBUG", "[Asset] -->\t Material name detected: {0:?}", material_name);
+        }
+        
+        let result = unsafe {
+          assimp_sys::aiGetMaterialFloatArray(material.to_raw(), (**material.properties).key.data.as_ptr() as *const _,
+            1, (**material.properties).index, material_diffuse.as_mut_ptr() as *mut _, &mut 3)
+        };
+        if result == assimp_sys::AiReturn::Success {
+          log!(EnumLogColor::Red, "DEBUG", "[Asset] -->\t Material diffuse color detected: {0:?}", material_diffuse);
+        }
+      }
+      for (index, texture) in asset_info.m_data.texture_iter().enumerate() {
+        if let Some(primitive) = data.get_mut(index) {
+          for vertex in primitive.get_vertices_mut() {
+            let shifted_texture_size: i32 = (texture.width as i32) << 16;
+            let shifted_end_depth: i32 = ((index + 1) as i32) << 8;
+            let shifted_start_depth: i32 = index as i32;
+            
+            vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
+          }
+        }
       }
     }
     
@@ -442,10 +505,10 @@ impl REntity {
   
   pub fn get_size(&self) -> usize {
     return match self.m_type {
-      EnumPrimitive::Sprite | EnumPrimitive::Quad => {
+      EnumPrimitiveShading::Sprite | EnumPrimitiveShading::Quad => {
         size_of::<u32>() + (size_of::<f32>() * 2) + size_of::<u32>() + (size_of::<f32>() * 2)
       }
-      EnumPrimitive::Mesh(_) => size_of::<Vertex>()
+      EnumPrimitiveShading::Mesh(_) => size_of::<Vertex>()
     };
   }
   
@@ -504,83 +567,77 @@ impl REntity {
     self.m_changed = true;
   }
   
-  pub fn map_texture_array(&mut self, texture_array: &TextureArray, primitive_mapping_method: EnumPrimitiveMapMethod) {
+  pub fn map_texture(&mut self, texture_array: &TextureArray, primitive_mapping_method: EnumAssetMapMethod) {
     return match primitive_mapping_method {
-      EnumPrimitiveMapMethod::OnePerSubPrimitive => {
-        for texture in texture_array.m_textures.iter() {
-          let texture_size = texture.m_data.width;
-          let texture_depth = texture.m_type.get_depth();
-          
-          let shifted_texture_size: i32 = (texture_size as i32) << 16;
-          let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
-          let mut shifted_start_depth: i32 = texture_depth as i32;
-          
-          if let Some(primitive) = self.m_sub_meshes.get_mut(texture_depth as usize) {
-            for vertex in primitive.get_vertices_mut() {
-              if vertex.m_texture_info != -1 {
-                shifted_start_depth = vertex.m_texture_info & 0x000000FF;
-              }
-              vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
-            }
-            log!(EnumLogColor::Blue, "DEBUG", "[RAsset] -->\t Texture size: {0}, texture depth: {1}\n{2:115}Texture shift: {3}",
-        texture_size, texture_depth, "", shifted_texture_size + shifted_end_depth + shifted_start_depth);
-          }
+      EnumAssetMapMethod::OneForEach(start_index, end_index) => {
+        if end_index - start_index > self.m_sub_meshes.len() {
+          log!(EnumLogColor::Red, "ERROR", "[Asset] -->\t Cannot map texture from {0} to {1}, indices out of bounds of sub primitives!",
+          start_index, end_index);
+          return;
         }
-      }
-      EnumPrimitiveMapMethod::OnePerSubPrimitiveWithOffset(offset) => {
-        for (position, texture) in texture_array.m_textures.iter().enumerate() {
-          let texture_size = texture.m_data.width;
-          let texture_depth = texture.m_type.get_depth() + offset;
-          
-          let shifted_texture_size: i32 = (texture_size as i32) << 16;
-          let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
-          let mut shifted_start_depth: i32 = texture_depth as i32;
-          
-          if let Some(primitive) = self.m_sub_meshes.get_mut(position) {
-            for vertex in primitive.get_vertices_mut() {
-              if vertex.m_texture_info != -1 {
-                shifted_start_depth = vertex.m_texture_info & 0x000000FF;
-              }
-              vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
-            }
-            log!(EnumLogColor::Blue, "DEBUG", "[RAsset] -->\t Texture size: {0}, texture depth: {1}\n{2:115}Texture shift: {3}",
-        texture_size, texture_depth, "", shifted_texture_size + shifted_end_depth + shifted_start_depth);
-          }
-        }
-      }
-      EnumPrimitiveMapMethod::OnePerSubPrimitiveReversed => {
-        for (position, texture) in texture_array.m_textures.iter().rev().enumerate() {
-          let texture_size = texture.m_data.width;
-          let texture_depth = texture.m_type.get_depth();
-          
-          let shifted_texture_size: i32 = (texture_size as i32) << 16;
-          let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
-          let mut shifted_start_depth: i32 = texture_depth as i32;
-          
-          if let Some(primitive) = self.m_sub_meshes.get_mut(position) {
-            for vertex in primitive.get_vertices_mut() {
-              if vertex.m_texture_info != -1 {
-                shifted_start_depth = vertex.m_texture_info & 0x000000FF;
-              }
-              vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
-            }
-            log!(EnumLogColor::Blue, "DEBUG", "[RAsset] -->\t Texture size: {0}, texture depth: {1}\n{2:115}Texture shift: {3}",
-        texture_size, texture_depth, "", shifted_texture_size + shifted_end_depth + shifted_start_depth);
-          }
-        }
-      }
-      EnumPrimitiveMapMethod::Randomized => {
-        let mut range = rand::thread_rng();
         
-        for texture in texture_array.m_textures.iter() {
-          let texture_size = texture.m_data.width;
-          let texture_depth = range.gen_range(0..texture_array.m_max_depth);
+        let mut texture_bound_count = 0;
+        for texture_index in start_index..end_index {
+          let texture_size = texture_array.m_textures[texture_index].m_data.width;
+          let texture_depth = texture_array.m_textures[texture_index].m_type.get_depth();
           
           let shifted_texture_size: i32 = (texture_size as i32) << 16;
           let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
           let mut shifted_start_depth: i32 = texture_depth as i32;
           
-          if let Some(primitive) = self.m_sub_meshes.get_mut(texture.m_type.get_depth() as usize) {
+          if let Some(primitive) = self.m_sub_meshes.get_mut(texture_bound_count) {
+            for vertex in primitive.get_vertices_mut() {
+              if vertex.m_texture_info != -1 {
+                shifted_start_depth = vertex.m_texture_info & 0x000000FF;
+              }
+              vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
+            }
+            log!(EnumLogColor::Blue, "DEBUG", "[RAsset] -->\t Texture size: {0}, texture depth: {1}\n{2:115}Texture shift: {3}",
+        texture_size, texture_depth, "", shifted_texture_size + shifted_end_depth + shifted_start_depth);
+            texture_bound_count += 1;
+          }
+        }
+      }
+      EnumAssetMapMethod::MultipleForEach(multiple_count, start_index, end_index) => {
+        for texture_index in start_index..end_index {
+          // Apply to multiple sub primitives.
+          for primitive_index in 0..multiple_count {
+            let texture_size = texture_array.m_textures[texture_index].m_data.width;
+            let texture_depth = texture_array.m_textures[texture_index].m_type.get_depth();
+            
+            let shifted_texture_size: i32 = (texture_size as i32) << 16;
+            let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
+            let mut shifted_start_depth: i32 = texture_depth as i32;
+            
+            if let Some(primitive) = self.m_sub_meshes.get_mut(texture_index + primitive_index) {
+              for vertex in primitive.get_vertices_mut() {
+                if vertex.m_texture_info != -1 {
+                  shifted_start_depth = vertex.m_texture_info & 0x000000FF;
+                }
+                vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
+              }
+              log!(EnumLogColor::Blue, "DEBUG", "[RAsset] -->\t Texture size: {0}, texture depth: {1}\n{2:115}Texture shift: {3}",
+        texture_size, texture_depth, "", shifted_texture_size + shifted_end_depth + shifted_start_depth);
+            }
+          }
+        }
+      }
+      EnumAssetMapMethod::OneForEachWithOffset(start_index, end_index, offset) => {
+        if start_index > texture_array.len() || end_index > texture_array.len() {
+          log!(EnumLogColor::Red, "ERROR", "[Asset] -->\t Cannot map texture from {0} to {1}, indices out of bounds of array!",
+          start_index, end_index);
+          return;
+        }
+        
+        for texture_index in start_index..end_index {
+          let texture_size = texture_array.m_textures[texture_index].m_data.width;
+          let texture_depth = texture_array.m_textures[texture_index].m_type.get_depth() + offset;
+          
+          let shifted_texture_size: i32 = (texture_size as i32) << 16;
+          let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
+          let mut shifted_start_depth: i32 = texture_depth as i32;
+          
+          if let Some(primitive) = self.m_sub_meshes.get_mut(texture_index) {
             for vertex in primitive.get_vertices_mut() {
               if vertex.m_texture_info != -1 {
                 shifted_start_depth = vertex.m_texture_info & 0x000000FF;
@@ -592,7 +649,41 @@ impl REntity {
           }
         }
       }
-      EnumPrimitiveMapMethod::Custom(map) => {
+      EnumAssetMapMethod::Randomized => {
+        // Unique randomized positions.
+        let mut unique_randomized_positions = HashSet::with_capacity(texture_array.m_textures.len());
+        
+        let mut range = rand::thread_rng();
+        texture_array.m_textures.iter()
+          .for_each(|_| {
+            let mut added = unique_randomized_positions.insert(range.gen_range(0..texture_array.m_textures.len()));
+            // Keep trying to insert until unique value.
+            while !added {
+              added =  unique_randomized_positions.insert(range.gen_range(0..texture_array.m_textures.len()));
+            };
+          });
+        
+        for (position, random_position) in unique_randomized_positions.into_iter().enumerate() {
+          let texture_size = texture_array.m_textures[random_position].m_data.width;
+          let texture_depth = texture_array.m_textures[random_position].m_type.get_depth();
+          
+          let shifted_texture_size: i32 = (texture_size as i32) << 16;
+          let shifted_end_depth: i32 = ((texture_depth + 1) as i32) << 8;
+          let mut shifted_start_depth: i32 = texture_depth as i32;
+          
+          if let Some(primitive) = self.m_sub_meshes.get_mut(position) {
+            for vertex in primitive.get_vertices_mut() {
+              if vertex.m_texture_info != -1 {
+                shifted_start_depth = vertex.m_texture_info & 0x000000FF;
+              }
+              vertex.m_texture_info = shifted_texture_size + shifted_end_depth + shifted_start_depth;
+            }
+            log!(EnumLogColor::Blue, "DEBUG", "[RAsset] -->\t Texture size: {0}, texture depth: {1}\n{2:115}Texture shift: {3}",
+        texture_size, texture_depth, "", shifted_texture_size + shifted_end_depth + shifted_start_depth);
+          }
+        }
+      }
+      EnumAssetMapMethod::Custom(map) => {
         for (primitive_index, texture_index) in map.into_iter() {
           let texture_size = texture_array.m_textures[texture_index as usize].m_data.width;
           let texture_depth = texture_array.m_textures[texture_index as usize].m_type.get_depth();
@@ -613,6 +704,7 @@ impl REntity {
           log!(EnumLogColor::Red, "ERROR", "[Asset] -->\t Cannot add texture at index {0}, index out of bounds!", primitive_index);
         }
       }
+      EnumAssetMapMethod::AllForOne(_) => todo!(),
     };
   }
   
@@ -676,36 +768,36 @@ impl REntity {
     return Ok(());
   }
   
-  pub fn hide(&mut self, sub_primitive_selected: EnumSubPrimitivePortion) {
+  pub fn hide(&mut self, sub_primitive_selected: EnumAssetPrimitiveSurface) {
     if self.m_sent {
       let renderer = Engine::get_active_renderer();
       
       return match sub_primitive_selected {
-        EnumSubPrimitivePortion::Nothing => {}
-        EnumSubPrimitivePortion::Some(sub_primitive_index) => {
+        EnumAssetPrimitiveSurface::Nothing => {}
+        EnumAssetPrimitiveSurface::Some(sub_primitive_index) => {
           if sub_primitive_index < self.m_sub_meshes.len() {
             let _ = renderer.hide(self.m_renderer_id, Some(sub_primitive_index));
           }
         }
-        EnumSubPrimitivePortion::Everything => {
+        EnumAssetPrimitiveSurface::Everything => {
           let _ = renderer.hide(self.m_renderer_id, None);
         }
       };
     }
   }
   
-  pub fn show(&mut self, sub_primitive_selected: EnumSubPrimitivePortion) {
+  pub fn show(&mut self, sub_primitive_selected: EnumAssetPrimitiveSurface) {
     if self.m_sent {
       let renderer = Engine::get_active_renderer();
       
       return match sub_primitive_selected {
-        EnumSubPrimitivePortion::Nothing => {}
-        EnumSubPrimitivePortion::Some(sub_primitive_index) => {
+        EnumAssetPrimitiveSurface::Nothing => {}
+        EnumAssetPrimitiveSurface::Some(sub_primitive_index) => {
           if sub_primitive_index < self.m_sub_meshes.len() {
             let _ = renderer.show(self.m_renderer_id, Some(sub_primitive_index));
           }
         }
-        EnumSubPrimitivePortion::Everything => {
+        EnumAssetPrimitiveSurface::Everything => {
           let _ = renderer.show(self.m_renderer_id, None);
         }
       };

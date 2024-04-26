@@ -616,6 +616,10 @@ impl TextureArray {
     };
   }
   
+  pub fn len(&self) -> usize {
+    return self.m_textures.len();
+  }
+  
   pub fn get_current_depth(&self) -> u16 {
     return self.m_max_depth;
   }
@@ -639,7 +643,7 @@ impl TextureArray {
     self.m_max_depth = depth_counter;
   }
   
-  pub fn as_texture(&self) -> Texture {
+  pub fn get_texture_handle(&self) -> Texture {
     let mut converted: Vec<(EnumTextureInfo, Vec<u8>)> = Vec::with_capacity(self.m_max_depth as usize);
     let texture_width = self.m_textures[0].m_type.get_width();
     let texture_height = self.m_textures[0].m_type.get_height();

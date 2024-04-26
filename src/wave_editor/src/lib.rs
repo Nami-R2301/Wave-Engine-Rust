@@ -27,9 +27,8 @@ pub extern crate wave_core;
 use std::collections::HashMap;
 
 use wave_core::{camera, Engine, EnumEngineError, input, layers, TraitApply, TraitFree, TraitHint};
-use wave_core::assets::asset_loader::{AssetLoader, EnumAssetHint, EnumAssetPrimitiveMode};
-use wave_core::assets::r_assets;
-use wave_core::assets::r_assets::{EnumPrimitiveMapMethod, EnumSubPrimitivePortion};
+use wave_core::assets::asset_loader::{AssetLoader};
+use wave_core::assets::r_assets::{EnumAssetMapMethod, EnumAssetPrimitiveSurface, EnumPrimitiveShading, REntity};
 #[allow(unused)]
 use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
@@ -37,7 +36,7 @@ use wave_core::graphics::renderer::{Renderer, EnumRendererRenderPrimitiveAs, Enu
 use wave_core::graphics::{shader};
 use wave_core::graphics::shader::EnumShaderHint;
 use wave_core::graphics::texture::{Texture, TextureArray};
-use wave_core::utils::texture_loader::{TextureLoader};
+use wave_core::utils::texture_loader::{EnumTextureLoaderHint, TextureLoader};
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
 #[allow(unused)]
 use wave_core::layers::imgui_layer::ImguiLayer;
@@ -118,7 +117,7 @@ impl TraitLayer for EditorLayer {
 
 pub struct Editor {
   m_engine: Engine,
-  m_r_assets: HashMap<&'static str, (shader::Shader, Vec<r_assets::REntity>)>,
+  m_r_assets: HashMap<&'static str, (shader::Shader, Vec<REntity>)>,
   m_cameras: Vec<camera::Camera>,
   m_textures: Vec<Texture>,
 }
@@ -129,12 +128,12 @@ impl Default for Editor {
     let mut renderer = Renderer::default();  // Apply default renderer hints.
     
     // window.set_hint(EnumWindowHint::WindowApi(EnumRendererApi::Vulkan));  // Select Vulkan client api.
-    window.set_hint(EnumWindowHint::MSAA(Some(4)));  // Enable MSAA.
+    window.set_hint(EnumWindowHint::MSAA(Some(8)));  // Enable MSAA.
     
     // Enable all optimizations.
     renderer.set_hint(EnumRendererHint::ApiCallChecking(EnumRendererCallCheckingMode::SyncAndAsync));
     renderer.set_hint(EnumRendererHint::Optimization(EnumRendererOptimizationMode::All));
-    renderer.set_hint(EnumRendererHint::MSAA(Some(4)));  // Enable MSAA.
+    renderer.set_hint(EnumRendererHint::MSAA(Some(8)));  // Enable MSAA.
     // renderer.set_hint(EnumRendererHint::ContextApi(EnumRendererApi::Vulkan));  // Select Vulkan context api.
     
     return Editor {
@@ -194,25 +193,30 @@ impl TraitLayer for Editor {
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending textures to GPU...");
     
-    let texture_preset = TextureLoader::new();
-    // texture_preset.set_hint(EnumTextureLoaderHint::FlipPixels(true));
+    let mut texture_preset = TextureLoader::new();
+    texture_preset.set_hint(EnumTextureLoaderHint::FlipUvs(true));
+    
+    let awp_texture_info = texture_preset.load("res/textures/awp/awp_texture.jpeg")?;
     
     // Load all textures in folders.
+    texture_preset.set_hint(EnumTextureLoaderHint::FlipUvs(false));
     let mario_textures_info = texture_preset.load_from_folder("res/textures/mario")?;
     let n64_logo_textures_info = texture_preset.load_from_folder("res/textures/n64_logo")?;
     
-    // Batch all textures from assets that share the same shader to fit them in an appropriate 'texture array bucket' in the shader
-    let mario_texture_array = TextureArray::new(EnumRendererApi::OpenGL, mario_textures_info);
-    let n64_logo_texture_array = TextureArray::new(EnumRendererApi::OpenGL, n64_logo_textures_info);
+    // Batch all textures from assets that share the same size to fit them in an appropriate 'texture array bucket' in the shader.
+    let mut texture_1024_array = TextureArray::new(EnumRendererApi::OpenGL, vec![awp_texture_info]);
+    texture_1024_array.append(mario_textures_info);
     
-    let mut mario_texture = mario_texture_array.as_texture();  // Get texture.
-    let mut n64_logo_texture = n64_logo_texture_array.as_texture();  // Get texture.
+    let texture_64_array = TextureArray::new(EnumRendererApi::OpenGL, n64_logo_textures_info);
     
-    mario_texture.apply()?;
-    n64_logo_texture.apply()?;
+    let mut texture_1024_handle = texture_1024_array.get_texture_handle();
+    let mut textures_64_handle = texture_64_array.get_texture_handle();
     
-    self.m_textures.push(mario_texture);
-    self.m_textures.push(n64_logo_texture);
+    texture_1024_handle.apply()?;
+    textures_64_handle.apply()?;
+    
+    self.m_textures.push(texture_1024_handle);
+    self.m_textures.push(textures_64_handle);
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Textures sent to GPU...");
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
@@ -224,28 +228,30 @@ impl TraitLayer for Editor {
     let mario_asset = asset_loader.load("res/assets/mario/mario.obj")?;
     let logo_asset = asset_loader.load("res/assets/n64_logo/n64_logo.obj")?;
     
-    let mut awp = r_assets::REntity::new(awp_asset, r_assets::EnumPrimitive::default(), "Awp Sniper");
+    let mut awp = REntity::new(awp_asset, EnumPrimitiveShading::default(), "Awp Sniper");
     
+    // Map all textures in folder to sub primitives in 1-1 ratio in order.
+    awp.map_texture(&texture_1024_array, EnumAssetMapMethod::MultipleForEach(2, 0, 1));
     awp.translate(10.0, -10.0, 50.0);
     awp.rotate(90.0, -90.0, 0.0);
     awp.apply(&mut shader)?;  // Bake and send the asset.
-    awp.show(EnumSubPrimitivePortion::Everything);
+    awp.show(EnumAssetPrimitiveSurface::Everything);
     
-    let mut mario = r_assets::REntity::new(mario_asset, r_assets::EnumPrimitive::default(), "Mario");
+    let mut mario = REntity::new(mario_asset, EnumPrimitiveShading::default(), "Mario");
     
-    // Map all textures in folder to sub primitives in 1-1 ratio in order.
-    mario.map_texture_array(&mario_texture_array, EnumPrimitiveMapMethod::OnePerSubPrimitive);
+    // Map all textures in folder to sub primitives in 1-1 ratio in order AFTER previous texture depths.
+    mario.map_texture(&texture_1024_array, EnumAssetMapMethod::OneForEach(1, texture_1024_array.len()));
     mario.translate(-5.0, -5.0, 15.0);
     mario.apply(&mut shader)?;  // Bake and send the asset.
-    mario.show(EnumSubPrimitivePortion::Everything);
+    mario.show(EnumAssetPrimitiveSurface::Everything);
     
-    let mut logo = r_assets::REntity::new(logo_asset, r_assets::EnumPrimitive::default(), "N64 Logo");
+    let mut logo = REntity::new(logo_asset, EnumPrimitiveShading::default(), "N64 Logo");
     
     // Map all textures in folder to sub primitives in a randomized fashion.
-    logo.map_texture_array(&n64_logo_texture_array, EnumPrimitiveMapMethod::OnePerSubPrimitive);
+    logo.map_texture(&texture_64_array, EnumAssetMapMethod::Randomized);
     logo.translate(3.0, 0.0, 7.0);
     logo.apply(&mut shader)?;  // Bake and send the asset.
-    logo.show(EnumSubPrimitivePortion::Everything);
+    logo.show(EnumAssetPrimitiveSurface::Everything);
     
     self.m_r_assets.insert("Smooth assets", (shader, vec![awp, mario, logo]));
     
@@ -324,27 +330,27 @@ impl TraitLayer for Editor {
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].hide(EnumSubPrimitivePortion::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].hide(EnumAssetPrimitiveSurface::Everything);
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].show(EnumSubPrimitivePortion::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].show(EnumAssetPrimitiveSurface::Everything);
             Ok(true)
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].hide(EnumSubPrimitivePortion::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].hide(EnumAssetPrimitiveSurface::Everything);
             Ok(true)
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].show(EnumSubPrimitivePortion::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].show(EnumAssetPrimitiveSurface::Everything);
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[2].hide(EnumSubPrimitivePortion::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[2].hide(EnumAssetPrimitiveSurface::Everything);
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[2].show(EnumSubPrimitivePortion::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[2].show(EnumAssetPrimitiveSurface::Everything);
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
