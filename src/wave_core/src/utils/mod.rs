@@ -552,7 +552,6 @@ pub mod macros {
 
 #[cfg(feature = "debug")]
 use crate::Engine;
-#[cfg(feature = "debug")]
 use self::macros::logger::*;
 
 const CONST_TIME_NANO: f64 = 1000000000.0;
