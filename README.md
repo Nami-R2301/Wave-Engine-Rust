@@ -59,15 +59,6 @@ Alternatively, you can install our engine system-wide (C:\Program Files\) (Requi
 <Wave-Engine-Rust root directory>./install.bat
 ```
 
-#### Using Cargo
-
-- Open Wave-Engine-Rust root dir with your favorite shell.
-
-- Run the following:
-```
-cargo run --package wave_engine
-```
-
 ### Linux (64 bit)
 
 ### Importing the library
@@ -107,6 +98,15 @@ sudo <Wave-Engine-Rust root directory>./install.sh
 ### MacOS
 
 - We currently do not support MacOS, however if enough requests are made for a MacOS port there will be a MacOS branch for MacOS developpement that will contain its release build and this README will be updated accordingly. Check back periodically to make sure you don't miss any updates on MacOS support if you are one of the requestees.
+
+## Using Cargo
+
+- Open Wave-Engine-Rust root dir with your favorite shell.
+
+- Run the following:
+```
+cargo run --package wave_engine
+```
 
 ## How do I remove it ?
 
