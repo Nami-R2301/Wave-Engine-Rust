@@ -25,9 +25,8 @@ Rust version of Wave-Engine project (C++).
 
 ### Requirements
 
-- Release builds currently only support 64 bit architectures, if you are on a 32 bit machine you're out of luck for now.
-- CMake (>= 3.12) : Optional on Windows if you build using Visual Studio, mandatory on Linux.
-- Visual Studio (Windows only) : Optional on Windows if you decide to build with CMake.
+- Rust version >= 1.5
+- Vulkan SDK for Vulkan-dev branch.
 
 ### Windows (64 bit)
 
@@ -37,19 +36,17 @@ Start by importing the repository in your project.
 
 ```
 cd <Wherever you want to place the library>
-git clone --recursive https://github.com/Nami-R2301/Wave-Engine.git
+git clone --recursive https://github.com/Nami-R2301/Wave-Engine-Rust.git
 ```
 
 ### Building the library locally
-
-#### Using CMake
 
 Build the engine locally only for the current user (C:\Users\<user name>\Appdata\Local) (Requires admin privileges).
 
 - Open Powershell as admin and enter the following
 
 ```
-<Wave-Engine root directory>./install_local.bat
+<Wave-Engine-Rust root directory>./install_local.bat
 ```
 
 ### Building the library globally
@@ -59,18 +56,17 @@ Alternatively, you can install our engine system-wide (C:\Program Files\) (Requi
 - Open Powershell as admin and enter the following
 
 ```
-<Wave-Engine root directory>./install.bat
+<Wave-Engine-Rust root directory>./install.bat
 ```
 
-#### Using Visual Studio
+#### Using Cargo
 
-- Open Wave-Engine-WIN10.sln
+- Open Wave-Engine-Rust root dir with your favorite shell.
 
-- Right-click Wave-Editor and click on set as startup project.
-
-- Switch to release configuration
-
-- Click on Run or press F5
+- Run the following:
+```
+cargo run --package wave_engine
+```
 
 ### Linux (64 bit)
 
@@ -82,7 +78,7 @@ Start by importing the repository in your project.
 
 ```
 cd <Wherever you want to place the library>
-git clone --recursive https://github.com/Nami-R2301/Wave-Engine.git
+git clone --recursive https://github.com/Nami-R2301/Wave-Engine-Rust.git
 ```
 
 ### Building the library locally
@@ -92,8 +88,8 @@ Build the engine locally only for the current user (/usr/local) (Requires admin 
 - Open a bash terminal and run the following
 
 ```
-sudo chmod +x <Wave-Engine root directory>./install_local.sh
-sudo <Wave-Engine root directory>./install_local.sh
+sudo chmod +x <Wave-Engine-Rust root directory>./install_local.sh
+sudo <Wave-Engine-Rust root directory>./install_local.sh
 ```
 
 
@@ -104,8 +100,8 @@ Alternatively, you can install our engine system-wide (/opt/) (Requires admin pr
 - Open a bash terminal and run the following
 
 ```
-sudo chmod <Wave-Engine root directory>./install.sh
-sudo <Wave-Engine root directory>./install.sh
+sudo chmod <Wave-Engine-Rust root directory>./install.sh
+sudo <Wave-Engine-Rust root directory>./install.sh
 ```
 
 ### MacOS
@@ -116,12 +112,15 @@ sudo <Wave-Engine root directory>./install.sh
 
 ### Windows
 
-- Open Powershell as admin and enter the following
+- Open Powershell as admin and enter the following (May require admin shell if it has been installed globally on the machine)
 
 ```
-<Wave-Engine root directory>./uninstall.bat
+<Wave-Engine-Rust root directory>./uninstall.bat
 ```
 
 ### Linux
 
-- Open a bash terminal and run the following
+- Open a bash terminal and run the following (May require `sudo` if it has been installed globally on the machine)
+```
+<Wave-Engine-Rust root directory>./uninstall.sh
+```
