@@ -23,5 +23,5 @@ jobs:
         sudo apt install libxrandr-dev;
         sudo apt install vulkan-tools;
         sudo apt install libvulkan-dev;
-        cargo build --color=always --message-format=json-diagnostic-rendered-ansi --package wave-engine;
+        cargo build --color=always --message-format=json-diagnostic-rendered-ansi --package wave_engine;
         cargo test -- --test-threads=1 --show-output;
