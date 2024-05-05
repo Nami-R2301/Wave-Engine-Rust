@@ -182,10 +182,7 @@ impl Display for EnumRendererRenderPrimitiveAs {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumRendererOptimizationMode {
   NoOptimizations,
-  MinimizeVertexBuffers,
-  MinimizeIndexBuffers,
-  MinimizeDrawCalls,
-  All
+  MinimizeDrawCalls
 }
 
 impl Default for EnumRendererOptimizationMode {
@@ -196,6 +193,7 @@ impl Default for EnumRendererOptimizationMode {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EnumRendererHint {
+  ForceApiVersion(u32),
   /// Combine primitives with the same material type into a single buffer if possible, both for the vbo and ibo.
   /// ### Argument:
   /// - *true* **Default**: Enables the batching of similar materials from the same shader by appending their vertices in the same vbo,
@@ -287,7 +285,8 @@ impl EnumRendererHint {
       EnumRendererHint::SRGB(bool) => bool,
       EnumRendererHint::Blending(blend_func) => blend_func,
       EnumRendererHint::SplitLargeVertexBuffers(vertex_limit) => vertex_limit,
-      EnumRendererHint::SplitLargeIndexBuffers(index_limit) => index_limit
+      EnumRendererHint::SplitLargeIndexBuffers(index_limit) => index_limit,
+      EnumRendererHint::ForceApiVersion(version) => version
     }
   }
 }
@@ -380,20 +379,19 @@ impl Stats {
 }
 
 pub(crate) trait TraitContext {
-  fn default() -> Self where Self: Sized;
-  fn on_new(window: &mut Window, renderer_options: Vec<EnumRendererHint>) -> Result<Self, EnumRendererError> where Self: Sized;
+  fn new() -> Self where Self: Sized;
   fn get_api_handle(&mut self) -> &mut dyn Any;
   fn get_api_version(&self) -> f32;
   fn get_max_shader_version_available(&self) -> u16;
   fn check_extension(&self, desired_extension: &str) -> bool;
   fn on_event(&mut self, event: &events::EnumEvent) -> Result<bool, EnumRendererError>;
   fn on_render(&mut self) -> Result<(), EnumRendererError>;
-  fn apply(&mut self, window: &mut Window) -> Result<(), EnumRendererError>;
-  fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, visible: bool) -> Result<(), EnumRendererError>;
+  fn apply(&mut self, window: &mut Window, renderer_options: &Vec<EnumRendererHint>) -> Result<(), EnumRendererError>;
+  fn toggle_visibility_of(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, instance_count: usize, visible: bool) -> Result<(), EnumRendererError>;
   fn toggle_primitive_mode(&mut self, mode: EnumRendererRenderPrimitiveAs, entity_uuid: u64, sub_primitive_index: Option<usize>, instance_count: usize) -> Result<(), EnumRendererError>;
   fn get_max_msaa_count(&self) -> Result<u8, EnumRendererError>;
   fn to_string(&self) -> String;
-  fn toggle_options(&mut self) -> Result<(), EnumRendererError>;
+  fn toggle_options(&mut self, renderer_options: &Vec<EnumRendererHint>) -> Result<(), EnumRendererError>;
   fn flush(&mut self) -> Result<(), EnumRendererError>;
   fn enqueue(&mut self, entity: &REntity, shader_associated: &mut Shader) -> Result<(), EnumRendererError>;
   fn dequeue(&mut self, id: u64) -> Result<(), EnumRendererError>;
@@ -412,17 +410,19 @@ pub struct Renderer {
 
 impl Default for Renderer {
   fn default() -> Self {
+    let hints = vec![EnumRendererHint::ApiCallChecking(Default::default()),
+      EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true),
+      EnumRendererHint::Blending(Some((EnumRendererBlendingFactor::SrcAlpha, EnumRendererBlendingFactor::default()))),
+      EnumRendererHint::Optimization(Default::default()),
+      EnumRendererHint::CullFacing(Some(Default::default())),
+      EnumRendererHint::MSAA(None)];
+    
     return Self {
       m_state: EnumRendererState::Created,
       m_type: EnumRendererApi::default(),
-      m_hints: vec![EnumRendererHint::ApiCallChecking(Default::default()),
-        EnumRendererHint::SRGB(true), EnumRendererHint::DepthTest(true),
-        EnumRendererHint::Blending(Some((EnumRendererBlendingFactor::SrcAlpha, EnumRendererBlendingFactor::default()))),
-        EnumRendererHint::Optimization(Default::default()),
-        EnumRendererHint::CullFacing(Some(Default::default())),
-       EnumRendererHint::MSAA(None)],
+      m_hints: hints.clone(),
       m_ids: Vec::with_capacity(10),
-      m_api: Box::new(GlContext::default()),
+      m_api: Box::new(GlContext::new()),
     };
   }
 }
@@ -448,6 +448,11 @@ impl TraitHint<EnumRendererHint> for Renderer {
 impl TraitApply<EnumRendererError> for Renderer {
   fn apply(&mut self) -> Result<(), EnumRendererError> {
     let window = Engine::get_active_window();
+    
+    // Set default hints if none specified.
+    if self.m_hints.is_empty() {
+      self.reset_hints();
+    }
     if self.m_type == EnumRendererApi::Vulkan {
       #[cfg(not(feature = "vulkan"))]
       {
@@ -455,12 +460,10 @@ impl TraitApply<EnumRendererError> for Renderer {
         return Err(EnumRendererError::InvalidApi);
       }
       
-      self.m_api = Box::new(VkContext::on_new(window, self.m_hints.clone())?);
-      return self.m_api.apply(window);
+      return self.m_api.apply(window, &self.m_hints);
     }
     
-    self.m_api = Box::new(GlContext::on_new(window, self.m_hints.clone())?);
-    return self.m_api.apply(window);
+    return self.m_api.apply(window, &self.m_hints);
   }
 }
 
@@ -488,7 +491,7 @@ impl<'a> Renderer {
           m_type: EnumRendererApi::OpenGL,
           m_hints: vec![],
           m_ids: Vec::with_capacity(10),
-          m_api: Box::new(GlContext::default()),
+          m_api: Box::new(GlContext::new()),
         }
       }
       EnumRendererApi::Vulkan => {
@@ -497,20 +500,20 @@ impl<'a> Renderer {
           m_type: EnumRendererApi::Vulkan,
           m_hints: vec![],
           m_ids: Vec::with_capacity(10),
-          m_api: Box::new(VkContext::default()),
+          m_api: Box::new(VkContext::new()),
         }
       }
     }
   }
   
-  pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) -> Result<(), EnumRendererError> {
+  pub fn hide(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, instance_count: usize) -> Result<(), EnumRendererError> {
     log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Asset {0} now hidden", entity_uuid);
-    return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, false);
+    return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, instance_count, false);
   }
   
-  pub fn show(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>) -> Result<(), EnumRendererError> {
+  pub fn show(&mut self, entity_uuid: u64, sub_primitive_offset: Option<usize>, instance_count: usize) -> Result<(), EnumRendererError> {
     log!(EnumLogColor::Blue, "INFO", "[Renderer] -->\t Asset {0} now shown", entity_uuid);
-    return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, true);
+    return self.m_api.toggle_visibility_of(entity_uuid, sub_primitive_offset, instance_count, true);
   }
   
   pub fn toggle_primitive_mode(&mut self, name: &'static str, mode: EnumRendererRenderPrimitiveAs, entity_uuid: u64, instance_offset: Option<usize>,

@@ -330,6 +330,7 @@ pub(crate) struct GlVbo {
   pub(crate) m_capacity: usize,
   pub(crate) m_length: usize,
   pub(crate) m_count: usize,
+  pub(crate) m_type: GLenum,
   m_state: EnumBufferState,
   m_old_buffer_id: u32,
 }
@@ -342,30 +343,32 @@ impl Default for GlVbo {
       m_capacity: 0,
       m_length: 0,
       m_count: 0,
+      m_type: gl::ARRAY_BUFFER,
       m_old_buffer_id: 0,
     };
   }
 }
 
 impl GlVbo {
-  pub(crate) fn new(capacity: usize) -> Result<Self, EnumOpenGLError> {
+  pub(crate) fn new(vbo_type: GLenum, capacity: usize) -> Result<Self, EnumOpenGLError> {
     let mut new_vbo: GLuint = 0;
     
     if capacity == 0 || capacity >= C_VBO_SIZE_LIMIT {
       log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot reserve size of {0} bytes for vbo, size is either 0 \
-      or size exceeds the custom limit enforced (5 Megabytes) per Vertex buffer!", capacity);
+      or size exceeds the custom limit enforced (10 Megabytes) per Vertex buffer!", capacity);
       return Err(EnumOpenGLError::InvalidBufferOperation(EnumGlBufferError::InvalidBufferSize));
     }
     
     check_gl_call!("GlVbo", gl::CreateBuffers(1, &mut new_vbo));
-    check_gl_call!("GlVbo", gl::BindBuffer(gl::ARRAY_BUFFER, new_vbo));
-    check_gl_call!("GlVbo", gl::BufferData(gl::ARRAY_BUFFER, capacity as GLsizeiptr, std::ptr::null(), gl::DYNAMIC_DRAW));
+    check_gl_call!("GlVbo", gl::BindBuffer(vbo_type, new_vbo));
+    check_gl_call!("GlVbo", gl::BufferData(vbo_type, capacity as GLsizeiptr, std::ptr::null(), gl::DYNAMIC_DRAW));
     
     return Ok(Self {
       m_buffer_id: new_vbo,
       m_capacity: capacity,
       m_length: 0,
       m_count: 0,
+      m_type: vbo_type,
       m_state: EnumBufferState::Created,
       m_old_buffer_id: 0,
     });
@@ -394,7 +397,7 @@ impl GlVbo {
   
   pub(crate) fn bind(&mut self) -> Result<(), EnumOpenGLError> {
     if self.m_state != EnumBufferState::Deleted || self.m_state != EnumBufferState::NotCreated {
-      check_gl_call!("GlVbo", gl::BindBuffer(gl::ARRAY_BUFFER, self.m_buffer_id));
+      check_gl_call!("GlVbo", gl::BindBuffer(self.m_type, self.m_buffer_id));
     }
     self.m_state = EnumBufferState::Bound;
     return Ok(());
@@ -404,7 +407,7 @@ impl GlVbo {
   pub(crate) fn clear(&mut self) -> Result<(), EnumOpenGLError> {
     self.bind()?;
     
-    check_gl_call!("GlVbo", gl::BufferSubData(gl::ARRAY_BUFFER, 0, self.m_length as GLsizeiptr, std::ptr::null()));
+    check_gl_call!("GlVbo", gl::BufferSubData(self.m_type, 0, self.m_length as GLsizeiptr, std::ptr::null()));
     self.m_length = 0;
     
     return Ok(());
@@ -429,7 +432,7 @@ impl GlVbo {
     
     // Set new data in new buffer.
     self.bind()?;
-    check_gl_call!("GlVbo", gl::BufferSubData(gl::ARRAY_BUFFER, old_size as GLsizeiptr, vec_size as GLsizeiptr,
+    check_gl_call!("GlVbo", gl::BufferSubData(self.m_type, old_size as GLsizeiptr, vec_size as GLsizeiptr,
       data.as_ptr() as *const GLvoid));
     return Ok(());
   }
@@ -442,13 +445,13 @@ impl GlVbo {
     }
     self.bind()?;
     if size * count == self.m_length {
-      check_gl_call!("GlVbo", gl::MapBufferRange(gl::ARRAY_BUFFER, buffer_offset as GLintptr, size as GLsizeiptr,
+      check_gl_call!("GlVbo", gl::MapBufferRange(self.m_type, buffer_offset as GLintptr, size as GLsizeiptr,
         gl::MAP_WRITE_BIT | gl::MAP_INVALIDATE_BUFFER_BIT));
     } else {
-      check_gl_call!("GlVbo", gl::MapBufferRange(gl::ARRAY_BUFFER, buffer_offset as GLintptr, size as GLsizeiptr,
+      check_gl_call!("GlVbo", gl::MapBufferRange(self.m_type, buffer_offset as GLintptr, size as GLsizeiptr,
         gl::MAP_WRITE_BIT | gl::MAP_INVALIDATE_RANGE_BIT));
     }
-    check_gl_call!("GlVbo", gl::UnmapBuffer(gl::ARRAY_BUFFER));
+    check_gl_call!("GlVbo", gl::UnmapBuffer(self.m_type));
     
     self.m_length -= size;
     self.m_count -= count;
@@ -458,7 +461,7 @@ impl GlVbo {
   pub(crate) fn expand(&mut self, alloc_size: usize) -> Result<(), EnumOpenGLError> {
     if alloc_size == 0 || alloc_size + self.m_capacity > C_VBO_SIZE_LIMIT {
       log!(EnumLogColor::Red, "ERROR", "[GlBuffer] -->\t Cannot resize vbo, size is either 0 \
-      or size exceeds the custom limit enforced (5 Megabytes) per Vertex buffer!");
+      or size exceeds the custom limit enforced (10 Megabytes) per Vertex buffer!");
       return Err(EnumOpenGLError::from(EnumGlBufferError::InvalidCapacitySize));
     }
     
@@ -561,7 +564,7 @@ impl GlVbo {
   
   pub(crate) fn unbind(&mut self) -> Result<(), EnumOpenGLError> {
     if self.m_state != EnumBufferState::Deleted || self.m_state != EnumBufferState::NotCreated {
-      check_gl_call!("GlVbo", gl::BindBuffer(gl::ARRAY_BUFFER, 0));
+      check_gl_call!("GlVbo", gl::BindBuffer(self.m_type, 0));
     }
     self.m_state = EnumBufferState::Unbound;
     return Ok(());
@@ -591,7 +594,6 @@ impl GlVbo {
     return Ok(());
   }
 }
-
 
 const C_IBO_SIZE_LIMIT: usize = 10_000_000;  // 10 Mbs.
 

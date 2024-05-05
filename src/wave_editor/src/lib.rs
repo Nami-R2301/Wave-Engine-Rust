@@ -128,12 +128,13 @@ impl Default for Editor {
     let mut renderer = Renderer::default();  // Apply default renderer hints.
     
     // window.set_hint(EnumWindowHint::WindowApi(EnumRendererApi::Vulkan));  // Select Vulkan client api.
-    window.set_hint(EnumWindowHint::MSAA(Some(8)));  // Enable MSAA.
+    window.set_hint(EnumWindowHint::MSAA(None));  // Enable MSAA.
     
     // Enable all optimizations.
+    // renderer.set_hint(EnumRendererHint::ForceApiVersion(420));
     renderer.set_hint(EnumRendererHint::ApiCallChecking(EnumRendererCallCheckingMode::SyncAndAsync));
-    renderer.set_hint(EnumRendererHint::Optimization(EnumRendererOptimizationMode::All));
-    renderer.set_hint(EnumRendererHint::MSAA(Some(8)));  // Enable MSAA.
+    renderer.set_hint(EnumRendererHint::Optimization(EnumRendererOptimizationMode::MinimizeDrawCalls));
+    renderer.set_hint(EnumRendererHint::MSAA(None));  // Enable MSAA.
     // renderer.set_hint(EnumRendererHint::ContextApi(EnumRendererApi::Vulkan));  // Select Vulkan context api.
     
     return Editor {

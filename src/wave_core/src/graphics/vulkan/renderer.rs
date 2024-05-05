@@ -212,8 +212,7 @@ pub struct VkContext {
   m_swap_chain_image_views: Vec<vk::ImageView>,
   m_dynamic_states: Vec<vk::DynamicState>,
   m_vbo_array: Vec<VkVbo>,
-  m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
-  m_features: Vec<EnumRendererHint>
+  m_debug_report_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)>
 }
 
 #[cfg(feature = "vulkan")]
@@ -932,7 +931,7 @@ impl VkContext {
 
 #[cfg(feature = "vulkan")]
 impl TraitContext for VkContext {
-  fn default() -> Self where Self: Sized {
+  fn new() -> Self where Self: Sized {
     return Self {
       m_state: EnumRendererState::NotCreated,
       m_entry: Default::default(),
@@ -949,8 +948,7 @@ impl TraitContext for VkContext {
       m_swap_chain_image_views: vec![],
       m_dynamic_states: vec![],
       m_vbo_array: vec![],
-      m_debug_report_callback: None,
-      m_features: Vec::new()
+      m_debug_report_callback: None
     }
   }
   
@@ -959,53 +957,12 @@ impl TraitContext for VkContext {
     return Ok(());
   }
   
-  fn toggle_visibility_of(&mut self, _entity_uuid: u64, _sub_primitive_offset: Option<usize>, _visible: bool) -> Result<(), EnumRendererError> {
+  fn toggle_visibility_of(&mut self, _entity_uuid: u64, _sub_primitive_offset: Option<usize>, _instance_count: usize, _visible: bool) -> Result<(), EnumRendererError> {
     return Ok(());
   }
   
   fn update_ubo_model(&mut self, _model_transform: Mat4, _entity_uuid: u64, _instance_offset: Option<usize>, _instance_count: usize) -> Result<(), EnumRendererError> {
     return Ok(());
-  }
-  
-  fn on_new(window: &mut Window, features: Vec<EnumRendererHint>) -> Result<Self, EnumRendererError> {
-    let (ash_entry, ash_instance) =
-      VkContext::create_instance(window, None, None)?;
-    #[allow(unused)]
-      let debug_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)> = None;
-    
-    // Create surface (graphic context).
-    let vk_surface = khr::Surface::new(&ash_entry, &ash_instance);
-    let mut khr_surface = vk::SurfaceKHR::default();
-    
-    window.init_vulkan_surface(&ash_instance, &mut khr_surface);
-    
-    // Pick ideal physical device for surface and load corresponding logical device.
-    let vk_physical_device = VkContext::pick_physical_device(&ash_instance,
-      &vk_surface, khr_surface)?;
-    let queue_family_indices = VkContext::query_queue_families(&ash_instance,
-      &vk_surface, khr_surface, vk_physical_device)?;
-    let ash_logical_device = VkContext::create_logical_device(&ash_instance, vk_physical_device,
-      queue_family_indices.m_graphics_family_index.unwrap_or(0), None)?;
-    
-    Ok(VkContext {
-      m_state: EnumRendererState::Created,
-      m_entry: ash_entry,
-      m_instance: Some(ash_instance),
-      m_surface: Some(vk_surface),
-      m_surface_khr: khr_surface,
-      m_debug_report_callback: debug_callback,
-      m_physical_device: vk_physical_device,
-      m_queue_family_indices: queue_family_indices,
-      m_logical_device: Some(ash_logical_device),
-      m_swap_chain_properties: VkSwapChainProperties::default(),
-      m_swap_chain: None,
-      m_swap_chain_khr: Default::default(),
-      m_swap_chain_images: Default::default(),
-      m_swap_chain_image_views: Default::default(),
-      m_dynamic_states: Vec::with_capacity(2),
-      m_vbo_array: Default::default(),
-      m_features: Vec::from(features)
-    })
   }
   
   fn get_api_handle(&mut self) -> &mut dyn Any {
@@ -1043,13 +1000,41 @@ impl TraitContext for VkContext {
     return Ok(false);
   }
   
-  fn on_render(&mut self) -> Result<(), renderer::EnumRendererError> {
+  fn on_render(&mut self) -> Result<(), EnumRendererError> {
     return Ok(());
   }
   
-  fn apply(&mut self, window: &mut Window) -> Result<(), renderer::EnumRendererError> {
+  fn apply(&mut self, window: &mut Window, renderer_hints: &Vec<EnumRendererHint>) -> Result<(), EnumRendererError> {
+    let (ash_entry, ash_instance) =
+      VkContext::create_instance(window, None, None)?;
+    #[allow(unused)]
+      let debug_callback: Option<(ext::DebugUtils, vk::DebugUtilsMessengerEXT)> = None;
+    
+    // Create surface (graphic context).
+    let vk_surface = khr::Surface::new(&ash_entry, &ash_instance);
+    let mut khr_surface = vk::SurfaceKHR::default();
+    
+    window.init_vulkan_surface(&ash_instance, &mut khr_surface);
+    
+    // Pick ideal physical device for surface and load corresponding logical device.
+    let vk_physical_device = VkContext::pick_physical_device(&ash_instance,
+      &vk_surface, khr_surface)?;
+    let queue_family_indices = VkContext::query_queue_families(&ash_instance,
+      &vk_surface, khr_surface, vk_physical_device)?;
+    let ash_logical_device = VkContext::create_logical_device(&ash_instance, vk_physical_device,
+      queue_family_indices.m_graphics_family_index.unwrap_or(0), None)?;
+    
+    self.m_entry = ash_entry;
+    self.m_instance = Some(ash_instance);
+    self.m_surface = Some(vk_surface);
+    self.m_surface_khr = khr_surface;
+    self.m_debug_report_callback = debug_callback;
+    self.m_physical_device = vk_physical_device;
+    self.m_queue_family_indices = queue_family_indices;
+    self.m_logical_device = Some(ash_logical_device);
+    
     // Toggle features.
-    self.toggle_options()?;
+    self.toggle_options(renderer_hints)?;
     
     // Create swap chain.
     self.create_swap_chain(window.m_vsync)?;
@@ -1136,8 +1121,8 @@ impl TraitContext for VkContext {
     return info_physical_device + info_logical_device.as_str();
   }
   
-  fn toggle_options(&mut self) -> Result<(), renderer::EnumRendererError> {
-    for feature in self.m_features.iter() {
+  fn toggle_options(&mut self, renderer_hints: &Vec<EnumRendererHint>) -> Result<(), EnumRendererError> {
+    for feature in renderer_hints.iter() {
       match feature {
         EnumRendererHint::ApiCallChecking(debug_type) => {
           if *debug_type != EnumRendererCallCheckingMode::None {
@@ -1187,6 +1172,7 @@ impl TraitContext for VkContext {
         EnumRendererHint::Optimization(_) => {}
         EnumRendererHint::SplitLargeVertexBuffers(_) => {}
         EnumRendererHint::SplitLargeIndexBuffers(_) => {}
+        _ => {}
       }
     }
     return Ok(());

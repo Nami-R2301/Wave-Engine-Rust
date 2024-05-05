@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-use std::collections::{HashSet};
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::mem::size_of;
 
@@ -31,7 +31,7 @@ use rand::Rng;
 use crate::{Engine, log, TraitFree};
 use crate::assets::asset_loader::AssetInfo;
 use crate::graphics::color::Color;
-use crate::graphics::renderer::{EnumRendererError, EnumRendererHint, EnumRendererOptimizationMode, EnumRendererRenderPrimitiveAs};
+use crate::graphics::renderer::{EnumRendererError, EnumRendererRenderPrimitiveAs};
 use crate::graphics::shader::Shader;
 use crate::graphics::texture::TextureArray;
 use crate::math::{Mat4, Vec2, Vec3};
@@ -68,7 +68,7 @@ pub enum EnumMaterialShading {
   OrenNayar,
   Minnaert,
   CookTorrance,
-  Fresnel
+  Fresnel,
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash)]
@@ -76,7 +76,7 @@ pub enum EnumMaterialMapMode {
   Wrap,
   Clamp,
   Mirror,
-  Decal
+  Decal,
 }
 
 #[derive(Debug, PartialEq, Hash)]
@@ -125,6 +125,7 @@ pub struct Material {
 }
 
 pub trait TraitPrimitive {
+  fn get_type(&self) -> EnumPrimitiveShading;
   fn get_name(&self) -> &str;
   fn get_vertices_ref(&self) -> &Vec<Vertex>;
   fn get_vertices_mut(&mut self) -> &mut Vec<Vertex>;
@@ -181,6 +182,10 @@ pub struct Sprite {
 }
 
 impl TraitPrimitive for Sprite {
+  fn get_type(&self) -> EnumPrimitiveShading {
+    return EnumPrimitiveShading::Sprite;
+  }
+  
   fn get_name(&self) -> &str {
     return &self.m_name;
   }
@@ -214,6 +219,10 @@ pub struct Mesh {
 }
 
 impl TraitPrimitive for Mesh {
+  fn get_type(&self) -> EnumPrimitiveShading {
+    return EnumPrimitiveShading::Mesh(EnumMaterialShading::default());
+  }
+  
   fn get_name(&self) -> &str {
     return &self.m_name;
   }
@@ -435,17 +444,21 @@ impl REntity {
       
       unsafe { S_ENTITY_ID_COUNTER += 1 };
       
+      let c_name = unsafe {
+        std::ffi::CStr::from_ptr(mesh.name.data.as_ptr() as *const _).to_str().unwrap()
+      };
+      
       match data_type {
         EnumPrimitiveShading::Sprite => {
           data.push(Box::new(Sprite {
-            m_name: String::from(mesh.name.as_ref()),
+            m_name: String::from(c_name),
             m_vertices: vertices,
             m_indices: indices,
           }));
         }
         EnumPrimitiveShading::Mesh(_) => {
           data.push(Box::new(Mesh {
-            m_name: String::from(mesh.name.as_ref()),
+            m_name: String::from(c_name),
             m_vertices: vertices,
             m_indices: indices,
           }));
@@ -659,7 +672,7 @@ impl REntity {
             let mut added = unique_randomized_positions.insert(range.gen_range(0..texture_array.m_textures.len()));
             // Keep trying to insert until unique value.
             while !added {
-              added =  unique_randomized_positions.insert(range.gen_range(0..texture_array.m_textures.len()));
+              added = unique_randomized_positions.insert(range.gen_range(0..texture_array.m_textures.len()));
             };
           });
         
@@ -745,21 +758,11 @@ impl REntity {
       let renderer = Engine::get_active_renderer();
       let matrix = self.get_matrix();
       
-      if renderer.m_hints.contains(&EnumRendererHint::Optimization(EnumRendererOptimizationMode::All)) ||
-        renderer.m_hints.contains(&EnumRendererHint::Optimization(EnumRendererOptimizationMode::MinimizeDrawCalls)) {
-        renderer.update_ubo_model(matrix, self.m_sub_meshes.first().unwrap().get_entity_id() as u64, None, self.m_sub_meshes.len())?;
-      } else {
-        renderer.update_ubo_model(matrix, self.m_renderer_id, None, self.m_sub_meshes.len())?;
-      }
+      renderer.update_ubo_model(matrix, self.m_sub_meshes.first().unwrap().get_entity_id() as u64, None, self.m_sub_meshes.len())?;
       
       if self.m_last_primitive_mode != self.m_primitive_mode {
-        if renderer.m_hints.contains(&EnumRendererHint::Optimization(EnumRendererOptimizationMode::All)) ||
-          renderer.m_hints.contains(&EnumRendererHint::Optimization(EnumRendererOptimizationMode::MinimizeDrawCalls)) {
-          renderer.toggle_primitive_mode(self.m_name, self.m_primitive_mode, self.m_sub_meshes.first().unwrap().get_entity_id() as u64,
-            None, self.m_sub_meshes.len())?;
-        } else {
-          renderer.toggle_primitive_mode(self.m_name, self.m_primitive_mode, self.m_renderer_id, None, self.m_sub_meshes.len())?;
-        }
+        renderer.toggle_primitive_mode(self.m_name, self.m_primitive_mode, self.m_sub_meshes.first().unwrap().get_entity_id() as u64,
+          None, self.m_sub_meshes.len())?;
         self.m_last_primitive_mode = self.m_primitive_mode;
       }
       
@@ -776,11 +779,11 @@ impl REntity {
         EnumAssetPrimitiveSurface::Nothing => {}
         EnumAssetPrimitiveSurface::Some(sub_primitive_index) => {
           if sub_primitive_index < self.m_sub_meshes.len() {
-            let _ = renderer.hide(self.m_renderer_id, Some(sub_primitive_index));
+            let _ = renderer.hide(self.m_renderer_id, Some(sub_primitive_index), self.get_primitive_count());
           }
         }
         EnumAssetPrimitiveSurface::Everything => {
-          let _ = renderer.hide(self.m_renderer_id, None);
+          let _ = renderer.hide(self.m_renderer_id, None, self.get_primitive_count());
         }
       };
     }
@@ -794,11 +797,11 @@ impl REntity {
         EnumAssetPrimitiveSurface::Nothing => {}
         EnumAssetPrimitiveSurface::Some(sub_primitive_index) => {
           if sub_primitive_index < self.m_sub_meshes.len() {
-            let _ = renderer.show(self.m_renderer_id, Some(sub_primitive_index));
+            let _ = renderer.show(self.m_renderer_id, Some(sub_primitive_index), self.get_primitive_count());
           }
         }
         EnumAssetPrimitiveSurface::Everything => {
-          let _ = renderer.show(self.m_renderer_id, None);
+          let _ = renderer.show(self.m_renderer_id, None, self.get_primitive_count());
         }
       };
     }

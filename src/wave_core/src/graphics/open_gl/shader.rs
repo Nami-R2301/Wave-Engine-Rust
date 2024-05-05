@@ -285,7 +285,7 @@ impl TraitShader for GlShader {
       } else if uniform.is::<Mat4>() {
         let value_ptr = uniform.downcast_ref::<Mat4>().unwrap();
         check_gl_call!("GlShader", gl::UniformMatrix4fv(*self.m_uniform_cache.get(uniform_name).unwrap(),
-          1, gl::FALSE, (value_ptr.as_array().as_ptr()) as *const GLfloat));
+          1, gl::FALSE, value_ptr.as_array().as_ptr() as *const GLfloat));
       } else if uniform.is::<bool>() {
         let value_ptr = uniform.downcast_ref::<bool>().unwrap();
         check_gl_call!("GlShader", gl::Uniform1i(*self.m_uniform_cache.get(uniform_name).unwrap(), *value_ptr as i32));
