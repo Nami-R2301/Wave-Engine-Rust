@@ -162,7 +162,6 @@ impl Default for Window {
     context_ref.window_hint(glfw::WindowHint::Resizable(true));
     context_ref.window_hint(glfw::WindowHint::RefreshRate(None));
     context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::OpenGl));
-    context_ref.window_hint(glfw::WindowHint::Samples(Some(4)));
     
     unsafe { S_WINDOW_CONTEXT = Some(result.unwrap()); }
     
@@ -248,7 +247,6 @@ impl TraitHint<EnumWindowHint> for Window {
     context_ref.window_hint(glfw::WindowHint::RefreshRate(None));
     context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::OpenGl));
     context_ref.window_hint(glfw::WindowHint::OpenGlDebugContext(false));
-    context_ref.window_hint(glfw::WindowHint::Samples(Some(4)));
     
     self.m_vsync = true;
     self.m_render_api = EnumRendererApi::default();
@@ -355,10 +353,17 @@ impl<'a> Window {
           "[Window] -->\t Failed to create GLFW window due to internal error! Exiting...");
         panic!("[Window] -->\t Cannot init glfw library for window context, Error => {0}", glfw::InitError::Internal)
       }
-      Ok(_) => {}
+      Ok(mut context_ref) => {
+        // Set default window behavior.
+        context_ref.window_hint(glfw::WindowHint::Visible(false));
+        context_ref.window_hint(glfw::WindowHint::Decorated(true));
+        context_ref.window_hint(glfw::WindowHint::Maximized(true));
+        context_ref.window_hint(glfw::WindowHint::Resizable(true));
+        context_ref.window_hint(glfw::WindowHint::RefreshRate(None));
+        context_ref.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
+        unsafe { S_WINDOW_CONTEXT = Some(context_ref); }
+      }
     }
-    
-    unsafe { S_WINDOW_CONTEXT = Some(result.unwrap()); }
     
     return Self {
       m_api_window_events: None,
