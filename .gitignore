@@ -1,8 +1,8 @@
 imgui.ini
-.idea/*
 src/wave_core/target/
 src/wave_editor/target/
 src/wave_editor/wave-engine.log
+.idea/*
 target/*
 Cargo.lock
 /actions-runner/*
