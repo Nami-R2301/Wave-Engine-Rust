@@ -134,7 +134,7 @@ impl TextureLoader {
     sorted_entries.sort_by_key(|dir| dir.path());
     
     for entry in sorted_entries {
-      log!(EnumLogColor::Purple, "ERROR", "[TexLoader] -->\t Loading texture {0:?} from folder {1:?}...",
+      log!(EnumLogColor::Purple, "INFO", "[TexLoader] -->\t Loading texture {0:?} from folder {1:?}...",
           entry.file_name(), texture_path);
       let entry_name = entry.path();
       if let Ok(texture_info) = self.load(entry_name.to_str().unwrap()) {
