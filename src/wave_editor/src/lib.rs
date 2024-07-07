@@ -24,7 +24,7 @@
 
 pub extern crate wave_core;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use wave_core::{camera, Engine, EnumEngineError, input, layers, TraitApply, TraitFree, TraitHint};
 use wave_core::assets::asset_loader::{AssetLoader};
@@ -34,7 +34,7 @@ use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent, EnumEventMask};
 use wave_core::graphics::renderer::{Renderer, EnumRendererRenderPrimitiveAs, EnumRendererHint, EnumRendererOptimizationMode, EnumRendererApi, EnumRendererCallCheckingMode};
 use wave_core::graphics::{shader};
-use wave_core::graphics::shader::{EnumShaderHint, EnumShaderStageType, ShaderStage};
+use wave_core::graphics::shader::EnumShaderHint;
 use wave_core::graphics::texture::{Texture, TextureArray};
 use wave_core::utils::texture_loader::{EnumTextureLoaderHint, TextureLoader};
 use wave_core::layers::{EnumLayerType, EnumSyncInterval, Layer, TraitLayer};
@@ -127,12 +127,15 @@ impl Default for Editor {
     let mut window = Window::default();  // Apply default window hints.
     let mut renderer = Renderer::default();  // Apply default renderer hints.
     
-    window.set_hint(EnumWindowHint::MSAA(Some(4)));  // Enable MSAA.
+    // window.set_hint(EnumWindowHint::WindowApi(EnumRendererApi::Vulkan));  // Select Vulkan client api.
+    window.set_hint(EnumWindowHint::MSAA(None));  // Enable MSAA.
     
     // Enable all optimizations.
+    // renderer.set_hint(EnumRendererHint::ForceApiVersion(420));
     renderer.set_hint(EnumRendererHint::ApiCallChecking(EnumRendererCallCheckingMode::SyncAndAsync));
     renderer.set_hint(EnumRendererHint::Optimization(EnumRendererOptimizationMode::MinimizeDrawCalls));
-    renderer.set_hint(EnumRendererHint::MSAA(Some(4)));  // Enable MSAA.
+    renderer.set_hint(EnumRendererHint::MSAA(None));  // Enable MSAA.
+    // renderer.set_hint(EnumRendererHint::ContextApi(EnumRendererApi::Vulkan));  // Select Vulkan context api.
     
     return Editor {
       m_engine: Engine::new(window, renderer, vec![]),
@@ -181,12 +184,9 @@ impl TraitLayer for Editor {
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
-    let set = HashSet::from([ShaderStage::default_for(EnumShaderStageType::Vertex),
-      ShaderStage::default_for(EnumShaderStageType::Fragment),
-      ShaderStage::default_for(EnumShaderStageType::Geometry)]);
-    
-    let mut shader = shader::Shader::new(EnumRendererApi::OpenGL, set);
+    let mut shader = shader::Shader::default();  // Get default smooth shader with 3 stages (vertex, geometry, and fragment).
     shader.set_hint(EnumShaderHint::ForceGlslVersion(420));
+    // shader.set_hint(EnumShaderHint::Api(EnumRendererApi::Vulkan));
     
     // Source and compile the shader program.
     shader.apply()?;
