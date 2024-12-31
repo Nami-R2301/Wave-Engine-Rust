@@ -23,12 +23,12 @@
 */
 
 use std::collections::HashMap;
-use wave_core::{TraitApply, TraitHint};
+use wave_core::{TraitBake, TraitOption};
 use wave_core::graphics::renderer::EnumRendererApi;
 
-use wave_editor::wave_core::EnumEngineError;
-use wave_editor::wave_core::input::{EnumAction, EnumKey, EnumModifiers, EnumMouseButton, Input};
-use wave_editor::wave_core::window::{EnumWindowMode, EnumWindowHint, Window};
+use wave_core::EnumEngineError;
+use wave_core::input::{EnumAction, EnumKey, EnumModifiers, EnumMouseButton, Input};
+use wave_core::window::{EnumWindowMode, EnumWindowOption, Window};
 
 fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, bool>, action_required: EnumAction,
                                modifier: EnumModifiers) -> Result<(), EnumEngineError> {
@@ -83,8 +83,8 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
 #[test]
 fn test_synchronous_key_inputs() -> Result<(), EnumEngineError> {
   let mut window = Window::new(EnumRendererApi::OpenGL);
-  window.set_hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));
-  window.set_hint(EnumWindowHint::Resolution(1024, 768));
+  window.set_option(EnumWindowOption::WindowMode(EnumWindowMode::Windowed));
+  window.set_option(EnumWindowOption::Resolution(1024, 768));
   window.apply()?;
   
   // Check if PRESS input events work properly.
@@ -169,8 +169,8 @@ fn test_synchronous_key_inputs() -> Result<(), EnumEngineError> {
 #[test]
 fn test_synchronous_mouse_button_inputs() -> Result<(), EnumEngineError> {
   let mut window = Window::new(EnumRendererApi::OpenGL);
-  window.set_hint(EnumWindowHint::WindowMode(EnumWindowMode::Windowed));
-  window.set_hint(EnumWindowHint::Resolution(1024, 768));
+  window.set_option(EnumWindowOption::WindowMode(EnumWindowMode::Windowed));
+  window.set_option(EnumWindowOption::Resolution(1024, 768));
   window.apply()?;
   
   // Check if PRESS input events work properly.

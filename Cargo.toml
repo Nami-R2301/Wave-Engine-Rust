@@ -1,16 +1,12 @@
 [package]
 name = "wave_engine"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Nami Reghbati"]
 
 [dependencies]
-wave-core = {path = "src/wave_core", features = ["debug", "vulkan"]}
+wave-core = {path = "dep/wave-core", features = ["debug", "vulkan"]}
 wave-editor = {path = "src/wave_editor"}
-
-[[bin]]
-name = "wave-engine"
-path = "main.rs"
 
 [profile.dev]
 opt-level = 0

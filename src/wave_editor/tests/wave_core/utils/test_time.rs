@@ -22,8 +22,8 @@
  SOFTWARE.
 */
 
-use wave_editor::wave_core::dependencies::chrono;
-use wave_editor::wave_core::utils::Time;
+use wave_core::dependencies::chrono;
+use wave_core::utils::Time;
 
 #[test]
 fn test_delta_time() {

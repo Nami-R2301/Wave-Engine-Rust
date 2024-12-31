@@ -23,15 +23,15 @@
 */
 
 use wave_core::graphics::shader;
-use wave_core::{TraitApply};
+use wave_core::{TraitBake};
 use wave_core::graphics::renderer::EnumRendererApi;
-use wave_editor::wave_core::{EmptyApp, Engine, EnumEngineError};
-use wave_editor::wave_core::graphics::renderer::{Renderer};
-use wave_editor::wave_core::graphics::shader::{EnumShaderSource, EnumShaderStageType, ShaderStage};
-use wave_editor::wave_core::layers::Layer;
+use wave_core::{EmptyApp, Engine, EnumEngineError};
+use wave_core::graphics::renderer::{Renderer};
+use wave_core::graphics::shader::{EnumShaderSource, EnumShaderStageType, ShaderStage};
+use wave_core::layers::Layer;
 
-use wave_editor::wave_core::math::Mat4;
-use wave_editor::wave_core::window::Window;
+use wave_core::math::Mat4;
+use wave_core::window::Window;
 
 #[ignore]
 #[test]
@@ -39,8 +39,8 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
   let layer = Layer::new("Shader send", EmptyApp::default());
   let window = Window::new(EnumRendererApi::OpenGL);
   let renderer = Renderer::new(EnumRendererApi::OpenGL);
-  let mut engine = Engine::new(window, renderer, vec![layer]);
-  engine.apply()?;
+  let mut engine = Engine::new(Some(window), Some(renderer), vec![layer]);
+  engine.bake()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStageType::Vertex,
     EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
@@ -52,7 +52,7 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
   shader.push_stage(vertex_shader)?;
   shader.push_stage(fragment_shader)?;
   
-  let result = shader.apply();
+  let result = shader.bake();
   
   // Sourcing and compilation.
   return match result {
@@ -67,8 +67,8 @@ fn test_load_uniforms() -> Result<(), EnumEngineError> {
   let layer = Layer::new("Shader load", EmptyApp::default());
   let window = Window::new(EnumRendererApi::OpenGL);
   let renderer = Renderer::new(EnumRendererApi::OpenGL);
-  let mut engine = Engine::new(window, renderer, vec![layer]);
-  engine.apply()?;
+  let mut engine = Engine::new(Some(window), Some(renderer), vec![layer]);
+  engine.bake()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStageType::Vertex,
     EnumShaderSource::FromFile(String::from("res/shaders/test.vert")));
@@ -80,7 +80,7 @@ fn test_load_uniforms() -> Result<(), EnumEngineError> {
   shader.push_stage(vertex_shader)?;
   shader.push_stage(fragment_shader)?;
   
-  shader.apply()?;
+  shader.bake()?;
   
   // Load uniforms.
   return match  shader.upload_data("u_model_matrix",

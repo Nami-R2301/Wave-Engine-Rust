@@ -1,0 +1,18 @@
+#version 330 core
+
+struct Frag_data_s
+{
+    vec4 vout_frag_color;
+    vec2 vout_tex_coords;
+};
+
+layout (location = 0) flat in uint vout_entity_ID;
+layout (location = 1) in Frag_data_s vout_vertex_data;
+
+out vec4 fout_color;
+out uint fout_entity_ID;
+
+void main() {
+    fout_color = vout_vertex_data.vout_frag_color;
+    fout_entity_ID = vout_entity_ID;
+}

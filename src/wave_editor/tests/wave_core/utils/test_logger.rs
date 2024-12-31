@@ -26,7 +26,7 @@
 use wave_editor::wave_core::Engine;
 #[cfg(feature = "debug")]
 use wave_editor::wave_core::dependencies::chrono;
-use wave_editor::wave_core::utils::macros::logger::{*};
+use wave_core::utils::macros::logger::{*};
 
 #[test]
 fn test_open_log() {
@@ -38,7 +38,7 @@ fn test_reset_logs() {
   let _option = init().as_ref().unwrap();
   log!("INFO", "Testing");
   
-  reset_logs();
+  reset_logs(".".to_string());
   let logs: String = show_logs();
   assert!(!logs.contains("Testing"));
 }

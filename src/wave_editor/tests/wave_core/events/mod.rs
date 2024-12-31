@@ -22,13 +22,13 @@
  SOFTWARE.
 */
 
-use wave_editor::wave_core::events::EnumEventMask;
+use wave_core::events::EnumEventMask;
 
 #[test]
 fn test_event_masking() {
   let window = EnumEventMask::Window;
   let inputs = EnumEventMask::Input;
-  let keys = EnumEventMask::Keyboard;
+  let keys = EnumEventMask::KeyboardInput;
   
   assert!(inputs.contains(keys));
   assert!(keys.intersects(inputs));

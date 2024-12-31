@@ -1,3 +1,6 @@
 [submodule "wave-gui"]
 	path = dep/wave-gui
 	url = git@github.com:Nami-R2301/Wave-GUI.git
+[submodule "wave-core"]
+	path = dep/wave-core
+	url = git@github.com:Nami-R2301/Wave-Core.git

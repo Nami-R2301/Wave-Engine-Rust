@@ -22,7 +22,7 @@
  SOFTWARE.
 */
 
-use wave_editor::wave_core::graphics::color::Color;
+use wave_core::graphics::color::Color;
 
 #[test]
 fn test_color_shifting() {
