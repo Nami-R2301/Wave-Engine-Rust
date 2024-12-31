@@ -21,10 +21,12 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 */
+use std::fmt::Display;
+use wave_core::events::EnumEventMask;
 use wave_core::graphics::renderer::{EnumRendererApi, Renderer};
+use wave_core::layers::{EnumLayerType, Layer};
+use wave_core::window::Window;
 use wave_core::{Engine, EnumEngineError};
-use wave_core::layers::{Layer};
-use wave_core::window::{Window};
 use wave_editor::Editor;
 
 /// Any element that implements the TraitOption trait will have `.set_option(...)` && `.reset_option()`
@@ -85,10 +87,32 @@ fn main() -> Result<(), EnumEngineError> {
   // Our own custom app layer overlaying everything.
   let editor = Editor::new();
   
-  let window_layer = Layer::new("Window", window);
-  let mut renderer_layer = Layer::new("Renderer", renderer);
-  renderer_layer.set_default_options()?;
-  let editor_layer = Layer::new("Editor", editor);
+  let window_layer = Layer::new_window_layer("Window", window);
+  let renderer_layer = Layer::new_renderer_layer("Renderer", renderer);
+  let mut editor_layer = Layer::new("Editor", Box::new(editor), EnumLayerType::App,
+    EnumEventMask::WindowClose | EnumEventMask::WindowFocus | EnumEventMask::Input);
+  
+  // Customize each step function using closures.
+  editor_layer.bake_fn(|data, _, engine| {
+    let editor_cast = unsafe { &mut *(data as *mut dyn Display as *mut Editor) };
+    editor_cast.on_bake(engine)
+  });
+  
+  editor_layer.event_fn(|data, event, engine| {
+    let editor_cast = unsafe { &mut *(data as *mut dyn Display as *mut Editor) };
+    editor_cast.on_event(event, engine)
+  });
+  
+  editor_layer.frame_fn(|data, engine| {
+    let editor_cast = unsafe { &mut *(data as *mut dyn Display as *mut Editor) };
+    editor_cast.on_frame(engine)
+  });
+  
+  
+  editor_layer.free_fn(|data| {
+    let editor_cast = unsafe { &mut *(data as *mut dyn Display as *mut Editor) };
+    editor_cast.on_free()
+  });
   
   // Supply all layers to our engine.
   // Note: Order does not matter, they are sorted internally by layer type.

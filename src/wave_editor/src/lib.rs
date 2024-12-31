@@ -21,21 +21,19 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 */
-use std::any::Any;
 use std::collections::HashMap;
-
+use std::fmt::Display;
 use wave_core::{camera, Engine, EnumEngineError, input, TraitBake, TraitOption};
 use wave_core::assets::asset_loader::{AssetLoader};
 use wave_core::assets::r_assets::{EnumAssetMapMethod, EnumAssetPrimitiveSurface, EnumPrimitiveShading, REntity};
 #[allow(unused)]
 use wave_core::dependencies::chrono;
-use wave_core::events::{EnumEvent, EnumEventMask};
+use wave_core::events::{EnumEvent};
 use wave_core::graphics::renderer::{EnumRendererRenderPrimitiveAs, EnumRendererApi};
 use wave_core::graphics::{shader};
 use wave_core::graphics::shader::EnumShaderOption;
 use wave_core::graphics::texture::{Texture, TextureArray};
 use wave_core::utils::texture_loader::{EnumTextureLoaderOption, TextureLoader};
-use wave_core::layers::{EnumLayerType, TraitLayer};
 use wave_core::utils::macros::logger::*;
 use wave_core::utils::Time;
 
@@ -55,12 +53,8 @@ impl Editor {
   }
 }
 
-impl TraitLayer for Editor {
-  fn get_type(&self) -> EnumLayerType {
-    return EnumLayerType::Editor;
-  }
-  
-  fn on_bake(&mut self, _options: Vec<&dyn Any>, env: &mut Engine) -> Result<(), EnumEngineError> {
+impl Editor {
+  pub fn on_bake(&mut self, env: &mut Engine) -> Result<(), EnumEngineError> {
     let window = env.get_window_mut().expect("No window to attach editor to!");
     let aspect_ratio: f32 = window.get_aspect_ratio();
     
@@ -149,7 +143,7 @@ impl TraitLayer for Editor {
     return Ok(());
   }
   
-  fn on_frame(&mut self, env: &mut Engine) -> Result<(), EnumEngineError> {
+  pub fn on_frame(&mut self, env: &mut Engine) -> Result<(), EnumEngineError> {
     // Process synchronous events.
     let time_step = env.get_time_step() as f32;
     let mut rotate = [0.0, 0.0];
@@ -178,7 +172,7 @@ impl TraitLayer for Editor {
     return self.m_cameras[0].on_frame(env).map_err(|err| EnumEngineError::from(err));
   }
   
-  fn on_event(&mut self, event: &EnumEvent, env: &mut Engine) -> Result<bool, EnumEngineError> {
+  pub fn on_event(&mut self, event: &EnumEvent, env: &mut Engine) -> Result<bool, EnumEngineError> {
     // Process asynchronous events.
     self.m_cameras[0].on_event(event)?;
     
@@ -248,7 +242,7 @@ impl TraitLayer for Editor {
     };
   }
   
-  fn on_free(&mut self) -> Result<(), EnumEngineError> {
+  pub fn on_free(&mut self) -> Result<(), EnumEngineError> {
     for asset in self.m_r_assets.values_mut() {
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Freeing game assets for shader [{0}]...",
         asset.0.get_id());
@@ -267,8 +261,10 @@ impl TraitLayer for Editor {
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Freed textures successfully");
     return Ok(());
   }
-  
-  fn to_string(&self) -> String {
+}
+
+impl Display for Editor {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     let mut final_str: String = Default::default();
     
     for (linked_shader, r_asset_vec) in self.m_r_assets.values() {
@@ -279,19 +275,6 @@ impl TraitLayer for Editor {
         \n{0:121}{3}", "", position + 1, linked_shader, r_asset);
       }
     }
-    
-    return final_str;
-  }
-  
-  fn listens_for(&self) -> EnumEventMask {
-    return EnumEventMask::WindowClose | EnumEventMask::WindowFocus | EnumEventMask::Input;
-  }
-  
-  fn set_option(&mut self, _option: &dyn Any) {
-    todo!()
-  }
-  
-  fn get_default_options(&self) -> Vec<Box<dyn Any>> {
-    todo!()
+    return write!(f, "{}", final_str);
   }
 }
