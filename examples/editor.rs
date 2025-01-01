@@ -23,10 +23,11 @@
 */
 use std::fmt::Display;
 use wave_core::events::EnumEventMask;
-use wave_core::graphics::renderer::{EnumRendererApi, Renderer};
+use wave_core::graphics::renderer::{EnumRendererApi, Renderer, TraitContext};
 use wave_core::layers::{EnumLayerType, Layer};
 use wave_core::window::Window;
 use wave_core::{Engine, EnumEngineError};
+use wave_core::graphics::open_gl::renderer::GlContext;
 use wave_editor::Editor;
 
 /// Any element that implements the TraitOption trait will have `.set_option(...)` && `.reset_option()`
@@ -83,7 +84,7 @@ fn main() -> Result<(), EnumEngineError> {
   // Create a window context layer for a GUI app with default hints.
   let window = Window::new("Editor (OpenGL)", EnumRendererApi::OpenGL);
   // Create a renderer layer for graphics rendering onto window framebuffer with default hints.
-  let renderer = Renderer::new(EnumRendererApi::OpenGL);
+  let renderer = Renderer::new(GlContext::new());
   // Our own custom app layer overlaying everything.
   let editor = Editor::new();
   

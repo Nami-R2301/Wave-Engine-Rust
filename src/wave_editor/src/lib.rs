@@ -31,6 +31,8 @@ use wave_core::dependencies::chrono;
 use wave_core::events::{EnumEvent};
 use wave_core::graphics::renderer::{EnumRendererRenderPrimitiveAs, EnumRendererApi};
 use wave_core::graphics::{shader};
+use wave_core::graphics::open_gl::renderer::GlContext;
+use wave_core::graphics::open_gl::shader::GlShader;
 use wave_core::graphics::shader::EnumShaderOption;
 use wave_core::graphics::texture::{Texture, TextureArray};
 use wave_core::utils::texture_loader::{EnumTextureLoaderOption, TextureLoader};
@@ -38,7 +40,7 @@ use wave_core::utils::macros::logger::*;
 use wave_core::utils::Time;
 
 pub struct Editor {
-  m_r_assets: HashMap<&'static str, (shader::Shader, Vec<REntity>)>,
+  m_r_assets: HashMap<&'static str, (shader::Shader<GlShader>, Vec<REntity>)>,
   m_cameras: Vec<camera::Camera>,
   m_textures: Vec<Texture>,
 }
@@ -55,12 +57,11 @@ impl Editor {
 
 impl Editor {
   pub fn on_bake(&mut self, env: &mut Engine) -> Result<(), EnumEngineError> {
-    let window = env.get_window_mut().expect("No window to attach editor to!");
-    let aspect_ratio: f32 = window.get_aspect_ratio();
+    let renderer = env.get_renderer_mut::<GlContext>().expect("No active renderer!");
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
-    let mut shader = shader::Shader::default();  // Get default smooth shader with 3 stages (vertex, geometry, and fragment).
+    let mut shader: shader::Shader<GlShader> = shader::Shader::default();  // Get default smooth shader with 3 stages (vertex, geometry, and fragment).
     shader.set_option(EnumShaderOption::ForceGlslVersion(420));
     // shader.set_option(EnumShaderHint::Api(EnumRendererApi::Vulkan));
     
@@ -111,34 +112,35 @@ impl Editor {
     awp.map_texture(&texture_1024_array, EnumAssetMapMethod::MultipleForEach(2, 0, 1));
     awp.translate(10.0, -10.0, 50.0);
     awp.rotate(90.0, -90.0, 0.0);
-    awp.apply(&mut shader)?;  // Bake and send the asset.
-    awp.show(EnumAssetPrimitiveSurface::Everything);
+    awp.apply(&mut shader, renderer)?;  // Bake and send the asset.
+    awp.show(EnumAssetPrimitiveSurface::Everything, renderer)?;
     
     let mut mario = REntity::new(mario_asset, EnumPrimitiveShading::default(), "Mario");
     
     // Map all textures in folder to sub primitives in 1-1 ratio in order AFTER previous texture depths.
     mario.map_texture(&texture_1024_array, EnumAssetMapMethod::OneForEach(1, texture_1024_array.len()));
     mario.translate(-5.0, -5.0, 15.0);
-    mario.apply(&mut shader)?;  // Bake and send the asset.
-    mario.show(EnumAssetPrimitiveSurface::Everything);
+    mario.apply(&mut shader, renderer)?;  // Bake and send the asset.
+    mario.show(EnumAssetPrimitiveSurface::Everything, renderer)?;
     
     let mut logo = REntity::new(logo_asset, EnumPrimitiveShading::default(), "N64 Logo");
     
     // Map all textures in folder to sub primitives in a randomized fashion.
     logo.map_texture(&texture_64_array, EnumAssetMapMethod::Randomized);
     logo.translate(3.0, 0.0, 7.0);
-    logo.apply(&mut shader)?;  // Bake and send the asset.
-    logo.show(EnumAssetPrimitiveSurface::Everything);
+    logo.apply(&mut shader, renderer)?;  // Bake and send the asset.
+    logo.show(EnumAssetPrimitiveSurface::Everything, renderer)?;
     
     self.m_r_assets.insert("Smooth assets", (shader, vec![awp, mario, logo]));
     
     log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
     
+    // Show our window when we are ready to present.
+    let window = env.get_window_mut().expect("No window to attach editor to!");
+    let aspect_ratio: f32 = window.get_aspect_ratio();
     let main_camera = camera::Camera::new(camera::EnumCameraType::Perspective(75, aspect_ratio, 0.01, 1000.0), None);
     self.m_cameras.push(main_camera);
     
-    // Show our window when we are ready to present.
-    let window = env.get_window_mut().expect("No window to attach editor to!");
     window.show();
     return Ok(());
   }
@@ -165,11 +167,11 @@ impl Editor {
     for asset in self.m_r_assets.values_mut() {
       for primitive in asset.1.iter_mut() {
         primitive.rotate(rotate[0], rotate[1], 0.0);
-        primitive.reapply()?;
+        primitive.reapply(env.get_renderer_mut::<GlContext>().unwrap())?;
       }
     }
     
-    return self.m_cameras[0].on_frame(env).map_err(|err| EnumEngineError::from(err));
+    return self.m_cameras[0].on_frame::<GlContext>(env).map_err(|err| EnumEngineError::from(err));
   }
   
   pub fn on_event(&mut self, event: &EnumEvent, env: &mut Engine) -> Result<bool, EnumEngineError> {
@@ -190,33 +192,39 @@ impl Editor {
                 primitive.toggle_primitive_mode((primitive.get_primitive_mode() == EnumRendererRenderPrimitiveAs::SolidWireframe)
                   .then(|| EnumRendererRenderPrimitiveAs::Filled)
                   .unwrap_or(EnumRendererRenderPrimitiveAs::SolidWireframe));
-                primitive.reapply()?;
+                primitive.reapply(env.get_renderer_mut::<GlContext>().unwrap())?;
               }
             }
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].hide(EnumAssetPrimitiveSurface::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].hide(EnumAssetPrimitiveSurface::Everything,
+              env.get_renderer_mut::<GlContext>().unwrap())?;
             Ok(true)
           }
           (input::EnumKey::Num0, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].show(EnumAssetPrimitiveSurface::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[0].show(EnumAssetPrimitiveSurface::Everything,
+              env.get_renderer_mut::<GlContext>().unwrap())?;
             Ok(true)
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].hide(EnumAssetPrimitiveSurface::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].hide(EnumAssetPrimitiveSurface::Everything,
+              env.get_renderer_mut::<GlContext>().unwrap())?;
             Ok(true)
           }
           (input::EnumKey::Num1, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].show(EnumAssetPrimitiveSurface::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[1].show(EnumAssetPrimitiveSurface::Everything,
+              env.get_renderer_mut::<GlContext>().unwrap())?;
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[2].hide(EnumAssetPrimitiveSurface::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[2].hide(EnumAssetPrimitiveSurface::Everything,
+              env.get_renderer_mut::<GlContext>().unwrap())?;
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Shift) => {
-            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[2].show(EnumAssetPrimitiveSurface::Everything);
+            self.m_r_assets.get_mut(&"Smooth assets").unwrap().1[2].show(EnumAssetPrimitiveSurface::Everything,
+              env.get_renderer_mut::<GlContext>().unwrap())?;
             Ok(true)
           }
           (input::EnumKey::Num2, input::EnumAction::Pressed, _, &input::EnumModifiers::Alt) => {
@@ -226,7 +234,7 @@ impl Editor {
           (input::EnumKey::Delete, input::EnumAction::Pressed, _, &input::EnumModifiers::Control) => {
             for (_, r_assets) in self.m_r_assets.values_mut() {
               for r_asset in r_assets.iter_mut() {
-                r_asset.free()?;
+                r_asset.free::<GlContext>()?;
               }
             }
             return Ok(true);
@@ -247,9 +255,9 @@ impl Editor {
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Freeing game assets for shader [{0}]...",
         asset.0.get_id());
       for primitive in asset.1.iter_mut() {
-        primitive.free()?;
+        primitive.free::<GlContext>()?;
       }
-      log!(EnumLogColor::Green, "INFO", "[App] -->\t Freed game assets for shader [{0}] successfully",
+      log!(EnumLogColor::Green, "INFO", "[App] -->\t Freed game assets for shader [{0}]",
       asset.0.get_id());
       asset.0.free()?;
     }
