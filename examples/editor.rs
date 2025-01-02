@@ -110,7 +110,6 @@ fn main() -> Result<(), EnumEngineError> {
   
   editor_layer.frame_fn(|data, engine| {
     let editor_cast = utils::try_cast_mut::<Editor>(data).expect("Cannot free app: Invalid Editor Cast");
-    println!("Custom on frame logic...");
     editor_cast.on_frame(engine)
   });
   

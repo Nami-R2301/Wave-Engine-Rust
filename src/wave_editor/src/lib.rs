@@ -37,6 +37,7 @@ use wave_core::graphics::texture::{Texture, TextureArray};
 use wave_core::layers::{EnumLayerOption, TraitLayer};
 use wave_core::utils::texture_loader::{EnumTextureLoaderOption, TextureLoader};
 use wave_core::utils::macros::logger::*;
+use wave_core::log::EnumLogColor;
 use wave_core::utils::Time;
 
 pub struct Editor {
