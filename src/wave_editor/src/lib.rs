@@ -32,15 +32,15 @@ use wave_core::events::{EnumEvent};
 use wave_core::graphics::renderer::{EnumRendererRenderPrimitiveAs, EnumRendererApi};
 use wave_core::graphics::{shader};
 use wave_core::graphics::open_gl::renderer::GlContext;
-use wave_core::graphics::open_gl::shader::GlShader;
 use wave_core::graphics::shader::EnumShaderOption;
 use wave_core::graphics::texture::{Texture, TextureArray};
+use wave_core::layers::{EnumLayerOption, TraitLayer};
 use wave_core::utils::texture_loader::{EnumTextureLoaderOption, TextureLoader};
 use wave_core::utils::macros::logger::*;
 use wave_core::utils::Time;
 
 pub struct Editor {
-  m_r_assets: HashMap<&'static str, (shader::Shader<GlShader>, Vec<REntity>)>,
+  m_r_assets: HashMap<&'static str, (shader::Shader, Vec<REntity>)>,
   m_cameras: Vec<camera::Camera>,
   m_textures: Vec<Texture>,
 }
@@ -55,13 +55,13 @@ impl Editor {
   }
 }
 
-impl Editor {
-  pub fn on_bake(&mut self, env: &mut Engine) -> Result<(), EnumEngineError> {
+impl TraitLayer for Editor {
+  fn on_bake(&mut self, _options: &mut Vec<EnumLayerOption>, env: &mut Engine) -> Result<(), EnumEngineError> {
     let renderer = env.get_renderer_mut::<GlContext>().expect("No active renderer!");
     
     log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
     
-    let mut shader: shader::Shader<GlShader> = shader::Shader::default();  // Get default smooth shader with 3 stages (vertex, geometry, and fragment).
+    let mut shader: shader::Shader = shader::Shader::default();  // Get default smooth shader with 3 stages (vertex, geometry, and fragment).
     shader.set_option(EnumShaderOption::ForceGlslVersion(420));
     // shader.set_option(EnumShaderHint::Api(EnumRendererApi::Vulkan));
     
@@ -145,36 +145,7 @@ impl Editor {
     return Ok(());
   }
   
-  pub fn on_frame(&mut self, env: &mut Engine) -> Result<(), EnumEngineError> {
-    // Process synchronous events.
-    let time_step = env.get_time_step() as f32;
-    let mut rotate = [0.0, 0.0];
-    
-    if env.is_key(input::EnumKey::Up, input::EnumAction::Held) {
-      rotate[1] +=  25.0 * time_step;
-    }
-    if env.is_key(input::EnumKey::Left, input::EnumAction::Held) {
-      rotate[0] -= 25.0 * time_step;
-    }
-    if env.is_key(input::EnumKey::Down, input::EnumAction::Held) {
-      rotate[1] -= 25.0 * time_step;
-    }
-    if env.is_key(input::EnumKey::Right, input::EnumAction::Held) {
-      rotate[0] += 25.0 * time_step;
-    }
-    
-    // Apply all movement recorded.
-    for asset in self.m_r_assets.values_mut() {
-      for primitive in asset.1.iter_mut() {
-        primitive.rotate(rotate[0], rotate[1], 0.0);
-        primitive.reapply(env.get_renderer_mut::<GlContext>().unwrap())?;
-      }
-    }
-    
-    return self.m_cameras[0].on_frame::<GlContext>(env).map_err(|err| EnumEngineError::from(err));
-  }
-  
-  pub fn on_event(&mut self, event: &EnumEvent, env: &mut Engine) -> Result<bool, EnumEngineError> {
+  fn on_event(&mut self, event: &EnumEvent, env: &mut Engine) -> Result<bool, EnumEngineError> {
     // Process asynchronous events.
     self.m_cameras[0].on_event(event)?;
     
@@ -250,7 +221,36 @@ impl Editor {
     };
   }
   
-  pub fn on_free(&mut self) -> Result<(), EnumEngineError> {
+  fn on_frame(&mut self, env: &mut Engine) -> Result<(), EnumEngineError> {
+    // Process synchronous events.
+    let time_step = env.get_time_step() as f32;
+    let mut rotate = [0.0, 0.0];
+    
+    if env.is_key(input::EnumKey::Up, input::EnumAction::Held) {
+      rotate[1] +=  25.0 * time_step;
+    }
+    if env.is_key(input::EnumKey::Left, input::EnumAction::Held) {
+      rotate[0] -= 25.0 * time_step;
+    }
+    if env.is_key(input::EnumKey::Down, input::EnumAction::Held) {
+      rotate[1] -= 25.0 * time_step;
+    }
+    if env.is_key(input::EnumKey::Right, input::EnumAction::Held) {
+      rotate[0] += 25.0 * time_step;
+    }
+    
+    // Apply all movement recorded.
+    for asset in self.m_r_assets.values_mut() {
+      for primitive in asset.1.iter_mut() {
+        primitive.rotate(rotate[0], rotate[1], 0.0);
+        primitive.reapply(env.get_renderer_mut::<GlContext>().unwrap())?;
+      }
+    }
+    
+    return self.m_cameras[0].on_frame::<GlContext>(env).map_err(|err| EnumEngineError::from(err));
+  }
+  
+  fn on_free(&mut self) -> Result<(), EnumEngineError> {
     for asset in self.m_r_assets.values_mut() {
       log!(EnumLogColor::Purple, "INFO", "[App] -->\t Freeing game assets for shader [{0}]...",
         asset.0.get_id());

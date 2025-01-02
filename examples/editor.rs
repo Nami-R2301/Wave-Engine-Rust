@@ -21,12 +21,11 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 */
-use std::fmt::Display;
 use wave_core::events::EnumEventMask;
 use wave_core::graphics::renderer::{EnumRendererApi, Renderer, TraitContext};
-use wave_core::layers::{EnumLayerType, Layer};
-use wave_core::window::Window;
-use wave_core::{Engine, EnumEngineError};
+use wave_core::layers::{EnumLayerOption, EnumLayerType, Layer, TraitLayer};
+use wave_core::window::{EnumWindowOption, Window};
+use wave_core::{utils, Engine, EnumEngineError};
 use wave_core::graphics::open_gl::renderer::GlContext;
 use wave_editor::Editor;
 
@@ -88,30 +87,37 @@ fn main() -> Result<(), EnumEngineError> {
   // Our own custom app layer overlaying everything.
   let editor = Editor::new();
   
-  let window_layer = Layer::new_window_layer("Window", window);
-  let renderer_layer = Layer::new_renderer_layer("Renderer", renderer);
-  let mut editor_layer = Layer::new("Editor", Box::new(editor), EnumLayerType::App,
-    EnumEventMask::WindowClose | EnumEventMask::WindowFocus | EnumEventMask::Input);
+  let renderer_layer = Layer::from(renderer);
+  let mut window_layer = Layer::from(window);
+  window_layer.set_option(EnumLayerOption::Window(EnumWindowOption::MSAA(None)))?;
+  window_layer.set_option(EnumLayerOption::Window(EnumWindowOption::Resolution(1024, 768)))?;
+  
+  let mut editor_layer = Layer::from_layer("Editor", Box::new(editor), EnumLayerType::Editor,
+    EnumEventMask::WindowClose | EnumEventMask::WindowResize | EnumEventMask::Input);
   
   // Customize each step function using closures.
-  editor_layer.bake_fn(|data, _, engine| {
-    let editor_cast = unsafe { &mut *(data as *mut dyn Display as *mut Editor) };
-    editor_cast.on_bake(engine)
+  editor_layer.bake_fn(|data, options, engine| {
+    let editor_cast = utils::try_cast_mut::<Editor>(data).expect("Cannot bake app: Invalid Editor Cast");
+    println!("Custom on bake logic...");
+    editor_cast.on_bake(options, engine)
   });
   
   editor_layer.event_fn(|data, event, engine| {
-    let editor_cast = unsafe { &mut *(data as *mut dyn Display as *mut Editor) };
+    let editor_cast = utils::try_cast_mut::<Editor>(data).expect("Cannot listen for events: Invalid Editor Cast");
+    println!("Custom on event logic...");
     editor_cast.on_event(event, engine)
   });
   
   editor_layer.frame_fn(|data, engine| {
-    let editor_cast = unsafe { &mut *(data as *mut dyn Display as *mut Editor) };
+    let editor_cast = utils::try_cast_mut::<Editor>(data).expect("Cannot free app: Invalid Editor Cast");
+    println!("Custom on frame logic...");
     editor_cast.on_frame(engine)
   });
   
   
   editor_layer.free_fn(|data| {
-    let editor_cast = unsafe { &mut *(data as *mut dyn Display as *mut Editor) };
+    let editor_cast = utils::try_cast_mut::<Editor>(data).expect("Cannot bake app: Invalid Editor Cast");
+    println!("Custom on free logic...");
     editor_cast.on_free()
   });
   

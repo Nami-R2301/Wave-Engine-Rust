@@ -21,25 +21,40 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 */
-
-use wave_core::graphics::shader;
+use std::fmt::{Display, Formatter};
 use wave_core::{TraitBake};
-use wave_core::graphics::renderer::EnumRendererApi;
-use wave_core::{EmptyApp, Engine, EnumEngineError};
+use wave_core::graphics::renderer::{EnumRendererApi, TraitContext};
+use wave_core::{Engine, EnumEngineError};
+use wave_core::events::EnumEventMask;
+use wave_core::graphics::open_gl::renderer::GlContext;
+use wave_core::graphics::open_gl::shader::GlShader;
 use wave_core::graphics::renderer::{Renderer};
-use wave_core::graphics::shader::{EnumShaderSource, EnumShaderStageType, ShaderStage};
-use wave_core::layers::Layer;
+use wave_core::graphics::shader::{EnumShaderSource, EnumShaderStageType, Shader, ShaderStage};
+use wave_core::layers::{EnumLayerType, Layer};
 
 use wave_core::math::Mat4;
 use wave_core::window::Window;
 
+struct EmptyApp {
+}
+
+impl Display for EmptyApp {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "EmptyApp")
+  }
+}
+
 #[ignore]
 #[test]
 fn test_shader_send() -> Result<(), EnumEngineError> {
-  let layer = Layer::new("Shader send", EmptyApp::default());
-  let window = Window::new(EnumRendererApi::OpenGL);
-  let renderer = Renderer::new(EnumRendererApi::OpenGL);
-  let mut engine = Engine::new(Some(window), Some(renderer), vec![layer]);
+  let layer = Layer::new("Shader send", Box::new(EmptyApp {}), EnumLayerType::Log, EnumEventMask::empty());
+  let window = Window::new("Test Shader Send", EnumRendererApi::OpenGL);
+  let renderer = Renderer::new(GlContext::new());
+  
+  let window_layer = Layer::new_window_layer("Window", window);
+  let renderer_layer = Layer::new_renderer_layer("Renderer", renderer);
+  
+  let mut engine = Engine::new(vec![window_layer, renderer_layer, layer]);
   engine.bake()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStageType::Vertex,
@@ -47,7 +62,7 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
   let fragment_shader = ShaderStage::new(EnumShaderStageType::Fragment,
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
-  let mut shader = shader::Shader::default();
+  let mut shader: Shader<GlShader> = Shader::default();
   
   shader.push_stage(vertex_shader)?;
   shader.push_stage(fragment_shader)?;
@@ -64,10 +79,14 @@ fn test_shader_send() -> Result<(), EnumEngineError> {
 #[ignore]
 #[test]
 fn test_load_uniforms() -> Result<(), EnumEngineError> {
-  let layer = Layer::new("Shader load", EmptyApp::default());
-  let window = Window::new(EnumRendererApi::OpenGL);
-  let renderer = Renderer::new(EnumRendererApi::OpenGL);
-  let mut engine = Engine::new(Some(window), Some(renderer), vec![layer]);
+  let layer = Layer::new("Shader send", Box::new(EmptyApp {}), EnumLayerType::Log, EnumEventMask::empty());
+  let window = Window::new("Test Shader Send", EnumRendererApi::OpenGL);
+  let renderer = Renderer::new(GlContext::new());
+  
+  let window_layer = Layer::new_window_layer("Window", window);
+  let renderer_layer = Layer::new_renderer_layer("Renderer", renderer);
+  
+  let mut engine = Engine::new(vec![window_layer, renderer_layer, layer]);
   engine.bake()?;
   
   let vertex_shader = ShaderStage::new(EnumShaderStageType::Vertex,
@@ -75,7 +94,7 @@ fn test_load_uniforms() -> Result<(), EnumEngineError> {
   let fragment_shader = ShaderStage::new(EnumShaderStageType::Fragment,
     EnumShaderSource::FromFile(String::from("res/shaders/test.frag")));
   
-  let mut shader = shader::Shader::default();
+  let mut shader: Shader<GlShader> = Shader::default();
   
   shader.push_stage(vertex_shader)?;
   shader.push_stage(fragment_shader)?;

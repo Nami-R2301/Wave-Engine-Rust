@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Nami Reghbati"]
 
 [dependencies]
-wave-core = {path = "dep/wave-core", features = ["debug", "vulkan"]}
+wave-core = {path = "dep/wave-core", features = ["debug"]}
 wave-editor = {path = "src/wave_editor"}
 
 [profile.dev]

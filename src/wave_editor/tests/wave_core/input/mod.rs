@@ -23,11 +23,12 @@
 */
 
 use std::collections::HashMap;
-use wave_core::{TraitBake, TraitOption};
+use wave_core::{Engine, TraitBake, TraitOption};
 use wave_core::graphics::renderer::EnumRendererApi;
 
 use wave_core::EnumEngineError;
 use wave_core::input::{EnumAction, EnumKey, EnumModifiers, EnumMouseButton, Input};
+use wave_core::layers::Layer;
 use wave_core::window::{EnumWindowMode, EnumWindowOption, Window};
 
 fn synchronous_key_inputs_loop(window: &mut Window, keys: &mut HashMap<EnumKey, bool>, action_required: EnumAction,
@@ -82,10 +83,14 @@ fn synchronous_mouse_button_inputs_loop(window: &mut Window, mouse_buttons: &mut
 #[ignore]
 #[test]
 fn test_synchronous_key_inputs() -> Result<(), EnumEngineError> {
-  let mut window = Window::new(EnumRendererApi::OpenGL);
-  window.set_option(EnumWindowOption::WindowMode(EnumWindowMode::Windowed));
-  window.set_option(EnumWindowOption::Resolution(1024, 768));
-  window.apply()?;
+  let mut window = Layer::new_window_layer("Window", Window::new("Test Sync Key Inputs", EnumRendererApi::OpenGL));
+  window.set_option(EnumWindowOption::WindowMode(EnumWindowMode::Windowed))?;
+  window.set_option(EnumWindowOption::Resolution(1024, 768))?;
+  
+  let mut engine = Engine::new(vec![window]);
+  
+  engine.bake()?;
+  let mut window = engine.get_window_mut().expect("No Active Window Found");
   
   // Check if PRESS input events work properly.
   {
@@ -168,11 +173,14 @@ fn test_synchronous_key_inputs() -> Result<(), EnumEngineError> {
 #[ignore]
 #[test]
 fn test_synchronous_mouse_button_inputs() -> Result<(), EnumEngineError> {
-  let mut window = Window::new(EnumRendererApi::OpenGL);
-  window.set_option(EnumWindowOption::WindowMode(EnumWindowMode::Windowed));
-  window.set_option(EnumWindowOption::Resolution(1024, 768));
-  window.apply()?;
+  let mut window = Layer::new_window_layer("Window", Window::new("Test Sync Mouse Btn Inputs", EnumRendererApi::OpenGL));
+  window.set_option(EnumWindowOption::WindowMode(EnumWindowMode::Windowed))?;
+  window.set_option(EnumWindowOption::Resolution(1024, 768))?;
   
+  let mut engine = Engine::new(vec![window]);
+  engine.bake()?;
+  
+  let mut window = engine.get_window_mut().expect("Cannot find window!");
   // Check if PRESS input events work properly.
   {
     window.set_title("[Test] : Press mouse button : [M1, M2, M3, M4, M5] in any order before exiting");
