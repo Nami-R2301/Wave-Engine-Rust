@@ -147,7 +147,7 @@ impl TraitLayer for Editor {
     return Ok(());
   }
   
-  fn on_event(&mut self, event: &EnumEvent, env: &mut Engine) -> Result<bool, EnumEngineError> {
+  fn on_event(&mut self, event: &EnumEvent, env: &mut Engine, mut logger: Option<&mut Logger>) -> Result<bool, EnumEngineError> {
     // Process asynchronous events.
     self.m_cameras[0].on_event(event)?;
     
@@ -155,7 +155,7 @@ impl TraitLayer for Editor {
       EnumEvent::KeyEvent(key, action, repeat_count, modifiers) => {
         match (key, action, repeat_count, modifiers) {
           (input::EnumKey::Escape, input::EnumAction::Pressed, _, _) => {
-            log!(EnumLogColor::Yellow, "EVENT", "[Window] -->\t Window close event");
+            log!(logger, EnumLogColor::Yellow, "EVENT", "Window close event");
             env.on_async_event(&EnumEvent::WindowCloseEvent(Time::now()));
             return Ok(true);
           },
@@ -216,14 +216,14 @@ impl TraitLayer for Editor {
         }
       }
       EnumEvent::WindowCloseEvent(_time) => {
-        self.on_free()?;
+        self.on_free(logger)?;
         Ok(true)
       }
       _ => Ok(false)
     };
   }
   
-  fn on_frame(&mut self, env: &mut Engine) -> Result<(), EnumEngineError> {
+  fn on_frame(&mut self, env: &mut Engine, _logger: Option<&mut Logger>) -> Result<(), EnumEngineError> {
     // Process synchronous events.
     let time_step = env.get_time_step() as f32;
     let mut rotate = [0.0, 0.0];
@@ -252,14 +252,14 @@ impl TraitLayer for Editor {
     return self.m_cameras[0].on_frame::<GlContext>(env).map_err(|err| EnumEngineError::from(err));
   }
   
-  fn on_free(&mut self) -> Result<(), EnumEngineError> {
+  fn on_free(&mut self, mut logger: Option<&mut Logger>) -> Result<(), EnumEngineError> {
     for asset in self.m_r_assets.values_mut() {
-      log!(EnumLogColor::Purple, "INFO", "[App] -->\t Freeing game assets for shader [{0}]...",
+      log!(logger, EnumLogColor::Purple, "INFO", "Freeing game assets for shader [{0}]...",
         asset.0.get_id());
       for primitive in asset.1.iter_mut() {
         primitive.free::<GlContext>()?;
       }
-      log!(EnumLogColor::Green, "INFO", "[App] -->\t Freed game assets for shader [{0}]",
+      log!(logger, EnumLogColor::Green, "INFO", "Freed game assets for shader [{0}]",
       asset.0.get_id());
       asset.0.free()?;
     }
@@ -268,7 +268,7 @@ impl TraitLayer for Editor {
     for texture in self.m_textures.iter_mut() {
       texture.free()?;
     }
-    _engine_log!(EnumLogColor::Green, "INFO", "[App] -->\t Freed textures successfully");
+    _engine_log!(EnumLogColor::Green, "INFO", "Freed textures successfully");
     return Ok(());
   }
 }
