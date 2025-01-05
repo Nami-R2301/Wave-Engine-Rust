@@ -21,12 +21,14 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 */
+use std::collections::HashMap;
 use wave_core::events::EnumEventMask;
 use wave_core::graphics::renderer::{EnumRendererApi, Renderer, TraitContext};
 use wave_core::layers::{EnumLayerOption, EnumLayerType, Layer, TraitLayer};
 use wave_core::window::{EnumWindowOption, Window};
-use wave_core::{utils, Engine, EnumEngineError};
+use wave_core::{utils, Engine, EnumEngineError, TraitOption};
 use wave_core::graphics::open_gl::renderer::GlContext;
+use wave_core::log::{EnumLogColor, EnumLogOption, EnumLogVerbosity, Logger};
 use wave_editor::Editor;
 
 /// Any element that implements the TraitOption trait will have `.set_option(...)` && `.reset_option()`
@@ -49,33 +51,6 @@ use wave_editor::Editor;
 /// (like rendering or for event handling). For any layer you wish to disable this feature use: \
 /// `.disable_polling()`;
 
-// fn create_custom_logger() -> Layer {
-//   // Add custom logger (override the default logger supplied by the engine).
-//   let mut logger = Logger::new();
-//   // Set a mask to specify what type of logging to display in the terminal.
-//   logger.set_option(EnumLoggerOption::Verbosity(
-//     EnumLoggerVerboseMask::Info |
-//       EnumLoggerVerboseMask::Warning |
-//       EnumLoggerVerboseMask::Error));
-//
-//   // Add timestamp to every log (default is true).
-//   logger.set_option(ShowTime(false));
-//   // Add file path of function to every log (default is true).
-//   logger.set_option(ShowFileTrace(false));
-//   // Add parent function + line to every log (default is true).
-//   logger.set_option(ShowFunctionTrace(false));
-//   // Add custom log tag at the beginning of logs of type info.
-//   logger.set_option(SetTag(EnumLoggerTag::Info, "TEST"));
-//   // Set a layer mask to specify which layers we would like to log for.
-//   logger.set_option(Scope(EnumLoggerScopeMask::Engine | EnumLoggerScopeMask::App));
-//   logger.set_option(Colors(true));  // Enable colors for different log types.
-//   logger.set_option(BreakLinesAt(80, "|\t\t"));  // Col number, prefix for next lines.
-//
-//   let mut logger_layer = Layer::new("Logger", logger);
-//   logger_layer.enable_polling_at(EnumSyncInterval::EveryTime(Time::from(1.0)))  // Every second.
-//   return logger_layer;
-// }
-
 fn main() -> Result<(), EnumEngineError> {
   // Use a custom logger with our preferences instead of the default one used by the engine.
   // let logger_layer = create_custom_logger();
@@ -86,6 +61,10 @@ fn main() -> Result<(), EnumEngineError> {
   let renderer = Renderer::new(GlContext::new());
   // Our own custom app layer overlaying everything.
   let editor = Editor::new();
+  let mut logger = Logger::new(None);
+  
+  // Make Debug logs a different color, but keep the rest default.
+  logger.set_option(EnumLogOption::ToggleColors(HashMap::from([(EnumLogVerbosity::Debug, EnumLogColor::Red)])));
   
   let renderer_layer = Layer::from(renderer);
   let mut window_layer = Layer::from(window);
@@ -94,35 +73,20 @@ fn main() -> Result<(), EnumEngineError> {
   
   let mut editor_layer = Layer::from_layer("Editor", Box::new(editor), EnumLayerType::Editor,
     EnumEventMask::WindowClose | EnumEventMask::WindowResize | EnumEventMask::Input);
+  editor_layer.attach_logger(logger);
   
   // Customize each step function using closures.
-  editor_layer.bake_fn(|data, options, engine| {
+  editor_layer.bake_fn(|data, options, engine, logger| {
     let editor_cast = utils::try_cast_mut::<Editor>(data).expect("Cannot bake app: Invalid Editor Cast");
-    println!("Custom on bake logic...");
-    editor_cast.on_bake(options, engine)
-  });
-  
-  editor_layer.event_fn(|data, event, engine| {
-    let editor_cast = utils::try_cast_mut::<Editor>(data).expect("Cannot listen for events: Invalid Editor Cast");
-    println!("Custom on event logic...");
-    editor_cast.on_event(event, engine)
-  });
-  
-  editor_layer.frame_fn(|data, engine| {
-    let editor_cast = utils::try_cast_mut::<Editor>(data).expect("Cannot free app: Invalid Editor Cast");
-    editor_cast.on_frame(engine)
-  });
-  
-  
-  editor_layer.free_fn(|data| {
-    let editor_cast = utils::try_cast_mut::<Editor>(data).expect("Cannot bake app: Invalid Editor Cast");
-    println!("Custom on free logic...");
-    editor_cast.on_free()
+    // Add custom logic...
+    let logger = logger.expect("Cannot log app: Invalid Logger");
+    logger.log("DEBUG", "Testing color, this should be in glorious red!")?;
+    editor_cast.on_bake(options, engine, Some(logger))
   });
   
   // Supply all layers to our engine.
   // Note: Order does not matter, they are sorted internally by layer type.
-  let mut engine = Engine::new(vec![renderer_layer, window_layer, editor_layer]);
+  let mut engine = Engine::with_layers(vec![renderer_layer, window_layer, editor_layer]);
   // Executing layers in run loop. Returning on close event or if an error occurred.
   return engine.run();
 }

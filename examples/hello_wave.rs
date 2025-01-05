@@ -23,7 +23,7 @@
 */
 
 use std::process::Command;
-use wave_core::{EnumEngineError, EnumCommandError, Engine, log};
+use wave_core::{EnumEngineError, EnumCommandError, Engine, _engine_log};
 use wave_core::dependencies::chrono;
 use wave_core::graphics::renderer::{EnumRendererApi, Renderer};
 use wave_core::utils::macros::logger::{trace, file_name, color_to_str, function_name, EnumLogColor};
@@ -55,12 +55,12 @@ fn main() -> Result<(), EnumEngineError> {
   Engine::init_logs();
   
   if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) || args.len() == 1 {
-    log!("INFO", "\n{0}", HELP_STR);
+    _engine_log!("INFO", "\n{0}", HELP_STR);
     return Ok(());
   }
   
   if args.contains(&"-v".to_string()) || args.contains(&"--version".to_string()) {
-    log!("INFO", "Version: {0}", env!("CARGO_PKG_VERSION"));
+    _engine_log!("INFO", "Version: {0}", env!("CARGO_PKG_VERSION"));
     return Ok(());
   }
   
@@ -71,11 +71,11 @@ fn main() -> Result<(), EnumEngineError> {
     }
 
     let path = wave_core::utils::macros::logger::reset_logs(args[path.unwrap() + 1].clone());
-    log!(EnumLogColor::Green, "INFO", "Successfully set logs file directory to {0}", path);
+    _engine_log!(EnumLogColor::Green, "INFO", "Successfully set logs file directory to {0}", path);
   }
   
   if args.contains(&"-s".to_string()) || args.contains(&"--show-logs".to_string()) {
-    log!("INFO", "Logs: \n{0}", wave_core::utils::macros::logger::show_logs());
+    _engine_log!("INFO", "Logs: \n{0}", wave_core::utils::macros::logger::show_logs());
     return Ok(());
   }
   
@@ -85,7 +85,7 @@ fn main() -> Result<(), EnumEngineError> {
   if args.contains(&"-c".to_string()) || args.contains(&"--commands".to_string()) {
     let commands = resolve_commands(args);
     commands.iter().for_each(|command| {
-      log!("INFO", "{:?}", String::from_utf8(Command::new("sh")
+      _engine_log!("INFO", "{:?}", String::from_utf8(Command::new("sh")
       .arg("-c")
       .arg(command)
       .output()

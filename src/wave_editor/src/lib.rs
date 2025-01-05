@@ -37,7 +37,7 @@ use wave_core::graphics::texture::{Texture, TextureArray};
 use wave_core::layers::{EnumLayerOption, TraitLayer};
 use wave_core::utils::texture_loader::{EnumTextureLoaderOption, TextureLoader};
 use wave_core::utils::macros::logger::*;
-use wave_core::log::{EnumLogColor, color_to_str};
+use wave_core::log::{EnumLogColor, color_to_str, Logger};
 use wave_core::utils::Time;
 
 pub struct Editor {
@@ -57,10 +57,11 @@ impl Editor {
 }
 
 impl TraitLayer for Editor {
-  fn on_bake(&mut self, _options: &mut Vec<EnumLayerOption>, env: &mut Engine) -> Result<(), EnumEngineError> {
+  fn on_bake(&mut self, _options: &mut Vec<EnumLayerOption>, env: &mut Engine, logger: Option<&mut Logger>) -> Result<(), EnumEngineError> {
     let renderer = env.get_renderer_mut::<GlContext>().expect("No active renderer!");
+    let logger = logger.expect("No logger!");
     
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Loading shaders...");
+    logger.log("INFO", "Loading shaders...")?;
     
     let mut shader: shader::Shader = shader::Shader::default();  // Get default smooth shader with 3 stages (vertex, geometry, and fragment).
     shader.set_option(EnumShaderOption::ForceGlslVersion(420));
@@ -69,8 +70,8 @@ impl TraitLayer for Editor {
     // Source and compile the shader program.
     shader.bake()?;
     
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Loaded shaders successfully");
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending textures to GPU...");
+    logger.log("INFO", "Loaded shaders successfully")?;
+    logger.log("INFO", "Sending textures to GPU...")?;
     
     let mut texture_preset = TextureLoader::new();
     texture_preset.set_option(EnumTextureLoaderOption::FlipUvs(true));
@@ -97,8 +98,8 @@ impl TraitLayer for Editor {
     self.m_textures.push(texture_1024_handle);
     self.m_textures.push(textures_64_handle);
     
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Textures sent to GPU...");
-    log!(EnumLogColor::Purple, "INFO", "[App] -->\t Sending assets to GPU...");
+    logger.log("INFO", "Textures sent to GPU...")?;
+    logger.log("INFO", "Sending assets to GPU...")?;
     
     let asset_loader = AssetLoader::new();
     // asset_loader.set_option(EnumAssetHint::VertexDataIs(EnumAssetPrimitiveMode::Plain));
@@ -134,7 +135,7 @@ impl TraitLayer for Editor {
     
     self.m_r_assets.insert("Smooth assets", (shader, vec![awp, mario, logo]));
     
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Asset sent to GPU successfully");
+    logger.log("INFO", "Asset sent to GPU successfully")?;
     
     // Show our window when we are ready to present.
     let window = env.get_window_mut().expect("No window to attach editor to!");
@@ -267,7 +268,7 @@ impl TraitLayer for Editor {
     for texture in self.m_textures.iter_mut() {
       texture.free()?;
     }
-    log!(EnumLogColor::Green, "INFO", "[App] -->\t Freed textures successfully");
+    _engine_log!(EnumLogColor::Green, "INFO", "[App] -->\t Freed textures successfully");
     return Ok(());
   }
 }

@@ -36,7 +36,7 @@ fn test_open_log() {
 #[test]
 fn test_reset_logs() {
   let _option = init().as_ref().unwrap();
-  log!("INFO", "Testing");
+  _engine_log!("INFO", "Testing");
   
   reset_logs(".".to_string());
   let logs: String = show_logs();
@@ -48,7 +48,7 @@ fn test_reset_logs() {
 fn test_show_logs() {
   let _option = init().as_ref().unwrap();
   
-  log!("DEBUG", "Testing");
+  _engine_log!("DEBUG", "Testing");
   let logs: String = show_logs();
   assert!(logs.contains("Testing"));
 }
